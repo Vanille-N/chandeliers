@@ -64,7 +64,7 @@ fn decls() {
 }
 
 #[test]
-fn argsty() {
+fn args_ty() {
     success!(parse_as!(ArgsTy, "x, y, z : float"));
     success!(parse_as!(ArgsTy, "x : bool"));
     failure!(parse_as!(ArgsTy, "x :"));
@@ -72,10 +72,32 @@ fn argsty() {
 }
 
 #[test]
-fn argstys() {
+fn args_tys() {
     success!(parse_as!(ArgsTys, "x, y : float; w:bool; s : float;"));
     success!(parse_as!(ArgsTys, "x : bool"));
     success!(parse_as!(ArgsTys, ""));
 }
 
+#[test]
+fn target_expr() {
+    success!(parse_as!(TargetExpr, "x"));
+    success!(parse_as!(TargetExpr, "(x, y)"));
+    success!(parse_as!(TargetExpr, "(((s, t), u), (v, (w, x, y), z))"));
+}
 
+#[test]
+fn expr() {
+    success!(parse_as!(Expr, "x"));
+    success!(parse_as!(Expr, "(x)"));
+    success!(parse_as!(Expr, "((x))"));
+    success!(parse_as!(Expr, "-x"));
+    success!(parse_as!(Expr, "(-x)"));
+    success!(parse_as!(Expr, "---(x)"));
+    success!(parse_as!(Expr, "x + y"));
+    success!(parse_as!(Expr, "x + y + z"));
+    success!(parse_as!(Expr, "x + y - z - w"));
+    success!(parse_as!(Expr, "f()"));
+    success!(parse_as!(Expr, "f(x, y,)"));
+    success!(parse_as!(Expr, "f(x, y, g(z))"));
+    success!(parse_as!(Expr, "f(x) + g(y) + h(z)"));
+}

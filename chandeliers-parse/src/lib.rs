@@ -19,8 +19,8 @@ pub fn decl(i: proc_macro::TokenStream) -> proc_macro::TokenStream {
 }
 
 #[proc_macro]
-pub fn asst_target(i: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    let prog = parse_macro_input!(i as syntax::Def);
+pub fn expr(i: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    let prog = parse_macro_input!(i as syntax::Expr);
     let mut toks = TokenStream::new();
     prog.to_tokens(&mut toks);
     dbg!(&toks);

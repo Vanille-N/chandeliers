@@ -1,5 +1,6 @@
 use chandeliers_parse as lustre;
 
+/*
 lustre::decl! {
     node test(x, y, z : bool; w : int;) returns ()
     var s, t : float;
@@ -65,5 +66,14 @@ fn foo() {
     }}
 
 }
+*/
 
-
+fn main() {
+    let _ = lustre::expr!(s * t * u * v * w * x * y * z);
+    let _ = lustre::expr!(s - t + u - v + w - x + y + z);
+    let _ = lustre::expr!((s - t + u - (v + w)) - (x + y + z));
+    let _ = lustre::expr!(s * t / u - v + w * x * y + z);
+    let _ = lustre::expr!(f(x));
+    let _ = lustre::expr!(f(x, g(y), h(i(j()))));
+    let _ = lustre::expr!(x -> y);
+}

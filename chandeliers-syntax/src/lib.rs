@@ -1,3 +1,4 @@
+#![feature(associated_type_defaults)]
 #![feature(proc_macro_diagnostic)]
 
 use proc_macro2::{Span, TokenStream};
@@ -10,6 +11,14 @@ use syn::{Ident, Token};
 use syn::token::Paren;
 
 mod test;
+
+trait MultiPeek: Parse {
+    fn multi_peek(s: ParseStream) -> bool {
+        Self::parse(s).is_ok()
+    }
+}
+
+impl<T: Parse> MultiPeek for T {}
 
 pub mod kw {
     use syn::custom_keyword;
@@ -159,43 +168,371 @@ impl ToTokens for TargetExprTuple {
 }
 
 mod expr {
-    use super::*;
+    pub use super::*;
     // Expressions by order of decreasing precedence
-    // [ _ or _ ] (<-)
-    // [ _ and _ ] (<-)
-    // [ not _ ]
-    // [ _ <= _ ], [ _ >= _ ], [ _ < _ ], [ _ > _ ] [ _ = _ ]
-    // [ _ fby _ ] (<-)
-    // [ pre _ ]
-    // [ _ -> _ ] (<-)
-    // [ _ * _ ], [ _ / _ ], [ _ % _ ] (->)
-    // [ _ + _ ], [ _ - _ ] (->)
-    // [ - _ ]
-    // [ ( _ ) ]
-    // [ v ]
+    // x  [ _ and _ ] (<-)
+    // x  [ _ or _ ] (<-)
+    // x  [ not _ ]
+    // x  [ _ <= _ ], [ _ >= _ ], [ _ < _ ], [ _ > _ ] [ _ = _ ]
+    // x  [ _ fby _ ] (<-)
+    // x  [ pre _ ]
+    //    [ _ -> _ ] (<-)
+    //    [ _ + _ ], [ _ - _ ] (->)
+    //    [ _ * _ ], [ _ / _ ], [ _ % _ ] (->)
+    //    [ - _ ]
+    //    [ ( _ ) ]
+    //    [ f(_,...) ]
+    //    [ v ]
+
     #[derive(syn_derive::Parse)]
-    pub struct Var {
-        pub name: Ident,
+    pub enum ExprHierarchyParser<Here, Below>
+    where
+        Here: Parse,
+        Below: Parse,
+    {
+        #[parse(peek_func = Here::multi_peek)]
+        Here(Here),
+        Below(Below),
     }
 
-    impl ToTokens for Var {
+    pub enum ExprHierarchy<Here, Below> {
+        Here(Here),
+        Below(Below),
+    }
+
+    impl<Here, Below> Parse for ExprHierarchy<Here, Below>
+    where
+        Here: Parse,
+        Below: Parse,
+    {
+        fn parse(input: ParseStream) -> Result<Self> {
+            let x: ExprHierarchyParser<Here, Below> = input.parse()?;
+            Ok(match x {
+                ExprHierarchyParser::Here(t) => ExprHierarchy::Here(t),
+                ExprHierarchyParser::Below(t) => ExprHierarchy::Below(t),
+            })
+        }
+    }
+
+    impl<Here, Below> ToTokens for ExprHierarchy<Here, Below>
+    where
+        Here: ToTokens,
+        Below: ToTokens,
+    {
         fn to_tokens(&self, tokens: &mut TokenStream) {
-            let Self { name } = self;
-            let span = self.span();
-            tokens.extend(quote_spanned! {span=>
-
-                #name
-
+            use ExprHierarchy::*;
+            tokens.extend(match self {
+                Here(t) => quote!( #t ),
+                Below(t) => quote!( #t ),
             });
         }
     }
+
+    #[derive(syn_derive::Parse)]
+    pub struct VarExpr {
+        pub name: Ident,
+    }
+    type VarLevelExpr = VarExpr;
+
+    #[derive(syn_derive::Parse)]
+    pub struct CallExpr {
+        pub fun: Ident,
+        #[syn(parenthesized)]
+        paren_token: Paren,
+        #[syn(in = paren_token)]
+        #[parse(Punctuated::parse_terminated)]
+        pub args: Punctuated<Box<Expr>, Token![,]>,
+    }
+    type CallLevelExpr = ExprHierarchy<CallExpr, VarLevelExpr>;
+
+    #[derive(syn_derive::Parse)]
+    pub struct ParenExpr {
+        #[syn(parenthesized)]
+        paren_token: Paren,
+        #[syn(in = paren_token)]
+        inner: Box<Expr>,
+    }
+    type ParenLevelExpr = ExprHierarchy<ParenExpr, CallLevelExpr>;
+
+    #[derive(syn_derive::Parse)]
+    pub struct NegExpr {
+        neg: Token![-],
+        inner: Box<Expr>,
+    }
+    type NegLevelExpr = ExprHierarchy<NegExpr, ParenLevelExpr>;
+
+    #[derive(syn_derive::Parse)]
+    pub enum MulOp {
+        #[parse(peek = Token![*])]
+        Mul(Token![*]),
+        #[parse(peek = Token![/])]
+        Div(Token![/]),
+        #[parse(peek = Token![%])]
+        Mod(Token![%]),
+    }
+
+    #[derive(syn_derive::Parse)]
+    pub enum AddOp {
+        #[parse(peek = Token![+])]
+        Add(Token![+]),
+        #[parse(peek = Token![-])]
+        Sub(Token![-]),
+    }
+
+    #[derive(syn_derive::Parse)]
+    pub struct RevMulExpr {
+        lhs: Box<NegLevelExpr>,
+        op: MulOp,
+        rhs: Box<RevMulLevelExpr>,
+    }
+    type RevMulLevelExpr = ExprHierarchy<RevMulExpr, NegLevelExpr>;
+
+    pub struct MulExpr {
+        lhs: Box<MulLevelExpr>,
+        op: MulOp,
+        rhs: Box<NegLevelExpr>,
+    }
+    type MulLevelExpr = ExprHierarchy<MulExpr, NegLevelExpr>;
+    impl Parse for MulExpr {
+        fn parse(input: ParseStream) -> Result<Self> {
+            let rev: RevMulExpr = input.parse()?;
+            Ok(rev.resolve_associativity())
+        }
+    }
+
+    #[derive(syn_derive::Parse)]
+    pub struct RevAddExpr {
+        lhs: Box<MulLevelExpr>,
+        op: AddOp,
+        rhs: Box<RevAddLevelExpr>,
+    }
+    type RevAddLevelExpr = ExprHierarchy<RevAddExpr, MulLevelExpr>;
+
+    pub struct AddExpr {
+        lhs: Box<AddLevelExpr>,
+        op: AddOp,
+        rhs: Box<MulLevelExpr>,
+    }
+    type AddLevelExpr = ExprHierarchy<AddExpr, MulLevelExpr>;
+    impl Parse for AddExpr {
+        fn parse(input: ParseStream) -> Result<Self> {
+            let rev: RevAddExpr = input.parse()?;
+            Ok(rev.resolve_associativity())
+        }
+    }
+
+    #[derive(syn_derive::Parse)]
+    pub struct NextExpr {
+        lhs: Box<AddLevelExpr>,
+        arrow: Token![->],
+        rhs: Box<NextLevelExpr>,
+    }
+    type NextLevelExpr = ExprHierarchy<NextExpr, AddLevelExpr>;
+
+    #[derive(syn_derive::Parse)]
+    pub struct Expr {
+        inner: NextLevelExpr,
+    }
+
+    impl ToTokens for NextExpr {
+        fn to_tokens(&self, tokens: &mut TokenStream) {
+            let Self { lhs, rhs, .. } = self;
+            tokens.extend(quote!( builtins::next( #rhs, #lhs ) ));
+        }
+    }
+
+    impl ToTokens for MulExpr {
+        fn to_tokens(&self, tokens: &mut TokenStream) {
+            let Self { op, lhs, rhs } = self;
+            tokens.extend(quote!( ( #lhs #op #rhs ) ));
+        }
+    }
+
+    impl ToTokens for MulOp {
+        fn to_tokens(&self, tokens: &mut TokenStream) {
+            use MulOp::*;
+            tokens.extend(match self {
+                Mul(_) => quote!( * ),
+                Div(_) => quote!( / ),
+                Mod(_) => quote!( % ),
+            })
+        }
+    }
+
+    impl ToTokens for AddOp {
+        fn to_tokens(&self, tokens: &mut TokenStream) {
+            use AddOp::*;
+            tokens.extend(match self {
+                Add(_) => quote!( + ),
+                Sub(_) => quote!( - ),
+            });
+        }
+    }
+
+    impl ToTokens for AddExpr {
+        fn to_tokens(&self, tokens: &mut TokenStream) {
+            let Self { op, lhs, rhs } = self;
+            tokens.extend(quote! { ( #lhs #op #rhs ) });
+        }
+    }
+
+    impl ToTokens for NegExpr {
+        fn to_tokens(&self, tokens: &mut TokenStream) {
+            let Self { inner, .. } = self;
+            tokens.extend(quote! { ( - #inner ) });
+        }
+    }
+
+    impl ToTokens for ParenExpr {
+        fn to_tokens(&self, tokens: &mut TokenStream) {
+            let Self { inner, .. } = self;
+            tokens.extend(quote! { ( #inner ) });
+        }
+    }
+
+    impl ToTokens for VarExpr {
+        fn to_tokens(&self, tokens: &mut TokenStream) {
+            let Self { name } = self;
+            tokens.extend(quote! { #name });
+        }
+    }
+
+    impl ToTokens for CallExpr {
+        fn to_tokens(&self, tokens: &mut TokenStream) {
+            let Self { fun, args, .. } = self;
+            let args = args.into_iter().collect::<Vec<_>>();
+            tokens.extend(quote! { #fun ( #( #args ,)* ) });
+        }
+    }
+
+    impl ToTokens for Expr {
+        fn to_tokens(&self, tokens: &mut TokenStream) {
+            let Self { inner } = self;
+            tokens.extend(quote!( #inner ));
+        }
+    }
+
+
+    trait ResolveAssociativity: Sized {
+        type Target;
+        fn resolve_associativity(self) -> Self::Target;
+    }
+    impl ResolveAssociativity for NegExpr {
+        type Target = Self;
+        fn resolve_associativity(self) -> Self::Target {
+            self
+        }
+    }
+    impl ResolveAssociativity for ParenExpr {
+        type Target = Self;
+        fn resolve_associativity(self) -> Self::Target {
+            self
+        }
+    }
+    impl ResolveAssociativity for VarExpr {
+        type Target = Self;
+        fn resolve_associativity(self) -> Self::Target {
+            self
+        }
+    }
+    impl ResolveAssociativity for CallExpr {
+        type Target = Self;
+        fn resolve_associativity(self) -> Self::Target {
+            self
+        }
+    }
+
+    impl<Here, Below> ResolveAssociativity for ExprHierarchy<Here, Below>
+    where
+        Here: Parse + ResolveAssociativity,
+        Below: Parse + ResolveAssociativity,
+    {
+        type Target = ExprHierarchy<Here::Target, Below::Target>;
+        fn resolve_associativity(self) -> Self::Target {
+            use ExprHierarchy::*;
+            match self {
+                Here(t) => Here(t.resolve_associativity()),
+                Below(t) => Below(t.resolve_associativity()),
+            }
+        }
+    }
+
+    impl ResolveAssociativity for RevMulExpr {
+        type Target = MulExpr;
+        fn resolve_associativity(self) -> Self::Target {
+            // We want to turn `x . (y . (z . w))` into `((x . y) . z) +.w`
+            fn aux(lhs: MulLevelExpr, op: MulOp, rhs: RevMulLevelExpr) -> MulExpr {
+                match rhs {
+                    ExprHierarchy::Here(rhs) => {
+                        // we want to insert lhs to the left of rhs.
+                        let RevMulExpr { lhs: rlhs, op: rop, rhs: rrhs } = rhs;
+                        aux(
+                            ExprHierarchy::Here(MulExpr {
+                                lhs: Box::new(lhs),
+                                op: op,
+                                rhs: rlhs,
+                            }),
+                            rop,
+                            *rrhs,
+                        )
+                    }
+                    ExprHierarchy::Below(rhs) => {
+                        // We have reached the base case, insert lhs there
+                        MulExpr {
+                            lhs: Box::new(lhs),
+                            op: op,
+                            rhs: Box::new(rhs),
+                        }
+                    }
+                }
+            }
+            let Self { lhs, op, rhs } = self;
+            aux(ExprHierarchy::Below(*lhs), op, *rhs)
+        }
+    }
+
+    impl ResolveAssociativity for RevAddExpr {
+        type Target = AddExpr;
+        fn resolve_associativity(self) -> Self::Target {
+            // We want to turn `x . (y . (z . w))` into `((x . y) . z) . w`
+            fn aux(lhs: AddLevelExpr, op: AddOp, rhs: RevAddLevelExpr) -> AddExpr {
+                match rhs {
+                    ExprHierarchy::Here(rhs) => {
+                        // we want to insert lhs to the left of rhs.
+                        let RevAddExpr { lhs: rlhs, op: rop, rhs: rrhs } = rhs;
+                        aux(
+                            ExprHierarchy::Here(AddExpr {
+                                lhs: Box::new(lhs),
+                                op: op,
+                                rhs: rlhs,
+                            }),
+                            rop,
+                            *rrhs,
+                        )
+                    }
+                    ExprHierarchy::Below(rhs) => {
+                        // We have reached the base case, insert lhs there
+                        AddExpr {
+                            lhs: Box::new(lhs),
+                            op: op,
+                            rhs: Box::new(rhs),
+                        }
+                    }
+                }
+            }
+            let Self { lhs, op, rhs } = self;
+            aux(ExprHierarchy::Below(*lhs), op, *rhs)
+        }
+    }
 }
+
+pub use expr::Expr;
 
 #[derive(syn_derive::Parse)]
 pub struct Def {
     pub target: TargetExpr,
     equal: Token![=],
-    pub source: expr::Var,
+    pub source: expr::Expr,
 }
 
 impl ToTokens for Def {
