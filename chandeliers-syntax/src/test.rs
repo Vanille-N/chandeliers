@@ -91,6 +91,9 @@ fn expr() {
     success!(parse_as!(Expr, "(x)"));
     success!(parse_as!(Expr, "((x))"));
     success!(parse_as!(Expr, "-x"));
+    success!(parse_as!(Expr, "-x + y"));
+    success!(parse_as!(Expr, "-x - y"));
+    success!(parse_as!(Expr, "-x - -y"));
     success!(parse_as!(Expr, "(-x)"));
     success!(parse_as!(Expr, "---(x)"));
     success!(parse_as!(Expr, "x + y"));
@@ -100,8 +103,11 @@ fn expr() {
     success!(parse_as!(Expr, "f(x, y,)"));
     success!(parse_as!(Expr, "f(x, y, g(z))"));
     success!(parse_as!(Expr, "f(x) + g(y) + h(z)"));
-    //success!(parse_as!(Expr, "x -> y"));
-    //success!(parse_as!(Expr, "x -> y -> z"));
+    success!(parse_as!(Expr, "x -> y"));
+    success!(parse_as!(Expr, "x -> y -> z"));
+    success!(parse_as!(Expr, "x = y = z"));
+    success!(parse_as!(Expr, "x >= y > z"));
+    success!(parse_as!(Expr, "not x = y"));
 }
 #[test]
 fn expr_perf() {

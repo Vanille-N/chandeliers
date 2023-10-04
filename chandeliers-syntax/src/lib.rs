@@ -211,9 +211,9 @@ mod expr {
     // Expressions by order of decreasing precedence
     // x  [ _ and _ ] (<-)
     // x  [ _ or _ ] (<-)
-    // x  [ not _ ]
-    // x  [ _ <= _ ], [ _ >= _ ], [ _ < _ ], [ _ > _ ] [ _ = _ ]
-    // x  [ _ fby _ ] (<-)
+    //    [ not _ ]
+    //    [ _ <= _ ], [ _ >= _ ], [ _ < _ ], [ _ > _ ] [ _ = _ ] (==)
+    //    [ _ fby _ ] (<-)
     //    [ pre _ ]
     //    [ _ -> _ ] (<-)
     //    [ _ + _ ], [ _ - _ ] (->)
@@ -311,7 +311,7 @@ mod expr {
     #[derive(syn_derive::Parse)]
     pub struct NegExpr {
         neg: Token![-],
-        inner: Box<Expr>,
+        inner: Box<NegLevelExpr>,
     }
     type NegLevelExpr = ExprHierarchy<NegExpr, ParenLevelExpr>;
     impl Hint for NegExpr {
@@ -342,9 +342,23 @@ mod expr {
     }
 
     #[derive(syn_derive::Parse)]
+    pub enum CmpOp {
+        #[parse(peek = Token![<=])]
+        Le(Token![<=]),
+        #[parse(peek = Token![>=])]
+        Ge(Token![>=]),
+        #[parse(peek = Token![<])]
+        Lt(Token![<]),
+        #[parse(peek = Token![>])]
+        Gt(Token![>]),
+        #[parse(peek = Token![=])]
+        Eq(Token![=]),
+    }
+
+    #[derive(syn_derive::Parse)]
     pub struct MulExpr {
         #[parse(parse_separated_nonempty_costly)]
-        items: Punctuated<ParenLevelExpr, MulOp>,
+        items: Punctuated<NegLevelExpr, MulOp>,
     }
     type MulLevelExpr = MulExpr;
 
@@ -374,14 +388,61 @@ mod expr {
         }
     }
 
+    #[derive(syn_derive::Parse)]
+    pub struct FbyExpr {
+        #[parse(parse_separated_nonempty_costly)]
+        items: Punctuated<PreLevelExpr, kw::fby>,
+    }
+    type FbyLevelExpr = FbyExpr;
+
+    #[derive(syn_derive::Parse)]
+    pub struct CmpExpr {
+        #[parse(parse_separated_nonempty_costly)]
+        items: Punctuated<FbyLevelExpr, CmpOp>,
+    }
+    type CmpLevelExpr = CmpExpr;
+
+    #[derive(syn_derive::Parse)]
+    pub struct NotExpr {
+        pre: kw::not,
+        inner: Box<NotLevelExpr>,
+    }
+    type NotLevelExpr = ExprHierarchy<NotExpr, CmpLevelExpr>;
+    impl Hint for NotExpr {
+        fn hint(s: ParseStream) -> bool {
+            s.peek(kw::not)
+        }
+    }
+
     pub struct Expr {
-        inner: PreLevelExpr,
+        inner: NotLevelExpr,
     }
 
     impl Parse for Expr {
         fn parse(input: ParseStream) -> Result<Self> {
-            let inner: PreLevelExpr = input.parse()?;
+            let inner: NotLevelExpr = input.parse()?;
             Ok(Self { inner })
+        }
+    }
+
+    impl ToTokens for NotExpr {
+        fn to_tokens(&self, tokens: &mut TokenStream) {
+            let Self { inner, .. } = self;
+            tokens.extend(quote!( builtins::not ( #inner ) ));
+        }
+    }
+
+    impl ToTokens for CmpExpr {
+        fn to_tokens(&self, tokens: &mut TokenStream) {
+            let Self { items } = self;
+            tokens.extend(quote!( ( todo::cmp ) ));
+        }
+    }
+
+    impl ToTokens for FbyExpr {
+        fn to_tokens(&self, tokens: &mut TokenStream) {
+            let Self { items } = self;
+            tokens.extend(quote!( ( todo::fby ) ));
         }
     }
 
@@ -470,140 +531,6 @@ mod expr {
             tokens.extend(quote!( #inner ));
         }
     }
-
-
-    /*
-    trait ResolveAssociativity: Sized {
-        type Target;
-        fn resolve_associativity(self) -> Self::Target;
-    }
-    impl ResolveAssociativity for NegExpr {
-        type Target = Self;
-        fn resolve_associativity(self) -> Self::Target {
-            self
-        }
-    }
-    impl ResolveAssociativity for ParenExpr {
-        type Target = Self;
-        fn resolve_associativity(self) -> Self::Target {
-            self
-        }
-    }
-    impl ResolveAssociativity for VarExpr {
-        type Target = Self;
-        fn resolve_associativity(self) -> Self::Target {
-            self
-        }
-    }
-    impl ResolveAssociativity for CallExpr {
-        type Target = Self;
-        fn resolve_associativity(self) -> Self::Target {
-            self
-        }
-    }
-
-    impl<Here, Below> ResolveAssociativity for ExprHierarchy<Here, Below>
-    where
-        Here: Parse + ResolveAssociativity,
-        Below: Parse + ResolveAssociativity,
-    {
-        type Target = ExprHierarchy<Here::Target, Below::Target>;
-        fn resolve_associativity(self) -> Self::Target {
-            use ExprHierarchy::*;
-            match self {
-                Here(t) => Here(t.resolve_associativity()),
-                Below(t) => Below(t.resolve_associativity()),
-            }
-        }
-    }
-
-    impl ResolveAssociativity for RevMulExpr {
-        type Target = MulExpr;
-        fn resolve_associativity(self) -> Self::Target {
-            // We want to turn `x . (y . (z . w))` into `((x . y) . z) +.w`
-            fn aux(lhs: MulLevelExpr, op: MulOp, rhs: RevMulLevelExpr) -> MulExpr {
-                match rhs {
-                    ExprHierarchy::Here(rhs) => {
-                        // we want to insert lhs to the left of rhs.
-                        let RevMulExpr { lhs: rlhs, op: rop, rhs: rrhs } = rhs;
-                        aux(
-                            ExprHierarchy::Here(MulExpr {
-                                lhs: Box::new(lhs),
-                                op: op,
-                                rhs: rlhs,
-                            }),
-                            rop,
-                            *rrhs,
-                        )
-                    }
-                    ExprHierarchy::Below(rhs) => {
-                        // We have reached the base case, insert lhs there
-                        MulExpr {
-                            lhs: Box::new(lhs),
-                            op: op,
-                            rhs: Box::new(rhs),
-                        }
-                    }
-                }
-            }
-            let Self { lhs, op, rhs } = self;
-            aux(ExprHierarchy::Below(*lhs), op, *rhs)
-        }
-    }
-
-    impl ResolveAssociativity for RevAddExpr {
-        type Target = AddExpr;
-        fn resolve_associativity(self) -> Self::Target {
-            // We want to turn `x . (y . (z . w))` into `((x . y) . z) . w`
-            fn aux(lhs: AddLevelExpr, op: AddOp, rhs: RevAddLevelExpr) -> AddExpr {
-                match rhs {
-                    ExprHierarchy::Here(rhs) => {
-                        // we want to insert lhs to the left of rhs.
-                        let RevAddExpr { lhs: rlhs, op: rop, rhs: rrhs } = rhs;
-                        aux(
-                            ExprHierarchy::Here(AddExpr {
-                                lhs: Box::new(lhs),
-                                op: op,
-                                rhs: Box::new(rlhs.resolve_associativity()),
-                            }),
-                            rop,
-                            *rrhs,
-                        )
-                    }
-                    ExprHierarchy::Below(rhs) => {
-                        // We have reached the base case, insert lhs there
-                        AddExpr {
-                            lhs: Box::new(lhs),
-                            op: op,
-                            rhs: Box::new(rhs.resolve_associativity()),
-                        }
-                    }
-                }
-            }
-            let Self { lhs, op, rhs } = self;
-            aux(ExprHierarchy::Below(lhs.resolve_associativity()), op, *rhs)
-        }
-    }
-
-    impl ResolveAssociativity for RevPreExpr {
-        type Target = PreExpr;
-        fn resolve_associativity(self) -> Self::Target {
-            let RevPreExpr { pre, inner } = self;
-            let inner = Box::new(inner.resolve_associativity());
-            PreExpr { pre, inner }
-        }
-    }
-
-    impl ResolveAssociativity for RevThenExpr {
-        type Target = ThenExpr;
-        fn resolve_associativity(self) -> Self::Target {
-            let RevThenExpr { lhs, arrow, rhs } = self;
-            let lhs = Box::new(lhs.resolve_associativity());
-            let rhs = Box::new(rhs.resolve_associativity());
-            ThenExpr { lhs, arrow, rhs }
-        }
-    }
-    */
 }
 
 pub use expr::Expr;
