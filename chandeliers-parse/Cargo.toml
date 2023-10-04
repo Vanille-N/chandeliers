@@ -10,5 +10,8 @@ proc-macro = true
 syn = "2.0"
 quote = "1.0"
 proc-macro2 = "1.0"
+chandeliers-syntax = { path = "../chandeliers-syntax" }
+trybuild = "1.0"
 
+[dev-dependencies]
 chandeliers-syntax = { path = "../chandeliers-syntax" }

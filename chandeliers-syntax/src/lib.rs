@@ -7,8 +7,11 @@ use syn::parse::{Parse, ParseStream, Result};
 use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
 use syn::{Ident, Token};
+use syn::token::Paren;
 
-mod kw {
+mod test;
+
+pub mod kw {
     use syn::custom_keyword;
 
     custom_keyword!(int);
@@ -97,224 +100,109 @@ impl ToTokens for ArgsTy {
     }
 }
 
-/// A parser combinator that looks for zero or more occurences
-/// of `P` separated by `T` and stops when it encounters `End`.
-/// This may end even if there are tokens in the stream.
-trait PunctUntil<T, P>: Sized {
-    fn parse_separated_until<End>(input: ParseStream) -> Result<Self>
-    where
-        T: Parse,
-        End: syn::token::Token + Parse,
-    {
-        Self::parse_separated_with_until::<End>(input, T::parse)
-    }
-
-    fn parse_separated_with_until<End>(
-        input: ParseStream,
-        parser: fn(ParseStream) -> Result<T>,
-    ) -> Result<Self>
-    where
-        End: syn::token::Token + Parse;
+#[derive(Default, syn_derive::Parse)]
+pub struct ArgsTys {
+    #[parse(Punctuated::parse_terminated)]
+    items: Punctuated<ArgsTy, Token![;]>,
 }
-
-impl<T, P> PunctUntil<T, P> for Punctuated<T, P>
-where
-    P: syn::token::Token + Parse,
-{
-    fn parse_separated_with_until<End>(
-        input: ParseStream,
-        parser: fn(ParseStream) -> Result<T>,
-    ) -> Result<Self>
-    where
-        End: syn::token::Token + Parse,
-    {
-        let mut punctuated = Punctuated::new();
-
-        loop {
-            if End::peek(input.cursor()) {
-                break;
-            }
-            let value = parser(input)?;
-            punctuated.push_value(value);
-            if !P::peek(input.cursor()) {
-                break;
-            }
-            let punct = input.parse()?;
-            punctuated.push_punct(punct);
-        }
-
-        Ok(punctuated)
-    }
-}
-
-impl ArgsTys {
-    fn parse_terminated(input: ParseStream) -> Result<Self> {
-        let inner = Punctuated::<ArgsTy, Token![;]>::parse_terminated(input)?
-            .into_iter()
-            .collect::<Vec<_>>();
-        Ok(Self(inner))
-    }
-
-    fn parse_separated_nonempty(input: ParseStream) -> Result<Self> {
-        let inner = Punctuated::<ArgsTy, Token![;]>::parse_separated_nonempty(input)?
-            .into_iter()
-            .collect::<Vec<_>>();
-        Ok(Self(inner))
-    }
-
-    fn parse_separated_until<End>(input: ParseStream) -> Result<Self>
-    where
-        End: syn::token::Token + Parse,
-    {
-        let inner = Punctuated::<ArgsTy, Token![;]>::parse_separated_until::<End>(input)?
-            .into_iter()
-            .collect::<Vec<_>>();
-        Ok(Self(inner))
-    }
-}
-
-#[derive(Default)]
-pub struct ArgsTys(Vec<ArgsTy>);
 
 impl ToTokens for ArgsTys {
     fn to_tokens(&self, tokens: &mut TokenStream) {
-        let Self(decls) = self;
+        let Self { items } = self;
+        let items = items.into_iter().collect::<Vec<_>>();
         tokens.extend(quote! {
 
-            #( #decls )*
+            #( #items )*
 
         });
     }
 }
 
 #[derive(syn_derive::Parse)]
-pub enum TargetExprKind {
+pub enum TargetExpr {
+    #[parse(peek = Ident)]
     Var(Ident),
-    Tuple(Vec<TargetExpr>),
+    Tuple(TargetExprTuple),
 }
 
-pub struct TargetExpr {
-    span: Span,
-    pub kind: TargetExprKind,
-}
-
-impl Parse for TargetExpr {
-    fn parse(input: ParseStream) -> Result<Self> {
-        let ahead = input.lookahead1();
-        let span;
-        let kind = if ahead.peek(Ident) {
-            let id: Ident = input.parse()?;
-            span = id.span();
-            TargetExprKind::Var(id)
-        } else {
-            let tup;
-            parenthesized!(tup in input);
-            let sub = Punctuated::<TargetExpr, Token![,]>::parse_terminated(&tup)?;
-            span = sub.span();
-            TargetExprKind::Tuple(sub.into_iter().collect())
-        };
-        Ok(Self {
-            kind,
-            span,
-        })
-    }
+#[derive(syn_derive::Parse)]
+pub struct TargetExprTuple {
+    #[syn(parenthesized)]
+    paren_token: Paren,
+    #[syn(in = paren_token)]
+    #[parse(Punctuated::parse_terminated)]
+    fields: Punctuated<TargetExpr, Token![,]>,
 }
 
 impl ToTokens for TargetExpr {
     fn to_tokens(&self, tokens: &mut TokenStream) {
-        use TargetExprKind::*;
-        let span = self.span;
-        tokens.extend(match &self.kind {
+        use TargetExpr::*;
+        let span = self.span();
+        tokens.extend(match self {
             Var(v) => quote_spanned!(span=> #v),
-            Tuple(ts) => {
-                quote_spanned! {span=>
-
-                    ( #( #ts ),* )
-
-                }
-            }
+            Tuple(ts) => quote_spanned!(span=> #ts),
         });
     }
 }
 
-pub enum BinOp {
-    Fby(kw::fby),
-    Then(Token![->]),
-    Eql(Token![=]),
-    Le(Token![<=]),
-    Lt(Token![<]),
-    Ge(Token![>=]),
-    Gt(Token![>]),
-    Add(Token![+]),
-    Sub(Token![-]),
-    Mul(Token![*]),
-    Div(Token![/]),
-    Mod(Token![%]),
+impl ToTokens for TargetExprTuple {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        let Self { fields, .. } = self;
+        let span = self.span();
+        let fields = fields.into_iter().collect::<Vec<_>>();
+        tokens.extend(quote_spanned! {span=>
+
+            ( #( #fields ),* )
+
+        });
+    }
 }
 
-pub enum UnOp {
-    Pre(kw::pre),
-    Not(kw::not),
-    Neg(Token![-]),
-}
+mod expr {
+    use super::*;
+    // Expressions by order of decreasing precedence
+    // [ _ or _ ] (<-)
+    // [ _ and _ ] (<-)
+    // [ not _ ]
+    // [ _ <= _ ], [ _ >= _ ], [ _ < _ ], [ _ > _ ] [ _ = _ ]
+    // [ _ fby _ ] (<-)
+    // [ pre _ ]
+    // [ _ -> _ ] (<-)
+    // [ _ * _ ], [ _ / _ ], [ _ % _ ] (->)
+    // [ _ + _ ], [ _ - _ ] (->)
+    // [ - _ ]
+    // [ ( _ ) ]
+    // [ v ]
+    #[derive(syn_derive::Parse)]
+    pub struct Var {
+        pub name: Ident,
+    }
 
-pub enum SourceExpr {
-    Var(Ident),
-    Tuple(Vec<SourceExpr>),
-    BinOp(BinOp, Box<SourceExpr>, Box<SourceExpr>),
-    UnOp(UnOp, Box<SourceExpr>),
-    Call(Ident, Vec<SourceExpr>),
-}
+    impl ToTokens for Var {
+        fn to_tokens(&self, tokens: &mut TokenStream) {
+            let Self { name } = self;
+            let span = self.span();
+            tokens.extend(quote_spanned! {span=>
 
-impl SourceExpr {
-    fn inner_span(&self) -> Span {
-        use SourceExpr::*;
-        match self {
-            Var(v) => v.span(),
-            Tuple(ss) => ss.first().unwrap().inner_span().join(ss.last().unwrap().inner_span()).unwrap(),
-            BinOp(op, lhs, rhs) => lhs.inner_span().join(rhs.inner_span()).unwrap().join(op.inner_span()).unwrap(),
-            UnOp(op, sub) => sub.inner_span().join(op.inner_span()).unwrap(),
+                #name
+
+            });
         }
     }
 }
 
-impl Parse for SourceExpr {
-    fn parse(_input: ParseStream) -> Result<Self> {
-        // First off, 
-        unimplemented!("Parse for SourceExpr")
-    }
-}
-
-impl ToTokens for SourceExpr {
-    fn to_tokens(&self, _tokens: &mut TokenStream) {
-        unimplemented!("ToTokens for SourceExpr")
-    }
-}
-
+#[derive(syn_derive::Parse)]
 pub struct Def {
-    span: Span,
     pub target: TargetExpr,
-    pub source: SourceExpr,
-}
-
-impl Parse for Def {
-    fn parse(input: ParseStream) -> Result<Self> {
-        let target: TargetExpr = input.parse()?;
-        let _: Token![=] = input.parse()?;
-        let source: SourceExpr = input.parse()?;
-        let span = target.span.join(source.inner_span()).unwrap();
-        Ok(Self {
-            span,
-            target,
-            source,
-        })
-    }
+    equal: Token![=],
+    pub source: expr::Var,
 }
 
 impl ToTokens for Def {
     fn to_tokens(&self, tokens: &mut TokenStream) {
-        let Self { span, target, source } = self;
-        tokens.extend(quote_spanned! {*span=>
+        let Self { target, source, .. } = self;
+        let span = self.span();
+        tokens.extend(quote_spanned! {span=>
 
             #target = #source ;
 
@@ -324,18 +212,6 @@ impl ToTokens for Def {
 
 pub struct Defs(Vec<Def>);
 
-impl Defs {
-    fn parse_separated_until<End>(input: ParseStream) -> Result<Self>
-    where
-        End: syn::token::Token + Parse,
-    {
-        let inner = Punctuated::<Def, Token![;]>::parse_separated_until::<End>(input)?
-            .into_iter()
-            .collect::<Vec<_>>();
-        Ok(Self(inner))
-    }
-}
-
 pub struct Node {
     pub name: Ident,
     pub inputs: ArgsTys,
@@ -344,6 +220,7 @@ pub struct Node {
     pub defs: Defs,
 }
 
+/*
 impl Parse for Node {
     fn parse(input: ParseStream) -> Result<Self> {
         let _: kw::node = input.parse()?;
@@ -381,6 +258,7 @@ impl Parse for Node {
         })
     }
 }
+*/
 
 impl ToTokens for Node {
     fn to_tokens(&self, tokens: &mut TokenStream) {

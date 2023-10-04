@@ -8,11 +8,14 @@ use chandeliers_syntax as syntax;
 
 #[proc_macro]
 pub fn decl(i: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    unimplemented!();
+    /*
     let prog = parse_macro_input!(i as syntax::Node);
     let mut toks = TokenStream::new();
     prog.to_tokens(&mut toks);
     dbg!(&toks);
     proc_macro::TokenStream::from(toks)
+    */
 }
 
 #[proc_macro]
@@ -23,3 +26,10 @@ pub fn asst_target(i: proc_macro::TokenStream) -> proc_macro::TokenStream {
     dbg!(&toks);
     proc_macro::TokenStream::from(toks)
 }
+
+#[test]
+fn ui() {
+    let t = trybuild::TestCases::new();
+    t.compile_fail("tests/fail/ui/*.rs");
+}
+
