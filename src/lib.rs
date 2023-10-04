@@ -75,5 +75,6 @@ fn main() {
     let _ = lustre::expr!(s * t / u - v + w * x * y + z);
     let _ = lustre::expr!(f(x));
     let _ = lustre::expr!(f(x, g(y), h(i(j()))));
-    let _ = lustre::expr!(x -> y);
+    let _ = lustre::expr!(x -> y -> z);
+    let _ = lustre::expr!(pre pre x);
 }

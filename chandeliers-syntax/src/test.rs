@@ -100,4 +100,10 @@ fn expr() {
     success!(parse_as!(Expr, "f(x, y,)"));
     success!(parse_as!(Expr, "f(x, y, g(z))"));
     success!(parse_as!(Expr, "f(x) + g(y) + h(z)"));
+    //success!(parse_as!(Expr, "x -> y"));
+    //success!(parse_as!(Expr, "x -> y -> z"));
+}
+#[test]
+fn expr_perf() {
+    success!(parse_as!(Expr, "x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x+x"));
 }

@@ -12,13 +12,30 @@ use syn::token::Paren;
 
 mod test;
 
-trait MultiPeek: Parse {
+trait MultiPeek {
+    fn multi_peek(s: ParseStream) -> bool;
+}
+
+impl<T: syn::token::Token + Parse> MultiPeek for T {
     fn multi_peek(s: ParseStream) -> bool {
-        Self::parse(s).is_ok()
+        loop {
+            if let Ok(_) = T::parse(&s.fork()) {
+                return true;
+            } else if s.is_empty() {
+                return false;
+            } else {
+                let _ = s.step(|cursor| {
+                    let rest = cursor.token_stream();
+                    Ok(((), *cursor))
+                });
+            }
+        }
     }
 }
 
-impl<T: Parse> MultiPeek for T {}
+trait Hint {
+    fn hint(s: ParseStream) -> bool;
+}
 
 pub mod kw {
     use syn::custom_keyword;
@@ -167,6 +184,28 @@ impl ToTokens for TargetExprTuple {
     }
 }
 
+pub fn parse_separated_nonempty_costly<P, T>(
+    input: ParseStream,
+) -> Result<Punctuated<T, P>>
+where
+    T: Parse,
+    P: Parse,
+{
+    let mut punctuated = Punctuated::new();
+
+    loop {
+        let value: T = input.parse()?;
+        punctuated.push_value(value);
+        if P::parse(&input.fork()).is_err() {
+            break;
+        }
+        let punct: P = input.parse()?;
+        punctuated.push_punct(punct);
+    }
+
+    Ok(punctuated)
+}
+
 mod expr {
     pub use super::*;
     // Expressions by order of decreasing precedence
@@ -175,7 +214,7 @@ mod expr {
     // x  [ not _ ]
     // x  [ _ <= _ ], [ _ >= _ ], [ _ < _ ], [ _ > _ ] [ _ = _ ]
     // x  [ _ fby _ ] (<-)
-    // x  [ pre _ ]
+    //    [ pre _ ]
     //    [ _ -> _ ] (<-)
     //    [ _ + _ ], [ _ - _ ] (->)
     //    [ _ * _ ], [ _ / _ ], [ _ % _ ] (->)
@@ -187,10 +226,10 @@ mod expr {
     #[derive(syn_derive::Parse)]
     pub enum ExprHierarchyParser<Here, Below>
     where
-        Here: Parse,
+        Here: Parse + Hint,
         Below: Parse,
     {
-        #[parse(peek_func = Here::multi_peek)]
+        #[parse(peek_func = Here::hint)]
         Here(Here),
         Below(Below),
     }
@@ -202,7 +241,7 @@ mod expr {
 
     impl<Here, Below> Parse for ExprHierarchy<Here, Below>
     where
-        Here: Parse,
+        Here: Parse + Hint,
         Below: Parse,
     {
         fn parse(input: ParseStream) -> Result<Self> {
@@ -233,6 +272,11 @@ mod expr {
         pub name: Ident,
     }
     type VarLevelExpr = VarExpr;
+    impl Hint for VarExpr {
+        fn hint(s: ParseStream) -> bool {
+            s.peek(Ident)
+        }
+    }
 
     #[derive(syn_derive::Parse)]
     pub struct CallExpr {
@@ -244,6 +288,11 @@ mod expr {
         pub args: Punctuated<Box<Expr>, Token![,]>,
     }
     type CallLevelExpr = ExprHierarchy<CallExpr, VarLevelExpr>;
+    impl Hint for CallExpr {
+        fn hint(s: ParseStream) -> bool {
+            s.parse::<CallExpr>().is_ok()
+        }
+    }
 
     #[derive(syn_derive::Parse)]
     pub struct ParenExpr {
@@ -253,6 +302,11 @@ mod expr {
         inner: Box<Expr>,
     }
     type ParenLevelExpr = ExprHierarchy<ParenExpr, CallLevelExpr>;
+    impl Hint for ParenExpr {
+        fn hint(s: ParseStream) -> bool {
+            s.parse::<ParenExpr>().is_ok()
+        }
+    }
 
     #[derive(syn_derive::Parse)]
     pub struct NegExpr {
@@ -260,6 +314,11 @@ mod expr {
         inner: Box<Expr>,
     }
     type NegLevelExpr = ExprHierarchy<NegExpr, ParenLevelExpr>;
+    impl Hint for NegExpr {
+        fn hint(s: ParseStream) -> bool {
+            s.peek(Token![-])
+        }
+    }
 
     #[derive(syn_derive::Parse)]
     pub enum MulOp {
@@ -271,80 +330,80 @@ mod expr {
         Mod(Token![%]),
     }
 
+    fn exactly_token_neg(s: ParseStream) -> bool {
+        s.peek(Token![-]) && !s.peek2(Token![>])
+    }
     #[derive(syn_derive::Parse)]
     pub enum AddOp {
         #[parse(peek = Token![+])]
         Add(Token![+]),
-        #[parse(peek = Token![-])]
+        #[parse(peek_func = exactly_token_neg)]
         Sub(Token![-]),
     }
 
     #[derive(syn_derive::Parse)]
-    pub struct RevMulExpr {
-        lhs: Box<NegLevelExpr>,
-        op: MulOp,
-        rhs: Box<RevMulLevelExpr>,
-    }
-    type RevMulLevelExpr = ExprHierarchy<RevMulExpr, NegLevelExpr>;
-
     pub struct MulExpr {
-        lhs: Box<MulLevelExpr>,
-        op: MulOp,
-        rhs: Box<NegLevelExpr>,
+        #[parse(parse_separated_nonempty_costly)]
+        items: Punctuated<ParenLevelExpr, MulOp>,
     }
-    type MulLevelExpr = ExprHierarchy<MulExpr, NegLevelExpr>;
-    impl Parse for MulExpr {
-        fn parse(input: ParseStream) -> Result<Self> {
-            let rev: RevMulExpr = input.parse()?;
-            Ok(rev.resolve_associativity())
-        }
-    }
+    type MulLevelExpr = MulExpr;
 
     #[derive(syn_derive::Parse)]
-    pub struct RevAddExpr {
-        lhs: Box<MulLevelExpr>,
-        op: AddOp,
-        rhs: Box<RevAddLevelExpr>,
-    }
-    type RevAddLevelExpr = ExprHierarchy<RevAddExpr, MulLevelExpr>;
-
     pub struct AddExpr {
-        lhs: Box<AddLevelExpr>,
-        op: AddOp,
-        rhs: Box<MulLevelExpr>,
+        #[parse(parse_separated_nonempty_costly)]
+        items: Punctuated<MulLevelExpr, AddOp>,
     }
-    type AddLevelExpr = ExprHierarchy<AddExpr, MulLevelExpr>;
-    impl Parse for AddExpr {
-        fn parse(input: ParseStream) -> Result<Self> {
-            let rev: RevAddExpr = input.parse()?;
-            Ok(rev.resolve_associativity())
+    type AddLevelExpr = AddExpr;
+
+    #[derive(syn_derive::Parse)]
+    pub struct ThenExpr {
+        #[parse(parse_separated_nonempty_costly)]
+        items: Punctuated<AddLevelExpr, Token![->]>,
+    }
+    type ThenLevelExpr = ThenExpr;
+
+    #[derive(syn_derive::Parse)]
+    pub struct PreExpr {
+        pre: kw::pre,
+        inner: Box<PreLevelExpr>,
+    }
+    type PreLevelExpr = ExprHierarchy<PreExpr, ThenLevelExpr>;
+    impl Hint for PreExpr {
+        fn hint(s: ParseStream) -> bool {
+            s.peek(kw::pre)
         }
     }
 
-    #[derive(syn_derive::Parse)]
-    pub struct NextExpr {
-        lhs: Box<AddLevelExpr>,
-        arrow: Token![->],
-        rhs: Box<NextLevelExpr>,
-    }
-    type NextLevelExpr = ExprHierarchy<NextExpr, AddLevelExpr>;
-
-    #[derive(syn_derive::Parse)]
     pub struct Expr {
-        inner: NextLevelExpr,
+        inner: PreLevelExpr,
     }
 
-    impl ToTokens for NextExpr {
+    impl Parse for Expr {
+        fn parse(input: ParseStream) -> Result<Self> {
+            let inner: PreLevelExpr = input.parse()?;
+            Ok(Self { inner })
+        }
+    }
+
+    impl ToTokens for PreExpr {
         fn to_tokens(&self, tokens: &mut TokenStream) {
-            let Self { lhs, rhs, .. } = self;
-            tokens.extend(quote!( builtins::next( #rhs, #lhs ) ));
+            let Self { inner, .. } = self;
+            tokens.extend(quote!( builtins::pre ( #inner ) ));
+        }
+    }
+
+    impl ToTokens for ThenExpr {
+        fn to_tokens(&self, tokens: &mut TokenStream) {
+            let Self { items } = self;
+            tokens.extend(quote!( ( todo::then ) ));
         }
     }
 
     impl ToTokens for MulExpr {
         fn to_tokens(&self, tokens: &mut TokenStream) {
-            let Self { op, lhs, rhs } = self;
-            tokens.extend(quote!( ( #lhs #op #rhs ) ));
+            let Self { items } = self;
+            let items = items.into_iter().collect::<Vec<_>>();
+            tokens.extend(quote!( { todo::mul } ));
         }
     }
 
@@ -371,29 +430,29 @@ mod expr {
 
     impl ToTokens for AddExpr {
         fn to_tokens(&self, tokens: &mut TokenStream) {
-            let Self { op, lhs, rhs } = self;
-            tokens.extend(quote! { ( #lhs #op #rhs ) });
+            let Self { items } = self;
+            tokens.extend(quote!( { todo::add } ));
         }
     }
 
     impl ToTokens for NegExpr {
         fn to_tokens(&self, tokens: &mut TokenStream) {
             let Self { inner, .. } = self;
-            tokens.extend(quote! { ( - #inner ) });
+            tokens.extend(quote!( ( - #inner ) ));
         }
     }
 
     impl ToTokens for ParenExpr {
         fn to_tokens(&self, tokens: &mut TokenStream) {
             let Self { inner, .. } = self;
-            tokens.extend(quote! { ( #inner ) });
+            tokens.extend(quote!( ( #inner ) ));
         }
     }
 
     impl ToTokens for VarExpr {
         fn to_tokens(&self, tokens: &mut TokenStream) {
             let Self { name } = self;
-            tokens.extend(quote! { #name });
+            tokens.extend(quote!( #name ));
         }
     }
 
@@ -401,7 +460,7 @@ mod expr {
         fn to_tokens(&self, tokens: &mut TokenStream) {
             let Self { fun, args, .. } = self;
             let args = args.into_iter().collect::<Vec<_>>();
-            tokens.extend(quote! { #fun ( #( #args ,)* ) });
+            tokens.extend(quote!( #fun ( #( #args ,)* ) ));
         }
     }
 
@@ -413,6 +472,7 @@ mod expr {
     }
 
 
+    /*
     trait ResolveAssociativity: Sized {
         type Target;
         fn resolve_associativity(self) -> Self::Target;
@@ -504,7 +564,7 @@ mod expr {
                             ExprHierarchy::Here(AddExpr {
                                 lhs: Box::new(lhs),
                                 op: op,
-                                rhs: rlhs,
+                                rhs: Box::new(rlhs.resolve_associativity()),
                             }),
                             rop,
                             *rrhs,
@@ -515,15 +575,35 @@ mod expr {
                         AddExpr {
                             lhs: Box::new(lhs),
                             op: op,
-                            rhs: Box::new(rhs),
+                            rhs: Box::new(rhs.resolve_associativity()),
                         }
                     }
                 }
             }
             let Self { lhs, op, rhs } = self;
-            aux(ExprHierarchy::Below(*lhs), op, *rhs)
+            aux(ExprHierarchy::Below(lhs.resolve_associativity()), op, *rhs)
         }
     }
+
+    impl ResolveAssociativity for RevPreExpr {
+        type Target = PreExpr;
+        fn resolve_associativity(self) -> Self::Target {
+            let RevPreExpr { pre, inner } = self;
+            let inner = Box::new(inner.resolve_associativity());
+            PreExpr { pre, inner }
+        }
+    }
+
+    impl ResolveAssociativity for RevThenExpr {
+        type Target = ThenExpr;
+        fn resolve_associativity(self) -> Self::Target {
+            let RevThenExpr { lhs, arrow, rhs } = self;
+            let lhs = Box::new(lhs.resolve_associativity());
+            let rhs = Box::new(rhs.resolve_associativity());
+            ThenExpr { lhs, arrow, rhs }
+        }
+    }
+    */
 }
 
 pub use expr::Expr;
