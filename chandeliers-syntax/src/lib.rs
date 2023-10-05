@@ -7,7 +7,7 @@ use syn::parenthesized;
 use syn::parse::{Parse, ParseStream, Result};
 use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
-use syn::{Ident, Token};
+use syn::{Ident, Token, Lit};
 use syn::token::Paren;
 
 mod test;
@@ -40,6 +40,7 @@ trait Hint {
 pub mod kw {
     use syn::custom_keyword;
 
+    // We might eventually accept an arbitrary Ident as type.
     custom_keyword!(int);
     // Warning: this locally overrides the builtin `bool`
     custom_keyword!(bool);
@@ -61,10 +62,26 @@ mod punct {
     use syn::custom_punctuation;
 
     custom_punctuation!(Neq, <>);
-    custom_punctuation!(FAdd, +.);
-    custom_punctuation!(FMul, *.);
-    custom_punctuation!(FDiv, /.);
-    custom_punctuation!(FNeg, -.);
+}
+
+/// A trait for keywords and punctuation that should be parsed
+/// in one way but printed in another.
+/// E.g. `Neq` must be parsed as `<>` but printed as `!=`,
+///      `and`                   `and`               `&&`,
+///      `or`                    `or`                `||`,
+/// etc.
+trait ParseTransmute: Parse {
+    type Target;
+    /// Required method
+    /// How to transform `Self`.
+    fn tok_transmute(self) -> Self::Target;
+    /// Provided method
+    /// How to parse and transform `Self`.
+    fn parse_transmute(s: ParseStream) -> Result<Self::Target> {
+        let me: Self = s.parse()?;
+        let res = Self::tok_transmute(me);
+        Ok(res)
+    }
 }
 
 #[derive(syn_derive::Parse)]
@@ -209,18 +226,18 @@ where
 mod expr {
     pub use super::*;
     // Expressions by order of decreasing precedence
-    // x  [ _ and _ ] (<-)
-    // x  [ _ or _ ] (<-)
+    //  x [ _ or _ ] (<-)
+    //  x [ _ and _ ] (<-)
     //    [ not _ ]
-    //    [ _ <= _ ], [ _ >= _ ], [ _ < _ ], [ _ > _ ] [ _ = _ ] (==)
-    //    [ _ fby _ ] (<-)
+    //  x [ _ <= _ ], [ _ >= _ ], [ _ < _ ], [ _ > _ ] [ _ = _ ] (==)
+    //  x [ _ fby _ ] (<-)
     //    [ pre _ ]
-    //    [ _ -> _ ] (<-)
-    //    [ _ + _ ], [ _ - _ ] (->)
-    //    [ _ * _ ], [ _ / _ ], [ _ % _ ] (->)
+    //  x [ _ -> _ ] (<-)
+    //  x [ _ + _ ], [ _ - _ ] (->)
+    //  x [ _ * _ ], [ _ / _ ], [ _ % _ ] (->)
     //    [ - _ ]
-    //    [ ( _ ) ]
-    //    [ f(_,...) ]
+    //  x [ ( _, ... ) ]
+    //  x [ f( _, ... ) ]
     //    [ v ]
 
     #[derive(syn_derive::Parse)]
@@ -268,10 +285,21 @@ mod expr {
     }
 
     #[derive(syn_derive::Parse)]
+    pub struct LitExpr {
+        pub lit: Lit,
+    }
+    type LitLevelExpr = LitExpr;
+    impl Hint for LitExpr {
+        fn hint(s: ParseStream) -> bool {
+            s.peek(Lit)
+        }
+    }
+
+    #[derive(syn_derive::Parse)]
     pub struct VarExpr {
         pub name: Ident,
     }
-    type VarLevelExpr = VarExpr;
+    type VarLevelExpr = ExprHierarchy<VarExpr, LitLevelExpr>;
     impl Hint for VarExpr {
         fn hint(s: ParseStream) -> bool {
             s.peek(Ident)
@@ -299,7 +327,8 @@ mod expr {
         #[syn(parenthesized)]
         paren_token: Paren,
         #[syn(in = paren_token)]
-        inner: Box<Expr>,
+        #[parse(Punctuated::parse_terminated)]
+        inner: Punctuated<Box<Expr>, Token![,]>,
     }
     type ParenLevelExpr = ExprHierarchy<ParenExpr, CallLevelExpr>;
     impl Hint for ParenExpr {
@@ -414,28 +443,57 @@ mod expr {
         }
     }
 
+    #[derive(syn_derive::Parse)]
+    pub struct AndExpr {
+        #[parse(Punctuated::parse_separated_nonempty)]
+        items: Punctuated<NotLevelExpr, kw::and>,
+    }
+    type AndLevelExpr = AndExpr;
+
+    #[derive(syn_derive::Parse)]
+    pub struct OrExpr {
+        #[parse(Punctuated::parse_separated_nonempty)]
+        items: Punctuated<AndLevelExpr, kw::or>,
+    }
+    type OrLevelExpr = OrExpr;
+
+
     pub struct Expr {
-        inner: NotLevelExpr,
+        inner: OrLevelExpr,
     }
 
     impl Parse for Expr {
         fn parse(input: ParseStream) -> Result<Self> {
-            let inner: NotLevelExpr = input.parse()?;
+            let inner: OrLevelExpr = input.parse()?;
             Ok(Self { inner })
+        }
+    }
+
+    impl ToTokens for OrExpr {
+        fn to_tokens(&self, tokens: &mut TokenStream) {
+            let Self { items } = self;
+            tokens.extend(quote!( ( todo #items ) ));
+        }
+    }
+
+    impl ToTokens for AndExpr {
+        fn to_tokens(&self, tokens: &mut TokenStream) {
+            let Self { items } = self;
+            tokens.extend(quote!( ( todo #items ) ));
         }
     }
 
     impl ToTokens for NotExpr {
         fn to_tokens(&self, tokens: &mut TokenStream) {
             let Self { inner, .. } = self;
-            tokens.extend(quote!( builtins::not ( #inner ) ));
+            tokens.extend(quote!( ! ( #inner ) ));
         }
     }
 
     impl ToTokens for CmpExpr {
         fn to_tokens(&self, tokens: &mut TokenStream) {
             let Self { items } = self;
-            tokens.extend(quote!( ( todo::cmp ) ));
+            tokens.extend(quote!( ( #items ) ));
         }
     }
 
@@ -465,6 +523,19 @@ mod expr {
             let Self { items } = self;
             let items = items.into_iter().collect::<Vec<_>>();
             tokens.extend(quote!( { todo::mul } ));
+        }
+    }
+
+    impl ToTokens for CmpOp {
+        fn to_tokens(&self, tokens: &mut TokenStream) {
+            use CmpOp::*;
+            tokens.extend(match self {
+                Le(_) => quote!( <= ),
+                Ge(_) => quote!( >= ),
+                Lt(_) => quote!( < ),
+                Gt(_) => quote!( > ),
+                Eq(_) => quote!( == ),
+            })
         }
     }
 
@@ -514,6 +585,13 @@ mod expr {
         fn to_tokens(&self, tokens: &mut TokenStream) {
             let Self { name } = self;
             tokens.extend(quote!( #name ));
+        }
+    }
+
+    impl ToTokens for LitExpr {
+        fn to_tokens(&self, tokens: &mut TokenStream) {
+            let Self { lit } = self;
+            tokens.extend(quote!( #lit ));
         }
     }
 

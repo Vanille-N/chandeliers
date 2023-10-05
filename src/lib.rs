@@ -69,6 +69,9 @@ fn foo() {
 */
 
 fn main() {
+    let _ = lustre::expr!(x);
+    let _ = lustre::expr!(42);
+    let _ = lustre::expr!((42, 0, 5));
     let _ = lustre::expr!(s * t * u * v * w * x * y * z);
     let _ = lustre::expr!(s - t + u - v + w - x + y + z);
     let _ = lustre::expr!((s - t + u - (v + w)) - (x + y + z));
@@ -79,4 +82,6 @@ fn main() {
     let _ = lustre::expr!(pre pre x);
     let _ = lustre::expr!(-x);
     let _ = lustre::expr!(not not x = y);
+    let _ = lustre::expr!(x and y and z);
+    let _ = lustre::expr!(x or y or z);
 }

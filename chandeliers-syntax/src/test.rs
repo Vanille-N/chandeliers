@@ -87,6 +87,11 @@ fn target_expr() {
 
 #[test]
 fn expr() {
+    success!(parse_as!(Expr, "0"));
+    success!(parse_as!(Expr, "5476"));
+    success!(parse_as!(Expr, "3.1415"));
+    /*FIXME*/success!(parse_as!(Expr, "\"abc\""));
+    /*FIXME*/success!(parse_as!(Expr, "'x'"));
     success!(parse_as!(Expr, "x"));
     success!(parse_as!(Expr, "(x)"));
     success!(parse_as!(Expr, "((x))"));
@@ -105,9 +110,11 @@ fn expr() {
     success!(parse_as!(Expr, "f(x) + g(y) + h(z)"));
     success!(parse_as!(Expr, "x -> y"));
     success!(parse_as!(Expr, "x -> y -> z"));
+    success!(parse_as!(Expr, "x fby f(z)"));
     success!(parse_as!(Expr, "x = y = z"));
     success!(parse_as!(Expr, "x >= y > z"));
     success!(parse_as!(Expr, "not x = y"));
+    success!(parse_as!(Expr, "a and b < c and d = e"));
 }
 #[test]
 fn expr_perf() {
