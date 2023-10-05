@@ -39,16 +39,6 @@ lustre::decl! {
     (* This is a comment *)
 }
 
-lustre::decl! {
-    node equivalence(a, b, c : bool) returns (ok : bool);
-    var s1, co1, s2, co2: bool;
-    let
-      (s1, co1) = full_add(a, b, c);
-      (s2, co2) = full_add_h(a, b, c);
-      ok = (s1 = s2) and (co1 = co2);
-    tel;
-}
-
 fn foo() {
     let mut x: i64;
     {lustre::asst_target! {
@@ -69,6 +59,7 @@ fn foo() {
 */
 
 fn main() {
+    /*
     let _ = lustre::expr!(x);
     let _ = lustre::expr!(42);
     let _ = lustre::expr!((42, 0, 5));
@@ -84,4 +75,23 @@ fn main() {
     let _ = lustre::expr!(not not x = y);
     let _ = lustre::expr!(x and y and z);
     let _ = lustre::expr!(x or y or z);
+    */
 }
+
+lustre::decl! {
+    node equivalence(a, b, c : bool) returns (ok : bool);
+    var s1, co1, s2, co2: bool;
+    let
+    tel
+}
+
+/*
+    let
+      (s1, co1) = full_add(a, b, c);
+      (s2, co2) = full_add_h(a, b, c);
+      ok = (s1 = s2) and (co1 = co2);
+    tel;
+}
+
+*/
+

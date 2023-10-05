@@ -1,7 +1,7 @@
 #![feature(core_intrinsics)]
 
 #[derive(Debug, Clone, Copy)]
-enum Nillable<T> {
+pub enum Nillable<T> {
     Nil,
     Defined(T),
 }
@@ -76,14 +76,14 @@ mod nillable_impl_ops {
 }
 
 #[derive(Debug, Clone, Copy)]
-struct O<T> {
-    current: Nillable<T>,
+pub struct O<T> {
+    pub current: Nillable<T>,
 }
 
 #[derive(Debug, Clone)]
-struct S<N, T> {
-    current: Nillable<T>,
-    previous: N,
+pub struct S<N, T> {
+    pub current: Nillable<T>,
+    pub previous: N,
 }
 
 // History: forget one step
@@ -112,7 +112,7 @@ where
 }
 
 // Prepend to history
-trait Extend<N, T>: Sized {
+pub trait Extend<N, T>: Sized {
     // Required methods
     fn extend(self, new: Nillable<T>) -> N;
     // Provided methods
@@ -143,7 +143,7 @@ where
 }
 
 // Shift history by 1
-trait Update<T>: Sized {
+pub trait Update<T>: Sized {
     // Required method
     fn update(self, new: Nillable<T>) -> Self;
     fn redefine(self, new: Nillable<T>) -> Self;
@@ -190,7 +190,7 @@ where
 }
 
 // History of arbitrary values
-trait IntoHistory: Sized {
+pub trait IntoHistory: Sized {
     fn into_history(self) -> O<Self> {
         O {
             current: Nillable::Defined(self),
@@ -228,14 +228,15 @@ fn update_tests() {
 // node cumul_avg(x : float) returns (avg : float);
 // var n;
 // let
-//   n = 0 fby n + 1;
-//   avg = 0.0 fby weighted_sum(x, avg, 1.0 / float(n + 1));
+//   n = 1 fby n + 1;
+//   avg = weighted_sum(x, 0.0 fby avg, 1.0 / float(n));
 // tel
 
+#[cfg(test)]
 #[allow(non_camel_case_types)]
 #[derive(Debug, Clone)]
 struct weighted_sum {
-    clock: usize,
+    __clock: usize,
     // Inputs
     x: O<f64>,
     y: O<f64>,
@@ -248,10 +249,11 @@ struct weighted_sum {
     // (none)
 }
 
+#[cfg(test)]
 #[allow(non_camel_case_types)]
 #[derive(Debug, Clone)]
 struct cumul_avg {
-    clock: usize,
+    __clock: usize,
     // Inputs
     x: O<f64>,
     // Vars
@@ -259,14 +261,15 @@ struct cumul_avg {
     // Outputs
     avg: S<O<f64>, f64>,
     // Subnodes
-    nodes_outputs: (O<f64>,),
-    nodes_blocks: (weighted_sum,),
+    __nodes_outputs: (O<f64>,),
+    __nodes_blocks: (weighted_sum,),
 }
 
+#[cfg(test)]
 impl weighted_sum {
     fn create() -> Self {
         Self {
-            clock: 0,
+            __clock: 0,
             x: f64::empty_history(),
             y: f64::empty_history(),
             weight: f64::empty_history(),
@@ -290,20 +293,21 @@ impl weighted_sum {
             self.weight.current * self.x.current
                 + (Nillable::Defined(1.0) - self.weight.current) * self.y.current,
         );
-        self.clock += 1;
+        self.__clock += 1;
         self.sum.current
     }
 }
 
+#[cfg(test)]
 impl cumul_avg {
     fn create() -> Self {
         Self {
-            clock: 0,
+            __clock: 0,
             avg: f64::empty_history().extend_undefined(),
             n: i64::empty_history().extend_undefined(),
             x: f64::empty_history(),
-            nodes_outputs: (f64::empty_history(),),
-            nodes_blocks: (weighted_sum::create(),),
+            __nodes_outputs: (f64::empty_history(),),
+            __nodes_blocks: (weighted_sum::create(),),
         }
     }
 
@@ -311,23 +315,27 @@ impl cumul_avg {
         // Record inputs and step
         self.x.update_mut(x);
         // Initializations
-        if std::intrinsics::unlikely(self.clock == 0) {
-            self.avg.redefine_mut(Nillable::Defined(0.0));
-            self.n.redefine_mut(Nillable::Defined(0));
-        }
-        self.n.update_mut(self.n.current + Nillable::Defined(1));
+        self.n.update_mut(match self.__clock {
+            n if std::intrinsics::likely(n > 0) => self.n.current + Nillable::Defined(1),
+            0 => Nillable::Defined(1),
+            _ => unreachable!(),
+        });
         // Step subnode
-        self.nodes_outputs
+        self.__nodes_outputs
             .0
-            .update_mut(self.nodes_blocks.0.update_mut(
+            .update_mut(self.__nodes_blocks.0.update_mut(
                 self.x.current,
-                self.avg.current,
+                match self.__clock {
+                    n if std::intrinsics::likely(n > 0) => self.avg.current,
+                    0 => Nillable::Defined(0.0),
+                    _ => unreachable!(),
+                },
                 Nillable::Defined(1.0)
-                    / (Nillable::Defined(1.0) + self.n.previous.current.map(|i| i as f64)),
+                    / self.n.current.map(|i| i as f64),
             ));
         // Compute outputs
-        self.avg.update_mut(self.nodes_outputs.0.current);
-        self.clock += 1;
+        self.avg.update_mut(self.__nodes_outputs.0.current);
+        self.__clock += 1;
         self.avg.current
     }
 }
@@ -344,5 +352,5 @@ fn cumul_avg_behavior() {
     dbg!(v, &node);
     let v = node.update_mut(Nillable::Defined(0.2));
     dbg!(v, &node);
-    panic!();
+    //panic!();
 }

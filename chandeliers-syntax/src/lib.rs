@@ -1,9 +1,8 @@
 #![feature(associated_type_defaults)]
 #![feature(proc_macro_diagnostic)]
 
-use proc_macro2::{Span, TokenStream};
+use proc_macro2::TokenStream;
 use quote::{quote, quote_spanned, ToTokens};
-use syn::parenthesized;
 use syn::parse::{Parse, ParseStream, Result};
 use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
@@ -11,27 +10,6 @@ use syn::{Ident, Token, Lit};
 use syn::token::Paren;
 
 mod test;
-
-trait MultiPeek {
-    fn multi_peek(s: ParseStream) -> bool;
-}
-
-impl<T: syn::token::Token + Parse> MultiPeek for T {
-    fn multi_peek(s: ParseStream) -> bool {
-        loop {
-            if let Ok(_) = T::parse(&s.fork()) {
-                return true;
-            } else if s.is_empty() {
-                return false;
-            } else {
-                let _ = s.step(|cursor| {
-                    let rest = cursor.token_stream();
-                    Ok(((), *cursor))
-                });
-            }
-        }
-    }
-}
 
 trait Hint {
     fn hint(s: ParseStream) -> bool;
@@ -58,7 +36,7 @@ pub mod kw {
     custom_keyword!(not);
 }
 
-mod punct {
+pub mod punct {
     use syn::custom_punctuation;
 
     custom_punctuation!(Neq, <>);
@@ -126,7 +104,7 @@ pub struct Decls {
 #[derive(syn_derive::Parse)]
 struct ArgsTy {
     args: Decls,
-    colon: Token![:],
+    _colon: Token![:],
     ty: Type,
 }
 
@@ -143,10 +121,23 @@ impl ToTokens for ArgsTy {
     }
 }
 
-#[derive(Default, syn_derive::Parse)]
+#[derive(Default)]
 pub struct ArgsTys {
-    #[parse(Punctuated::parse_terminated)]
     items: Punctuated<ArgsTy, Token![;]>,
+}
+impl ArgsTys {
+    fn parse_terminated(input: ParseStream) -> Result<Self> {
+        Ok(Self {
+            items: Punctuated::parse_terminated(input)?,
+        })
+    }
+}
+impl ArgsTys {
+    fn parse_separated_trailing_until_let(input: ParseStream) -> Result<Self> {
+        Ok(Self {
+            items: punctuated_parse_separated_trailing_until::<ArgsTy, Token![;], Token![let]>(input)?,
+        })
+    }
 }
 
 impl ToTokens for ArgsTys {
@@ -171,8 +162,8 @@ pub enum TargetExpr {
 #[derive(syn_derive::Parse)]
 pub struct TargetExprTuple {
     #[syn(parenthesized)]
-    paren_token: Paren,
-    #[syn(in = paren_token)]
+    _paren_token: Paren,
+    #[syn(in = _paren_token)]
     #[parse(Punctuated::parse_terminated)]
     fields: Punctuated<TargetExpr, Token![,]>,
 }
@@ -201,7 +192,8 @@ impl ToTokens for TargetExprTuple {
     }
 }
 
-pub fn parse_separated_nonempty_costly<P, T>(
+
+pub fn punctuated_parse_separated_nonempty_costly<T, P>(
     input: ParseStream,
 ) -> Result<Punctuated<T, P>>
 where
@@ -223,21 +215,43 @@ where
     Ok(punctuated)
 }
 
+pub fn punctuated_parse_separated_trailing_until<T, P, E>(
+        input: ParseStream,
+) -> Result<Punctuated<T, P>>
+    where
+        T: Parse,
+        P: syn::token::Token + Parse,
+        E: syn::token::Token + Parse,
+    {
+        let mut punctuated = Punctuated::new();
+
+        loop {
+            let value = T::parse(input)?;
+            punctuated.push_value(value);
+            let punct = input.parse()?;
+            if E::peek(input.cursor()) {
+                break;
+            }
+            punctuated.push_punct(punct);
+        }
+
+        Ok(punctuated)
+    }
 mod expr {
     pub use super::*;
     // Expressions by order of decreasing precedence
-    //  x [ _ or _ ] (<-)
-    //  x [ _ and _ ] (<-)
+    //    [ _ or _ ] (<-)
+    //    [ _ and _ ] (<-)
     //    [ not _ ]
-    //  x [ _ <= _ ], [ _ >= _ ], [ _ < _ ], [ _ > _ ] [ _ = _ ] (==)
-    //  x [ _ fby _ ] (<-)
+    //    [ _ <= _ ], [ _ >= _ ], [ _ < _ ], [ _ > _ ] [ _ = _ ] (==)
+    //    [ _ fby _ ] (<-)
     //    [ pre _ ]
-    //  x [ _ -> _ ] (<-)
-    //  x [ _ + _ ], [ _ - _ ] (->)
-    //  x [ _ * _ ], [ _ / _ ], [ _ % _ ] (->)
+    //    [ _ -> _ ] (<-)
+    //    [ _ + _ ], [ _ - _ ] (->)
+    //    [ _ * _ ], [ _ / _ ], [ _ % _ ] (->)
     //    [ - _ ]
-    //  x [ ( _, ... ) ]
-    //  x [ f( _, ... ) ]
+    //    [ ( _, ... ) ]
+    //    [ f( _, ... ) ]
     //    [ v ]
 
     #[derive(syn_derive::Parse)]
@@ -310,8 +324,8 @@ mod expr {
     pub struct CallExpr {
         pub fun: Ident,
         #[syn(parenthesized)]
-        paren_token: Paren,
-        #[syn(in = paren_token)]
+        _paren_token: Paren,
+        #[syn(in = _paren_token)]
         #[parse(Punctuated::parse_terminated)]
         pub args: Punctuated<Box<Expr>, Token![,]>,
     }
@@ -325,8 +339,8 @@ mod expr {
     #[derive(syn_derive::Parse)]
     pub struct ParenExpr {
         #[syn(parenthesized)]
-        paren_token: Paren,
-        #[syn(in = paren_token)]
+        _paren_token: Paren,
+        #[syn(in = _paren_token)]
         #[parse(Punctuated::parse_terminated)]
         inner: Punctuated<Box<Expr>, Token![,]>,
     }
@@ -339,7 +353,7 @@ mod expr {
 
     #[derive(syn_derive::Parse)]
     pub struct NegExpr {
-        neg: Token![-],
+        _neg: Token![-],
         inner: Box<NegLevelExpr>,
     }
     type NegLevelExpr = ExprHierarchy<NegExpr, ParenLevelExpr>;
@@ -386,28 +400,28 @@ mod expr {
 
     #[derive(syn_derive::Parse)]
     pub struct MulExpr {
-        #[parse(parse_separated_nonempty_costly)]
+        #[parse(punctuated_parse_separated_nonempty_costly)]
         items: Punctuated<NegLevelExpr, MulOp>,
     }
     type MulLevelExpr = MulExpr;
 
     #[derive(syn_derive::Parse)]
     pub struct AddExpr {
-        #[parse(parse_separated_nonempty_costly)]
+        #[parse(punctuated_parse_separated_nonempty_costly)]
         items: Punctuated<MulLevelExpr, AddOp>,
     }
     type AddLevelExpr = AddExpr;
 
     #[derive(syn_derive::Parse)]
     pub struct ThenExpr {
-        #[parse(parse_separated_nonempty_costly)]
+        #[parse(punctuated_parse_separated_nonempty_costly)]
         items: Punctuated<AddLevelExpr, Token![->]>,
     }
     type ThenLevelExpr = ThenExpr;
 
     #[derive(syn_derive::Parse)]
     pub struct PreExpr {
-        pre: kw::pre,
+        _pre: kw::pre,
         inner: Box<PreLevelExpr>,
     }
     type PreLevelExpr = ExprHierarchy<PreExpr, ThenLevelExpr>;
@@ -419,21 +433,21 @@ mod expr {
 
     #[derive(syn_derive::Parse)]
     pub struct FbyExpr {
-        #[parse(parse_separated_nonempty_costly)]
+        #[parse(punctuated_parse_separated_nonempty_costly)]
         items: Punctuated<PreLevelExpr, kw::fby>,
     }
     type FbyLevelExpr = FbyExpr;
 
     #[derive(syn_derive::Parse)]
     pub struct CmpExpr {
-        #[parse(parse_separated_nonempty_costly)]
+        #[parse(punctuated_parse_separated_nonempty_costly)]
         items: Punctuated<FbyLevelExpr, CmpOp>,
     }
     type CmpLevelExpr = CmpExpr;
 
     #[derive(syn_derive::Parse)]
     pub struct NotExpr {
-        pre: kw::not,
+        _pre: kw::not,
         inner: Box<NotLevelExpr>,
     }
     type NotLevelExpr = ExprHierarchy<NotExpr, CmpLevelExpr>;
@@ -616,7 +630,7 @@ pub use expr::Expr;
 #[derive(syn_derive::Parse)]
 pub struct Def {
     pub target: TargetExpr,
-    equal: Token![=],
+    _equal: Token![=],
     pub source: expr::Expr,
 }
 
@@ -634,53 +648,47 @@ impl ToTokens for Def {
 
 pub struct Defs(Vec<Def>);
 
+#[derive(syn_derive::Parse)]
+pub struct VarsDecl {
+    var: kw::var,
+    #[parse(ArgsTys::parse_separated_trailing_until_let)]
+    decls: ArgsTys,
+}
+
+#[derive(syn_derive::Parse)]
+pub enum OptionalVarsDecl {
+    #[parse(peek = kw::var)]
+    Decls(VarsDecl),
+    None,
+}
+
+#[derive(syn_derive::Parse)]
 pub struct Node {
+    node: kw::node,
+
     pub name: Ident,
+
+    #[syn(parenthesized)]
+    inputs_paren_token: Paren,
+    #[syn(in = inputs_paren_token)]
+    #[parse(ArgsTys::parse_terminated)]
     pub inputs: ArgsTys,
+
+    returns: kw::returns,
+
+    #[syn(parenthesized)]
+    outputs_paren_token: Paren,
+    #[syn(in = outputs_paren_token)]
+    #[parse(ArgsTys::parse_terminated)]
     pub outputs: ArgsTys,
-    pub locals: ArgsTys,
-    pub defs: Defs,
+
+    decl_semi: Token![;],
+
+    pub locals: OptionalVarsDecl,
+
+    kwlet: Token![let],
+    kwtel: kw::tel,
 }
-
-/*
-impl Parse for Node {
-    fn parse(input: ParseStream) -> Result<Self> {
-        let _: kw::node = input.parse()?;
-        let name: Ident = input.parse()?;
-
-        let buf_inputs;
-        parenthesized!(buf_inputs in input);
-        let inputs = ArgsTys::parse_terminated(&buf_inputs)?;
-
-        let _: kw::returns = input.parse()?;
-        let buf_outputs;
-        parenthesized!(buf_outputs in input);
-        let outputs = ArgsTys::parse_terminated(&buf_outputs)?;
-        let _: Option<Token![;]> = input.parse()?;
-
-        let locals = if input.peek(kw::var) {
-            let _: kw::var = input.parse()?;
-            let locals = ArgsTys::parse_separated_until::<Token![let]>(input)?;
-            let _: Option<Token![;]> = input.parse()?;
-            locals
-        } else {
-            ArgsTys::default()
-        };
-
-        let _: Token![let] = input.parse()?;
-        let defs = Defs::parse_separated_until::<kw::tel>(input)?;
-        let _: kw::tel = input.parse()?;
-
-        Ok(Self {
-            name,
-            inputs,
-            outputs,
-            locals,
-            defs,
-        })
-    }
-}
-*/
 
 impl ToTokens for Node {
     fn to_tokens(&self, tokens: &mut TokenStream) {
@@ -689,18 +697,39 @@ impl ToTokens for Node {
             inputs,
             outputs,
             locals,
-            defs,
+            //defs,
+            ..
         } = self;
         tokens.extend(quote! {
 
             #[allow(non_camel_case_types)]
             struct #name {
+                __clock: usize,
                 #inputs
                 #outputs
                 #locals
             }
-
         });
+    }
+}
+
+impl ToTokens for OptionalVarsDecl {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        use OptionalVarsDecl::*;
+        match self {
+            Decls(vars) => tokens.extend(quote!( #vars )),
+            None => {},
+        }
+    }
+}
+
+impl ToTokens for VarsDecl {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        let Self {
+            decls,
+            ..
+        } = self;
+        tokens.extend(quote!( #decls ));
     }
 }
 
