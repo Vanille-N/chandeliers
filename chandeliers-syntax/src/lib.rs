@@ -2,7 +2,7 @@
 #![feature(proc_macro_diagnostic)]
 
 use proc_macro2::TokenStream;
-use quote::{quote, quote_spanned, ToTokens};
+use quote::{quote, ToTokens};
 use syn::parse::{Parse, ParseStream, Result};
 use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
@@ -76,9 +76,9 @@ impl ToTokens for BaseType {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         use BaseType::*;
         tokens.extend(match self {
-            Int(i) => quote_spanned!(i.span()=> i64),
-            Bool(b) => quote_spanned!(b.span()=> bool),
-            Float(f) => quote_spanned!(f.span()=> f64),
+            Int(i) => quote!( i64 ),
+            Bool(b) => quote!( bool ),
+            Float(f) => quote!( f64 ),
         });
     }
 }
@@ -143,12 +143,9 @@ impl ArgsTys {
 impl ToTokens for ArgsTys {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let Self { items } = self;
-        let items = items.into_iter().collect::<Vec<_>>();
-        tokens.extend(quote! {
-
-            #( #items )*
-
-        });
+        for item in items.into_iter() {
+            item.to_tokens(tokens);
+        }
     }
 }
 
@@ -171,20 +168,18 @@ pub struct TargetExprTuple {
 impl ToTokens for TargetExpr {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         use TargetExpr::*;
-        let span = self.span();
-        tokens.extend(match self {
-            Var(v) => quote_spanned!(span=> #v),
-            Tuple(ts) => quote_spanned!(span=> #ts),
-        });
+        match self {
+            Var(v) => v.to_tokens(tokens),
+            Tuple(ts) => ts.to_tokens(tokens),
+        }
     }
 }
 
 impl ToTokens for TargetExprTuple {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let Self { fields, .. } = self;
-        let span = self.span();
         let fields = fields.into_iter().collect::<Vec<_>>();
-        tokens.extend(quote_spanned! {span=>
+        tokens.extend(quote! {
 
             ( #( #fields ),* )
 
@@ -226,12 +221,12 @@ pub fn punctuated_parse_separated_trailing_until<T, P, E>(
         let mut punctuated = Punctuated::new();
 
         loop {
-            let value = T::parse(input)?;
-            punctuated.push_value(value);
-            let punct = input.parse()?;
             if E::peek(input.cursor()) {
                 break;
             }
+            let value = T::parse(input)?;
+            punctuated.push_value(value);
+            let punct = input.parse()?;
             punctuated.push_punct(punct);
         }
 
@@ -291,10 +286,10 @@ mod expr {
     {
         fn to_tokens(&self, tokens: &mut TokenStream) {
             use ExprHierarchy::*;
-            tokens.extend(match self {
-                Here(t) => quote!( #t ),
-                Below(t) => quote!( #t ),
-            });
+            match self {
+                Here(t) => t.to_tokens(tokens),
+                Below(t) => t.to_tokens(tokens),
+            }
         }
     }
 
@@ -302,7 +297,7 @@ mod expr {
     pub struct LitExpr {
         pub lit: Lit,
     }
-    type LitLevelExpr = LitExpr;
+    pub type LitLevelExpr = LitExpr;
     impl Hint for LitExpr {
         fn hint(s: ParseStream) -> bool {
             s.peek(Lit)
@@ -313,7 +308,7 @@ mod expr {
     pub struct VarExpr {
         pub name: Ident,
     }
-    type VarLevelExpr = ExprHierarchy<VarExpr, LitLevelExpr>;
+    pub type VarLevelExpr = ExprHierarchy<VarExpr, LitLevelExpr>;
     impl Hint for VarExpr {
         fn hint(s: ParseStream) -> bool {
             s.peek(Ident)
@@ -329,7 +324,7 @@ mod expr {
         #[parse(Punctuated::parse_terminated)]
         pub args: Punctuated<Box<Expr>, Token![,]>,
     }
-    type CallLevelExpr = ExprHierarchy<CallExpr, VarLevelExpr>;
+    pub type CallLevelExpr = ExprHierarchy<CallExpr, VarLevelExpr>;
     impl Hint for CallExpr {
         fn hint(s: ParseStream) -> bool {
             s.parse::<CallExpr>().is_ok()
@@ -344,7 +339,7 @@ mod expr {
         #[parse(Punctuated::parse_terminated)]
         inner: Punctuated<Box<Expr>, Token![,]>,
     }
-    type ParenLevelExpr = ExprHierarchy<ParenExpr, CallLevelExpr>;
+    pub type ParenLevelExpr = ExprHierarchy<ParenExpr, CallLevelExpr>;
     impl Hint for ParenExpr {
         fn hint(s: ParseStream) -> bool {
             s.parse::<ParenExpr>().is_ok()
@@ -356,7 +351,7 @@ mod expr {
         _neg: Token![-],
         inner: Box<NegLevelExpr>,
     }
-    type NegLevelExpr = ExprHierarchy<NegExpr, ParenLevelExpr>;
+    pub type NegLevelExpr = ExprHierarchy<NegExpr, ParenLevelExpr>;
     impl Hint for NegExpr {
         fn hint(s: ParseStream) -> bool {
             s.peek(Token![-])
@@ -403,28 +398,28 @@ mod expr {
         #[parse(punctuated_parse_separated_nonempty_costly)]
         items: Punctuated<NegLevelExpr, MulOp>,
     }
-    type MulLevelExpr = MulExpr;
+    pub type MulLevelExpr = MulExpr;
 
     #[derive(syn_derive::Parse)]
     pub struct AddExpr {
         #[parse(punctuated_parse_separated_nonempty_costly)]
         items: Punctuated<MulLevelExpr, AddOp>,
     }
-    type AddLevelExpr = AddExpr;
+    pub type AddLevelExpr = AddExpr;
 
     #[derive(syn_derive::Parse)]
     pub struct ThenExpr {
         #[parse(punctuated_parse_separated_nonempty_costly)]
         items: Punctuated<AddLevelExpr, Token![->]>,
     }
-    type ThenLevelExpr = ThenExpr;
+    pub type ThenLevelExpr = ThenExpr;
 
     #[derive(syn_derive::Parse)]
     pub struct PreExpr {
         _pre: kw::pre,
         inner: Box<PreLevelExpr>,
     }
-    type PreLevelExpr = ExprHierarchy<PreExpr, ThenLevelExpr>;
+    pub type PreLevelExpr = ExprHierarchy<PreExpr, ThenLevelExpr>;
     impl Hint for PreExpr {
         fn hint(s: ParseStream) -> bool {
             s.peek(kw::pre)
@@ -436,21 +431,21 @@ mod expr {
         #[parse(punctuated_parse_separated_nonempty_costly)]
         items: Punctuated<PreLevelExpr, kw::fby>,
     }
-    type FbyLevelExpr = FbyExpr;
+    pub type FbyLevelExpr = FbyExpr;
 
     #[derive(syn_derive::Parse)]
     pub struct CmpExpr {
         #[parse(punctuated_parse_separated_nonempty_costly)]
         items: Punctuated<FbyLevelExpr, CmpOp>,
     }
-    type CmpLevelExpr = CmpExpr;
+    pub type CmpLevelExpr = CmpExpr;
 
     #[derive(syn_derive::Parse)]
     pub struct NotExpr {
         _pre: kw::not,
         inner: Box<NotLevelExpr>,
     }
-    type NotLevelExpr = ExprHierarchy<NotExpr, CmpLevelExpr>;
+    pub type NotLevelExpr = ExprHierarchy<NotExpr, CmpLevelExpr>;
     impl Hint for NotExpr {
         fn hint(s: ParseStream) -> bool {
             s.peek(kw::not)
@@ -462,14 +457,14 @@ mod expr {
         #[parse(Punctuated::parse_separated_nonempty)]
         items: Punctuated<NotLevelExpr, kw::and>,
     }
-    type AndLevelExpr = AndExpr;
+    pub type AndLevelExpr = AndExpr;
 
     #[derive(syn_derive::Parse)]
     pub struct OrExpr {
         #[parse(Punctuated::parse_separated_nonempty)]
         items: Punctuated<AndLevelExpr, kw::or>,
     }
-    type OrLevelExpr = OrExpr;
+    pub type OrLevelExpr = OrExpr;
 
 
     pub struct Expr {
@@ -637,16 +632,13 @@ pub struct Def {
 impl ToTokens for Def {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let Self { target, source, .. } = self;
-        let span = self.span();
-        tokens.extend(quote_spanned! {span=>
+        tokens.extend(quote! {
 
             #target = #source ;
 
         });
     }
 }
-
-pub struct Defs(Vec<Def>);
 
 #[derive(syn_derive::Parse)]
 pub struct VarsDecl {
@@ -687,6 +679,10 @@ pub struct Node {
     pub locals: OptionalVarsDecl,
 
     kwlet: Token![let],
+
+    #[parse(punctuated_parse_separated_trailing_until::<Def, Token![;], kw::tel>)]
+    defs: Punctuated<Def, Token![;]>,
+
     kwtel: kw::tel,
 }
 
@@ -697,9 +693,10 @@ impl ToTokens for Node {
             inputs,
             outputs,
             locals,
-            //defs,
+            defs,
             ..
         } = self;
+        let defs = defs.into_iter().collect::<Vec<_>>();
         tokens.extend(quote! {
 
             #[allow(non_camel_case_types)]
@@ -709,6 +706,12 @@ impl ToTokens for Node {
                 #outputs
                 #locals
             }
+
+            impl #name {
+                fn test() {
+                    #( #defs ; )*
+                }
+            }
         });
     }
 }
@@ -717,7 +720,7 @@ impl ToTokens for OptionalVarsDecl {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         use OptionalVarsDecl::*;
         match self {
-            Decls(vars) => tokens.extend(quote!( #vars )),
+            Decls(vars) => vars.to_tokens(tokens),
             None => {},
         }
     }
@@ -729,7 +732,7 @@ impl ToTokens for VarsDecl {
             decls,
             ..
         } = self;
-        tokens.extend(quote!( #decls ));
+        decls.to_tokens(tokens);
     }
 }
 

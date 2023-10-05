@@ -82,16 +82,9 @@ lustre::decl! {
     node equivalence(a, b, c : bool) returns (ok : bool);
     var s1, co1, s2, co2: bool;
     let
-    tel
-}
-
-/*
-    let
       (s1, co1) = full_add(a, b, c);
       (s2, co2) = full_add_h(a, b, c);
       ok = (s1 = s2) and (co1 = co2);
-    tel;
+    tel
 }
-
-*/
 
