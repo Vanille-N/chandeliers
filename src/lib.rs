@@ -1,4 +1,4 @@
-use chandeliers_parse as lustre;
+use chandeliers_macros as lustre;
 
 /*
 lustre::decl! {

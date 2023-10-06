@@ -4,20 +4,13 @@ use proc_macro2::TokenStream;
 use quote::ToTokens;
 use syn::parse_macro_input;
 
-use chandeliers_syntax as syntax;
+use chandeliers_syn as syntax;
+use chandeliers_sem as semantics;
 
 #[proc_macro]
 pub fn decl(i: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    let prog = parse_macro_input!(i as syntax::Node);
-    let mut toks = TokenStream::new();
-    prog.to_tokens(&mut toks);
-    dbg!(&toks);
-    proc_macro::TokenStream::from(toks)
-}
-
-#[proc_macro]
-pub fn expr(i: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    let prog = parse_macro_input!(i as syntax::Expr);
+    let prog: syntax::Node = parse_macro_input!(i as syntax::Node);
+    let prog: semantics::Node = prog.into();
     let mut toks = TokenStream::new();
     prog.to_tokens(&mut toks);
     dbg!(&toks);

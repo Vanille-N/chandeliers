@@ -2,7 +2,7 @@
 #![feature(proc_macro_diagnostic)]
 
 use proc_macro2::TokenStream;
-use quote::{quote, ToTokens};
+//use quote::{quote, ToTokens};
 use syn::parse::{Parse, ParseStream, Result};
 use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
@@ -72,6 +72,7 @@ pub enum BaseType {
     Float(kw::float),
 }
 
+/*
 impl ToTokens for BaseType {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         use BaseType::*;
@@ -82,6 +83,7 @@ impl ToTokens for BaseType {
         });
     }
 }
+*/
 
 #[derive(syn_derive::Parse)]
 pub struct Type {
@@ -89,11 +91,13 @@ pub struct Type {
     pub base: BaseType,
 }
 
+/*
 impl ToTokens for Type {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         self.base.to_tokens(tokens)
     }
 }
+*/
 
 #[derive(syn_derive::Parse)]
 pub struct Decls {
@@ -108,6 +112,7 @@ struct ArgsTy {
     ty: Type,
 }
 
+/*
 impl ToTokens for ArgsTy {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let Self { ty, args, .. } = self;
@@ -120,6 +125,7 @@ impl ToTokens for ArgsTy {
         });
     }
 }
+*/
 
 #[derive(Default)]
 pub struct ArgsTys {
@@ -140,6 +146,7 @@ impl ArgsTys {
     }
 }
 
+/*
 impl ToTokens for ArgsTys {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let Self { items } = self;
@@ -148,6 +155,7 @@ impl ToTokens for ArgsTys {
         }
     }
 }
+*/
 
 #[derive(syn_derive::Parse)]
 pub enum TargetExpr {
@@ -165,6 +173,7 @@ pub struct TargetExprTuple {
     fields: Punctuated<TargetExpr, Token![,]>,
 }
 
+/*
 impl ToTokens for TargetExpr {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         use TargetExpr::*;
@@ -186,6 +195,7 @@ impl ToTokens for TargetExprTuple {
         });
     }
 }
+*/
 
 
 pub fn punctuated_parse_separated_nonempty_costly<T, P>(
@@ -279,6 +289,7 @@ mod expr {
         }
     }
 
+    /*
     impl<Here, Below> ToTokens for ExprHierarchy<Here, Below>
     where
         Here: ToTokens,
@@ -292,6 +303,7 @@ mod expr {
             }
         }
     }
+    */
 
     #[derive(syn_derive::Parse)]
     pub struct LitExpr {
@@ -478,6 +490,7 @@ mod expr {
         }
     }
 
+    /*
     impl ToTokens for OrExpr {
         fn to_tokens(&self, tokens: &mut TokenStream) {
             let Self { items } = self;
@@ -618,6 +631,7 @@ mod expr {
             tokens.extend(quote!( #inner ));
         }
     }
+    */
 }
 
 pub use expr::Expr;
@@ -629,6 +643,7 @@ pub struct Def {
     pub source: expr::Expr,
 }
 
+/*
 impl ToTokens for Def {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let Self { target, source, .. } = self;
@@ -639,6 +654,7 @@ impl ToTokens for Def {
         });
     }
 }
+*/
 
 #[derive(syn_derive::Parse)]
 pub struct VarsDecl {
@@ -686,6 +702,7 @@ pub struct Node {
     kwtel: kw::tel,
 }
 
+/*
 impl ToTokens for Node {
     fn to_tokens(&self, tokens: &mut TokenStream) {
         let Self {
@@ -735,6 +752,7 @@ impl ToTokens for VarsDecl {
         decls.to_tokens(tokens);
     }
 }
+*/
 
 pub struct Prog(Vec<Node>);
 
