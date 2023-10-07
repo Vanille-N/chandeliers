@@ -137,22 +137,24 @@ trait Ago<T> {
 }
 
 impl<T: Clone> Ago<T> for O<T> {
+    #[track_caller]
     fn ago(&self, dt: usize) -> Nillable<T> {
-        if dt == 0 {
-            self.current.clone()
-        } else {
-            Nillable::Nil
+        match dt {
+            0 => panic!("Cannot look into the past at distance 0, use the current environment instead"),
+            1 => self.current.clone(),
+            _ => panic!("Tried to look too much into the past"),
         }
     }
 }
 
 impl<N, T: Clone> Ago<T> for S<N, T>
 where N: Ago<T> {
+    #[track_caller]
     fn ago(&self, dt: usize) -> Nillable<T> {
-        if dt == 0 {
-            self.current.clone()
-        } else {
-            self.previous.ago(dt - 1)
+        match dt {
+            0 => panic!("Cannot look into the past at distance 0, use the current environment instead"),
+            1 => self.current.clone(),
+            dt => self.previous.ago(dt - 1),
         }
     }
 }
@@ -288,56 +290,47 @@ fn update_tests() {
 #[allow(non_camel_case_types)]
 #[derive(Debug, Clone, Default)]
 struct weighted_sum {
+    __trace: bool,
     __clock: usize,
     // Inputs
-    x: ty!(f64),
-    y: ty!(f64),
-    weight: ty!(f64),
     // Vars
     // (none)
     // Outputs
-    sum: ty!(f64),
     // Subnodes
     // (none)
-}
-
-impl fmt::Display for weighted_sum {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "[ weighted_sum: (x={},y={},weight={}) => () => (sum={}) ]", self.x, self.y, self.weight, self.sum)
-    }
 }
 
 #[allow(non_camel_case_types)]
 #[derive(Debug, Clone, Default)]
 struct cumul_avg {
+    __trace: bool,
     __clock: usize,
     // Inputs
-    x: ty!(f64),
     // Vars
-    n: ty!(i64+),
+    n: ty!(i64),
     // Outputs
-    avg: ty!(f64+),
+    avg: ty!(f64),
     // Subnodes
-    __nodes_outputs: (ty!(f64),),
+    __nodes_outputs: ((),),
     __nodes_blocks: (weighted_sum,),
 }
-
-impl fmt::Display for cumul_avg {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        writeln!(f, "{} <- {}", self.__nodes_outputs.0, self.__nodes_blocks.0)?;
-        write!(f, "[ cumul_avg: (x={}) => (n={}) => (avg={}) ]", self.x, self.n, self.avg)
-    }
-}
-
 
 macro_rules! expand {
     ($this:ident, $dt:expr, &, $val:expr) => { ($val)(&*$this, $dt) };
     ($this:ident, $dt:expr, ., $val:expr) => { $val };
 }
-macro_rules! input {
-    ($field:ident := $val:expr) => {
+macro_rules! expr {
+    (<$v:tt> $val:expr) => {
         |this: &mut Self| {
-            this.$field.update_mut($val);
+            expand!(this, 0, $v, $val)
+        }
+    }
+}
+macro_rules! update {
+    ($field:ident := <$v:tt> $val:expr) => {
+        |this: &mut Self| {
+            let val = expand!(this, 0, $v, $val);
+            this.$field.update_mut(val);
         }
     };
 }
@@ -399,6 +392,12 @@ macro_rules! field {
         |this: &Self, dt: usize| this.$field.ago(dt)
     }
 }
+macro_rules! env {
+    ($v:ident) => {
+        $v
+    }
+}
+
 macro_rules! lit {
     ($lit:expr) => { Nillable::Defined($lit) }
 }
@@ -432,11 +431,9 @@ macro_rules! float {
 macro_rules! substep {
     ($id:tt, $( <$a:tt> $arg:expr, )*) => {
         |this: &mut Self| {
-            this.__nodes_outputs.$id
-                .update_mut(this.__nodes_blocks.$id
-                    .update_mut(
-                        $( expand!(this, 0, $a, $arg) ),*
-                    )
+            this.__nodes_blocks.$id
+                .update_mut(
+                    $( expand!(this, 0, $a, $arg) ),*
                 )
         }
     }
@@ -449,67 +446,60 @@ impl weighted_sum {
         y: Nillable<f64>,
         weight: Nillable<f64>,
     ) -> Nillable<f64> {
-        // Record inputs and step
-        input!(x := x)(self);
-        input!(y := y)(self);
-        input!(weight := weight)(self);
-        // Compute outputs
-        advance!(sum)(self);
-        redefine!(sum := <&>
+        if self.__trace {
+            println!("(x={},y={},weight={}) => weighted_sum()", x, y, weight);
+        }
+        // == BEGIN ==
+        let sum = expr!(<&>
             add!(<& &>
-                mul!(<& &> field!(weight), field!(x)),
-                mul!(<& &> sub!(<. &> lit!(1.0), field!(weight)), field!(y))
+                mul!(<. .> env!(weight), env!(x)),
+                mul!(<& .> sub!(<. .> lit!(1.0), env!(weight)), env!(y))
             )
         )(self);
+        // == END ==
         tick!(self);
-        ret!(sum)(self)
+        if self.__trace {
+            println!("weighted_sum() => (sum={})", sum);
+        }
+        sum
     }
 }
 
 impl cumul_avg {
     fn update_mut(&mut self, x: Nillable<f64>) -> Nillable<f64> {
-        // Record inputs and step
-        input!(x := x)(self);
-        // Initializations
-        advance!(n)(self);
-        redefine!(n := <&> fby!(<. &> lit!(1), add!(<& .> field!(n), lit!(1))))(self);
-        // Step subnode
-        advance!(avg)(self);
-        substep!(0,
-            <&> field!(x),
+        if self.__trace {
+            println!("(x={}) => cumul_avg(n={})", x, self.n);
+        }
+        // == BEGIN ==
+        let n = expr!(<&> fby!(<. &> lit!(1), add!(<& .> field!(n), lit!(1))))(self);
+        update!(n := <.> env!(n))(self);
+        let avg = substep!(0,
+            <.> env!(x),
             <&> fby!(<. &> lit!(0.0), field!(avg)),
-            <&> div!(<. &> lit!(1.0), float!(<&> field!(n))),
+            <&> div!(<. &> lit!(1.0), float!(<.> env!(n))),
         )(self);
-       // self.__nodes_outputs
-        //    .0
-        //    .update_mut(self.__nodes_blocks.0.update_mut(
-        //        self.x.current,
-        //        if std::intrinsics::likely(self.__clock > 0) {
-        //            self.avg.current
-        //        } else {
-        //            Nillable::Defined(0.0)
-        //        },
-        //        Nillable::Defined(1.0)
-        //            / self.n.current.map(|i| i as f64),
-        //    ));
-        // Compute outputs
-        self.avg.redefine_mut(self.__nodes_outputs.0.current);
-        self.__clock += 1;
-        self.avg.current
+        update!(avg := <.> env!(avg))(self);
+        // == END ==
+        tick!(self);
+        if self.__trace {
+            println!("cumul_avg(n={},avg={}) => (avg={})", self.n, self.avg, avg);
+        }
+        avg
     }
 }
 
 #[test]
 fn cumul_avg_behavior() {
     let mut node = cumul_avg::default();
-    println!("{}\n", &node);
+    node.__trace = true;
+    node.__nodes_blocks.0.__trace = true;
     let v = node.update_mut(Nillable::Defined(0.5));
-    println!("{}\n", &node);
+    println!("{}\n", v);
     let v = node.update_mut(Nillable::Defined(1.0));
-    println!("{}\n", &node);
+    println!("{}\n", v);
     let v = node.update_mut(Nillable::Defined(0.3));
-    println!("{}\n", &node);
+    println!("{}\n", v);
     let v = node.update_mut(Nillable::Defined(0.2));
-    println!("{}\n", &node);
+    println!("{}\n", v);
     panic!();
 }
