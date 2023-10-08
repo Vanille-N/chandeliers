@@ -29,7 +29,8 @@ Specification:
 - At all times, the output is the number of `true` seen so far in the input.
 
 A typical Lustre implementation could look like this:
-```lus
+
+```ml
 node counter(i: bool) returns (n : int);
 let
   n = (0 fby n) + (if i then 1 else 0);
@@ -37,6 +38,7 @@ tel;
 ```
 
 In Candle we would define the equivalent logic as follows:
+
 ```rs
 #![feature(core_intrinsics)]
 use chandeliers_sem::macros::*;
@@ -64,6 +66,7 @@ impl counter {
     }
 }
 ```
+
 You should see immediately from this simple example that Candle is much
 more verbose and complex to read than Lustre, but also if one looks closer
 at the program then it becomes apparent that the structure of the Lustre

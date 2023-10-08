@@ -28,7 +28,7 @@
 //! at `0` and increments by one at each time step.
 //!
 //! A Lustre implementation would look like this:
-//! ```lus
+//! ```ml
 //! node counter() returns (n : int);
 //! let
 //!   n = 0 fby n + 1;
