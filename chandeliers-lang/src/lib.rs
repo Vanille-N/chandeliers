@@ -1,6 +1,10 @@
 #![feature(core_intrinsics)]
+#![allow(unused_comparisons)]
+#![allow(unused_macros)]
 
 use std::fmt;
+
+pub mod test;
 
 #[derive(Debug, Clone, Copy)]
 pub enum Nillable<T> {
@@ -14,7 +18,7 @@ impl<T> Default for Nillable<T> {
     }
 }
 
-impl<T: fmt::Display> fmt::Display for  Nillable<T> {
+impl<T: fmt::Display> fmt::Display for Nillable<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Nillable::Nil => write!(f, "nil"),
@@ -25,7 +29,8 @@ impl<T: fmt::Display> fmt::Display for  Nillable<T> {
 
 mod nillable_impl_ops {
     use super::Nillable::{self, *};
-    use std::ops::{Add, Div, Mul, Sub};
+    use std::ops;
+    use std::cmp;
 
     impl<T> Nillable<T> {
         pub fn map<F, U>(self, f: F) -> Nillable<U>
@@ -39,12 +44,12 @@ mod nillable_impl_ops {
         }
     }
 
-    impl<L, O> Add for Nillable<L>
+    impl<T> ops::Add for Nillable<T>
     where
-        L: Add<Output = O>,
+        T: ops::Add<Output = T>,
     {
-        type Output = Nillable<O>;
-        fn add(self, other: Nillable<L>) -> Nillable<O> {
+        type Output = Nillable<T>;
+        fn add(self, other: Nillable<T>) -> Nillable<T> {
             match (self, other) {
                 (Defined(lhs), Defined(rhs)) => Defined(lhs + rhs),
                 _ => Nil,
@@ -52,12 +57,12 @@ mod nillable_impl_ops {
         }
     }
 
-    impl<L, O> Mul for Nillable<L>
+    impl<T> ops::Mul for Nillable<T>
     where
-        L: Mul<Output = O>,
+        T: ops::Mul<Output = T>,
     {
-        type Output = Nillable<O>;
-        fn mul(self, other: Nillable<L>) -> Nillable<O> {
+        type Output = Nillable<T>;
+        fn mul(self, other: Nillable<T>) -> Nillable<T> {
             match (self, other) {
                 (Defined(lhs), Defined(rhs)) => Defined(lhs * rhs),
                 _ => Nil,
@@ -65,12 +70,12 @@ mod nillable_impl_ops {
         }
     }
 
-    impl<L, O> Sub for Nillable<L>
+    impl<T> ops::Sub for Nillable<T>
     where
-        L: Sub<Output = O>,
+        T: ops::Sub<Output = T>,
     {
-        type Output = Nillable<O>;
-        fn sub(self, other: Nillable<L>) -> Nillable<O> {
+        type Output = Nillable<T>;
+        fn sub(self, other: Nillable<T>) -> Nillable<T> {
             match (self, other) {
                 (Defined(lhs), Defined(rhs)) => Defined(lhs - rhs),
                 _ => Nil,
@@ -78,15 +83,134 @@ mod nillable_impl_ops {
         }
     }
 
-    impl<L, O> Div for Nillable<L>
+    impl<T> ops::Div for Nillable<T>
     where
-        L: Div<Output = O>,
+        T: ops::Div<Output = T>,
     {
-        type Output = Nillable<O>;
-        fn div(self, other: Nillable<L>) -> Nillable<O> {
+        type Output = Nillable<T>;
+        fn div(self, other: Nillable<T>) -> Nillable<T> {
             match (self, other) {
                 (Defined(lhs), Defined(rhs)) => Defined(lhs / rhs),
                 _ => Nil,
+            }
+        }
+    }
+
+    impl<T> ops::Rem for Nillable<T>
+    where
+        T: ops::Rem<Output = T>,
+    {
+        type Output = Nillable<T>;
+        fn rem(self, other: Nillable<T>) -> Nillable<T> {
+            match (self, other) {
+                (Defined(lhs), Defined(rhs)) => Defined(lhs % rhs),
+                _ => Nil,
+            }
+        }
+    }
+
+    impl<T> ops::BitOr for Nillable<T>
+    where
+        T: ops::BitOr<Output = T>,
+    {
+        type Output = Nillable<T>;
+        fn bitor(self, other: Nillable<T>) -> Nillable<T> {
+            match (self, other) {
+                (Defined(lhs), Defined(rhs)) => Defined(lhs | rhs),
+                _ => Nil,
+            }
+        }
+    }
+
+    impl<T> ops::BitXor for Nillable<T>
+    where
+        T: ops::BitXor<Output = T>,
+    {
+        type Output = Nillable<T>;
+        fn bitxor(self, other: Nillable<T>) -> Nillable<T> {
+            match (self, other) {
+                (Defined(lhs), Defined(rhs)) => Defined(lhs ^ rhs),
+                _ => Nil,
+            }
+        }
+    }
+
+    impl<T> ops::BitAnd for Nillable<T>
+    where
+        T: ops::BitAnd<Output = T>,
+    {
+        type Output = Nillable<T>;
+        fn bitand(self, other: Nillable<T>) -> Nillable<T> {
+            match (self, other) {
+                (Defined(lhs), Defined(rhs)) => Defined(lhs & rhs),
+                _ => Nil,
+            }
+        }
+    }
+
+    impl<T> ops::Not for Nillable<T>
+    where
+        T: ops::Not<Output = T>,
+    {
+        type Output = Nillable<T>;
+        fn not(self) -> Nillable<T> {
+            match self {
+                Defined(lhs) => Defined(!lhs),
+                _ => Nil,
+            }
+        }
+    }
+
+    impl<T> ops::Neg for Nillable<T>
+    where
+        T: ops::Neg<Output = T>,
+    {
+        type Output = Nillable<T>;
+        fn neg(self) -> Nillable<T> {
+            match self {
+                Defined(lhs) => Defined(-lhs),
+                _ => Nil,
+            }
+        }
+    }
+
+    // Important: Nil is never equal to a value
+    impl<T> Nillable<T>
+    where T: PartialEq {
+        pub fn eq(self, other: Self) -> Option<bool> {
+            use Nillable::*;
+            match (self, other) {
+                (Defined(this), Defined(other)) => Some(this == other),
+                _ => None,
+            }
+        }
+
+        pub fn is(&self, other: Self) -> bool {
+            use Nillable::*;
+            match (self, other) {
+                (Defined(this), Defined(other)) => this == &other,
+                (Nil, Nil) => true,
+                _ => false,
+            }
+        }
+
+    }
+
+    impl<T> Nillable<T>
+    where T: PartialOrd {
+        pub fn cmp(self, other: Self) -> Option<cmp::Ordering> {
+            match (self, other) {
+                (Defined(this), Defined(other)) => this.partial_cmp(&other),
+                _ => None,
+            }
+        }
+    }
+
+    impl Nillable<bool> {
+        pub fn truth(self) -> bool {
+            match self {
+                Defined(true) => true,
+                _ => false,
             }
         }
     }
@@ -114,25 +238,44 @@ impl<N: fmt::Display, T: fmt::Display> fmt::Display for S<N, T> {
     }
 }
 
-macro_rules! ty {
-    (float) => { O<f64> };
-    (int) => { O<i64> };
-    (bool) => { O<bool> };
-    ($other:ident) => { O<$other> };
-    (float + $( $rest:tt )*) => { S<ty!(float $($rest)*), f64> };
-    (int + $( $rest:tt )*) => { S<ty!(int $($rest)*), i64> };
-    (bool + $( $rest:tt )*) => { S<ty!(int $($rest)*), bool> };
-    ($other:ident + $( $rest:tt )*) => { S<ty!($other $($rest)*), $other> };
+#[macro_export]
+macro_rules! past_ty {
+    ( $t:ty, ) => { $crate::O<$t> };
+    ( $t:ty, + $( rest:tt )* ) => { $crate::S<past_ty!($t $($rest)*), $t> };
 }
 
+#[macro_export]
+macro_rules! present_ty {
+    ( $t:ty ) => { $crate::Nillable<$t> };
+}
+
+#[macro_export]
+macro_rules! ty_mapping {
+    ( float ) => { f64 };
+    ( int ) => { i64 };
+    ( bool ) => { bool };
+    ( $other:ident ) => { $other };
+}
+
+#[macro_export]
+macro_rules! ty {
+    ( $t:ident ) => { $crate::present_ty!($crate::ty_mapping!($t)) };
+    ( $t:ident + $($rest:tt)* ) => { $crate::past_ty!($crate::ty_mapping!($t), $($rest)*) };
+}
+
+#[macro_export]
 macro_rules! o {
     ($e:expr) => { O { current: $e } };
 }
+
+#[macro_export]
 macro_rules! s {
-    ($e:expr, $n:expr) => { S { current: $e, previous: $n } };
+    ($e:expr, $n:expr) => {
+        S { current: $e, previous: $n }
+    };
 }
 
-trait Ago<T> {
+pub trait Ago<T> {
     fn ago(&self, dt: usize) -> Nillable<T>;
 }
 
@@ -140,7 +283,9 @@ impl<T: Clone> Ago<T> for O<T> {
     #[track_caller]
     fn ago(&self, dt: usize) -> Nillable<T> {
         match dt {
-            0 => panic!("Cannot look into the past at distance 0, use the current environment instead"),
+            0 => panic!(
+                "Cannot look into the past at distance 0, use the current environment instead"
+            ),
             1 => self.current.clone(),
             _ => panic!("Tried to look too much into the past"),
         }
@@ -148,11 +293,15 @@ impl<T: Clone> Ago<T> for O<T> {
 }
 
 impl<N, T: Clone> Ago<T> for S<N, T>
-where N: Ago<T> {
+where
+    N: Ago<T>,
+{
     #[track_caller]
     fn ago(&self, dt: usize) -> Nillable<T> {
         match dt {
-            0 => panic!("Cannot look into the past at distance 0, use the current environment instead"),
+            0 => panic!(
+                "Cannot look into the past at distance 0, use the current environment instead"
+            ),
             1 => self.current.clone(),
             dt => self.previous.ago(dt - 1),
         }
@@ -259,247 +408,139 @@ pub trait IntoHistory: Sized {
 }
 impl<T: Sized> IntoHistory for T {}
 
-#[test]
-fn update_tests() {
-    let def = |i| Nillable::Defined(i);
-    let x = 1i64
-        .into_history()
-        .extend(def(3))
-        .extend(def(5))
-        .extend(def(7));
-    dbg!(&x);
-    let x = x.update(def(9)).update(def(11));
-    dbg!(&x);
-    //panic!();
-}
-
-// As a proof of concept we will implement here the following node
-//
-// node weighted_sum(x, y, weight : float) returns (sum : float);
-// let
-//   sum = weight * x + (1.0 - weight) * y;
-// tel
-//
-// node cumul_avg(x : float) returns (avg : float);
-// var n;
-// let
-//   n = 1 fby n + 1;
-//   avg = weighted_sum(x, 0.0 fby avg, 1.0 / float(n));
-// tel
-
-#[allow(non_camel_case_types)]
-#[derive(Debug, Clone, Default)]
-struct weighted_sum {
-    __trace: bool,
-    __clock: usize,
-    // Inputs
-    // Vars
-    // (none)
-    // Outputs
-    // Subnodes
-    // (none)
-}
-
-#[allow(non_camel_case_types)]
-#[derive(Debug, Clone, Default)]
-struct cumul_avg {
-    __trace: bool,
-    __clock: usize,
-    // Inputs
-    // Vars
-    n: ty!(i64),
-    // Outputs
-    avg: ty!(f64),
-    // Subnodes
-    __nodes_outputs: ((),),
-    __nodes_blocks: (weighted_sum,),
-}
-
-macro_rules! expand {
-    ($this:ident, $dt:expr, &, $val:expr) => { ($val)(&*$this, $dt) };
-    ($this:ident, $dt:expr, ., $val:expr) => { $val };
-}
-macro_rules! expr {
-    (<$v:tt> $val:expr) => {
-        |this: &mut Self| {
-            expand!(this, 0, $v, $val)
-        }
-    }
-}
+#[macro_export]
 macro_rules! update {
-    ($field:ident := <$v:tt> $val:expr) => {
-        |this: &mut Self| {
-            let val = expand!(this, 0, $v, $val);
-            this.$field.update_mut(val);
-        }
-    };
-}
-macro_rules! advance {
-    ($field:ident) => {
-        |this: &mut Self| {
-            this.$field.update_mut_undefined();
-        }
-    };
-}
-macro_rules! redefine {
-    ($field:ident := <$v:tt> $val:expr) => {
-        |this: &mut Self| {
-            let val = expand!(this, 0, $v, $val);
-            this.$field.redefine_mut(val);
-        }
+    ($this:ident, $var:ident) => {
+        $this.$var.update_mut($var);
     };
 }
 
-macro_rules! add {
-    (<$l:tt $r:tt> $lhs:expr, $rhs:expr) => {
-        |this: &Self, dt: usize| {
-            let lhs = expand!(this, dt, $l, $lhs);
-            let rhs = expand!(this, dt, $r, $rhs);
-            lhs + rhs
-        }
+#[macro_export]
+macro_rules! var {
+    ($this:ident <~ 0 ; $field:tt) => {
+        $field
     };
-}
-macro_rules! sub {
-    (<$l:tt $r:tt> $lhs:expr, $rhs:expr) => {
-        |this: &Self, dt: usize| {
-            let lhs = expand!(this, dt, $l, $lhs);
-            let rhs = expand!(this, dt, $r, $rhs);
-            lhs - rhs
-        }
-    };
-}
-macro_rules! mul {
-    (<$l:tt $r:tt> $lhs:expr, $rhs:expr) => {
-        |this: &Self, dt: usize| {
-            let lhs = expand!(this, dt, $l, $lhs);
-            let rhs = expand!(this, dt, $r, $rhs);
-            lhs * rhs
-        }
-    };
-}
-macro_rules! div {
-    (<$l:tt $r:tt> $lhs:expr, $rhs:expr) => {
-        |this: &Self, dt: usize| {
-            let lhs = expand!(this, dt, $l, $lhs);
-            let rhs = expand!(this, dt, $r, $rhs);
-            lhs / rhs
-        }
+    ($this:ident <~ $dt:expr ; $field:tt) => {
+        $this.$field.ago($dt)
     };
 }
 
-macro_rules! field {
-    ($field:ident) => {
-        |this: &Self, dt: usize| this.$field.ago(dt)
-    }
-}
-macro_rules! env {
-    ($v:ident) => {
-        $v
-    }
-}
-
+#[macro_export]
 macro_rules! lit {
-    ($lit:expr) => { Nillable::Defined($lit) }
+    ($lit:expr) => {
+        $crate::Nillable::Defined($lit)
+    };
+}
+#[macro_export]
+macro_rules! nil {
+    () => {
+        $crate::Nillable::Nil
+    };
 }
 
+#[macro_export]
 macro_rules! tick {
-    ($this:ident) => { $this.__clock += 1 };
+    ($this:ident) => {
+        $this.__clock += 1
+    };
 }
-macro_rules! ret {
-    ($field:ident) => {
-        |this: &Self| ( this.$field.current )
-    }
-}
-macro_rules! fby {
-    (<$l:tt $r:tt> $lhs:expr, $rhs:expr) => {
-        |this: &Self, dt: usize| {
-            if std::intrinsics::likely(this.__clock > dt) {
-                expand!(this, dt+1, $r, $rhs)
-            } else {
-                expand!(this, dt, $l, $lhs)
-            }
+
+#[macro_export]
+macro_rules! then {
+    ($this:ident <~ $dt:expr ; $lhs:expr, $rhs:expr) => {
+        if std::intrinsics::likely($this.__clock > $dt) {
+            $rhs
+        } else {
+            $lhs
         }
-    }
+    };
 }
+#[macro_export]
 macro_rules! float {
-    (<$v:tt> $val:expr) => {
-        |this: &Self, dt: usize| {
-            expand!(this, dt, $v, $val).map(|i| i as f64)
-        }
-    }
+    ($val:expr) => {
+        $val.map(|i| i as f64)
+    };
 }
+#[macro_export]
 macro_rules! substep {
-    ($id:tt, $( <$a:tt> $arg:expr, )*) => {
-        |this: &mut Self| {
-            this.__nodes_blocks.$id
+    ($this:ident <~ $dt:expr ; $id:tt => { $( $arg:expr, )* } ) => {
+        if std::intrinsics::likely($this.__clock >= $dt) {
+            $this.__nodes_blocks.$id
                 .update_mut(
-                    $( expand!(this, 0, $a, $arg) ),*
+                    $( $arg ),*
                 )
+        } else { nil!() }
+    }
+}
+#[macro_export]
+macro_rules! ifx {
+    ( ( $b:expr ) then { $yes:expr } else { $no:expr }) => {
+        if $b.truth() {
+            $yes
+        } else {
+            $no
         }
     }
 }
-
-impl weighted_sum {
-    fn update_mut(
-        &mut self,
-        x: Nillable<f64>,
-        y: Nillable<f64>,
-        weight: Nillable<f64>,
-    ) -> Nillable<f64> {
-        if self.__trace {
-            println!("(x={},y={},weight={}) => weighted_sum()", x, y, weight);
+#[macro_export]
+macro_rules! binop {
+    ($op:tt ; $lhs:expr, $rhs:expr) => { $lhs $op $rhs };
+}
+#[macro_export]
+macro_rules! unop {
+    ($op:tt ; $e:expr) => { $op $e };
+}
+#[macro_export]
+macro_rules! cmp {
+    (== ; $lhs:expr, $rhs:expr) => {{
+        match $lhs.eq($rhs) {
+            Some(true) => lit!(true),
+            Some(false) => lit!(false),
+            None => nil!(),
         }
-        // == BEGIN ==
-        let sum = expr!(<&>
-            add!(<& &>
-                mul!(<. .> env!(weight), env!(x)),
-                mul!(<& .> sub!(<. .> lit!(1.0), env!(weight)), env!(y))
-            )
-        )(self);
-        // == END ==
-        tick!(self);
-        if self.__trace {
-            println!("weighted_sum() => (sum={})", sum);
+    }};
+    (!= ; $lhs:expr, $rhs:expr) => {{
+        match $lhs.eq($rhs) {
+            Some(true) => lit!(false),
+            Some(false) => lit!(true),
+            None => nil!(),
         }
-        sum
-    }
+    }};
+    (< ; $lhs:expr, $rhs:expr) => {{
+        use core::cmp::Ordering as O;
+        match $lhs.cmp($rhs) {
+            Some(O::Less) => lit!(true),
+            Some(_) => lit!(false),
+            _ => nil!(),
+        }
+    }};
+    (> ; $lhs:expr, $rhs:expr) => {{
+        use core::cmp::Ordering as O;
+        match $lhs.cmp($rhs) {
+            Some(O::Greater) => lit!(true),
+            Some(_) => lit!(false),
+            _ => nil!(),
+        }
+    }};
+    (<= ; $lhs:expr, $rhs:expr) => {{
+        use core::cmp::Ordering as O;
+        match $lhs.cmp($rhs) {
+            Some(O::Less | O::Equal) => lit!(true),
+            Some(_) => lit!(false),
+            _ => nil!(),
+        }
+    }};
+    (>= ; $lhs:expr, $rhs:expr) => {{
+        use core::cmp::Ordering as O;
+        match $lhs.cmp($rhs) {
+            Some(O::Greater | O::Equal) => lit!(true),
+            Some(_) => lit!(false),
+            _ => nil!(),
+        }
+    }};
 }
 
-impl cumul_avg {
-    fn update_mut(&mut self, x: Nillable<f64>) -> Nillable<f64> {
-        if self.__trace {
-            println!("(x={}) => cumul_avg(n={})", x, self.n);
-        }
-        // == BEGIN ==
-        let n = expr!(<&> fby!(<. &> lit!(1), add!(<& .> field!(n), lit!(1))))(self);
-        update!(n := <.> env!(n))(self);
-        let avg = substep!(0,
-            <.> env!(x),
-            <&> fby!(<. &> lit!(0.0), field!(avg)),
-            <&> div!(<. &> lit!(1.0), float!(<.> env!(n))),
-        )(self);
-        update!(avg := <.> env!(avg))(self);
-        // == END ==
-        tick!(self);
-        if self.__trace {
-            println!("cumul_avg(n={},avg={}) => (avg={})", self.n, self.avg, avg);
-        }
-        avg
-    }
-}
-
-#[test]
-fn cumul_avg_behavior() {
-    let mut node = cumul_avg::default();
-    node.__trace = true;
-    node.__nodes_blocks.0.__trace = true;
-    let v = node.update_mut(Nillable::Defined(0.5));
-    println!("{}\n", v);
-    let v = node.update_mut(Nillable::Defined(1.0));
-    println!("{}\n", v);
-    let v = node.update_mut(Nillable::Defined(0.3));
-    println!("{}\n", v);
-    let v = node.update_mut(Nillable::Defined(0.2));
-    println!("{}\n", v);
-    panic!();
+pub mod macros {
+    pub use super::{lit, binop, unop, cmp, nil, var, then, update, tick, substep, ty, float, ifx};
+    pub use super::{Update, Ago};
 }

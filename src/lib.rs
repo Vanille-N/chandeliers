@@ -78,13 +78,27 @@ fn main() {
     */
 }
 
+//       -----------forbid--------->
+//       ---alert-->     ---deny--->
+// Nothing         Warning         Error
+//       <--allow---    <-tolerate--
+//       <----------ignore----------
+
 lustre::decl! {
+    #[allow(unused_attr, recursive)]
+    #[allow(unused_var, "a")]
+    #[allow(non_positive_dependency)]
+    #[allow(undeclared_type, "u64")]
+    #[ignore(non_camel_case_name)]
+    #[tolerate(kw_as_var, "const")]
+    #[tracing("a", "b", "c", "ok")]
     node equivalence(a, b, c : bool) returns (ok : bool);
     var s1, co1, s2, co2: bool;
     let
       (s1, co1) = full_add(a, b, c);
       (s2, co2) = full_add_h(a, b, c);
       ok = (s1 = s2) and (co1 = co2);
+      assert ok;
     tel
 }
 

@@ -7,7 +7,7 @@ use syn::parse::{Parse, ParseStream, Result};
 use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
 use syn::{Ident, Token, Lit};
-use syn::token::Paren;
+use syn::token::{Paren, Bracket};
 
 mod test;
 
@@ -23,6 +23,8 @@ pub mod kw {
     // Warning: this locally overrides the builtin `bool`
     custom_keyword!(bool);
     custom_keyword!(float);
+
+    custom_keyword!(assert);
 
     custom_keyword!(node);
     custom_keyword!(returns);
@@ -159,9 +161,9 @@ impl ToTokens for ArgsTys {
 
 #[derive(syn_derive::Parse)]
 pub enum TargetExpr {
-    #[parse(peek = Ident)]
-    Var(Ident),
+    #[parse(peek = Paren)]
     Tuple(TargetExprTuple),
+    Var(Ident),
 }
 
 #[derive(syn_derive::Parse)]
@@ -643,6 +645,19 @@ pub struct Def {
     pub source: expr::Expr,
 }
 
+#[derive(syn_derive::Parse)]
+pub struct Assertion {
+    assert: kw::assert,
+    expr: expr::Expr,
+}
+
+#[derive(syn_derive::Parse)]
+pub enum Statement {
+    #[parse(peek = kw::assert)]
+    Assert(Assertion),
+    Def(Def),
+}
+
 /*
 impl ToTokens for Def {
     fn to_tokens(&self, tokens: &mut TokenStream) {
@@ -696,10 +711,44 @@ pub struct Node {
 
     kwlet: Token![let],
 
-    #[parse(punctuated_parse_separated_trailing_until::<Def, Token![;], kw::tel>)]
-    defs: Punctuated<Def, Token![;]>,
+    #[parse(punctuated_parse_separated_trailing_until::<Statement, Token![;], kw::tel>)]
+    defs: Punctuated<Statement, Token![;]>,
 
     kwtel: kw::tel,
+}
+
+#[derive(syn_derive::Parse)]
+pub enum AttrArg {
+    #[parse(peek = Ident)]
+    Ident(Ident),
+    #[parse(peek = Lit)]
+    Lit(Lit),
+}
+
+#[derive(syn_derive::Parse)]
+pub struct AttrDef {
+    action: Ident,
+    #[syn(parenthesized)]
+    paren: Paren,
+    #[syn(in = paren)]
+    #[parse(Punctuated::parse_separated_nonempty)]
+    values: Punctuated<AttrArg, Token![,]>,
+}
+
+#[derive(syn_derive::Parse)]
+pub struct Attribute {
+    marker: Token![#],
+    #[syn(bracketed)]
+    brack: Bracket,
+    #[syn(in = brack)]
+    attr: AttrDef,
+}
+
+#[derive(syn_derive::Parse)]
+pub enum AttrNode {
+    #[parse(peek = Token![#])]
+    Tagged(Attribute, Box<AttrNode>),
+    Node(Node),
 }
 
 /*
