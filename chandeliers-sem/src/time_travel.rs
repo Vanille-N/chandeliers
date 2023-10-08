@@ -54,7 +54,12 @@ impl Sealed for bool {}
 /// isn't usable.
 trait Counting<T>: Sized {}
 impl<T> Counting<T> for O<T> where T: Sealed {}
-impl<N, T> Counting<T> for S<N, T> where N: Counting<T>, T: Sealed {}
+impl<N, T> Counting<T> for S<N, T>
+where
+    N: Counting<T>,
+    T: Sealed,
+{
+}
 
 /// A value of `O<_>`
 /// Usage: `o!(true)`

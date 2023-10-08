@@ -1,25 +1,40 @@
+//! Tools for defining the semantics of Lustre.
+
+// `std::intrinsics::likely` is used for by `candle` for clock comparisons
 #![feature(core_intrinsics)]
+// `candle` may generate comparisons `n >= 0` for `n: u64`
 #![allow(unused_comparisons)]
-//#![allow(unused_macros)]
 
 #[cfg(test)]
-pub mod tests;
+mod tests;
 
+/// Definition of the `Nillable` type which implements an abstraction for
+/// possibly uninitialized values, where uninitialized is a poison value.
 pub mod nillable;
 
-#[macro_use]
+/// Fixed-size streams of values.
 pub mod time_travel;
 
+/// Syntax and semantics of the `candle` language, a shallow embedding of
+/// Lustre in Rust.
 #[macro_use]
 pub mod candle;
 
+/// Stream traits.
 pub mod traits {
     pub use crate::time_travel::{Ago, Update};
 }
 
+/// The macros that define the semantics of `candle` by translating it to Rust.
 pub mod macros {
-    pub use crate::assert_is;
-    pub use crate::{
-        binop, cmp, float, ifx, lit, nil, node_trace, substep, then, tick, ty, unop, update, var,
-    };
+    /// Types
+    pub use crate::ty;
+    /// Debugging
+    pub use crate::{assert_is, node_trace};
+    /// Expression combinators
+    pub use crate::{binop, cmp, float, ifx, substep, then, unop};
+    /// Expressions
+    pub use crate::{lit, nil, var};
+    /// Statements
+    pub use crate::{tick, update};
 }
