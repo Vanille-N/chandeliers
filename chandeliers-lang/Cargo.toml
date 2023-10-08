@@ -1,7 +1,0 @@
-[package]
-name = "chandeliers-lang"
-version = "0.1.0"
-edition = "2021"
-
-[dependencies]
-replace_with = "0.1.7"
