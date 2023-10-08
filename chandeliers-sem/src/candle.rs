@@ -1,4 +1,6 @@
-//! Syntax and semantics of the Candle language, a shallow embedding of
+//! Syntax and semantics of the Candle language.
+//!
+//! Candle is a shallow embedding of
 //! [Lustre](https://en.wikipedia.org/wiki/Lustre_(programming_language))
 //! in Rust.
 //!
@@ -161,8 +163,7 @@ macro_rules! ty_mapping {
     };
 }
 
-/// This macro converts a Candle type into the Rust type that represents it
-/// internally.
+/// Convert a Candle type into its internal Rust representation.
 ///
 /// It builds upon the types provided by modules `nillable` and `time_travel`:
 /// - `nillable` provides the `Nillable` monad that represents values extended
@@ -183,6 +184,8 @@ macro_rules! ty {
     ( $t:ident + $($rest:tt)* ) => { $crate::past_ty!($crate::ty_mapping!($t), $($rest)*) };
 }
 
+/// Conditional debug printing.
+///
 /// Usage: `node_trace!(self, "debugging at step {}", self.__clock);` (statement)
 /// Assumption: `self` has a field `__trace: bool`.
 ///
@@ -197,6 +200,8 @@ macro_rules! node_trace {
     }
 }
 
+/// Remember a variable for the next iteration.
+///
 /// Usage: `update!(self, $foo)` (statement)
 /// Assumption: `self` has a field `$foo` AND `$foo` exists as a local variable.
 ///
@@ -212,7 +217,9 @@ macro_rules! update {
     };};
 }
 
-/// Usage: `update!(self <~ $dt; $var)` (statement)
+/// Fetch a variable from the environment.
+///
+/// Usage: `var!(self <~ $dt; $var)` (statement)
 /// Assumption: if `$dt = 0` then `$var` exists as a local variable.
 ///             (`0` must appear textually, not as a variable)
 /// Assumption: if `$dt > 0` then `$var` exists as a field of `self`.
@@ -231,6 +238,8 @@ macro_rules! var {
     }};
 }
 
+/// Wrap a value as a `Nillable`.
+///
 /// Usage: `lit!(true)`, `lit!(0.5)`, `lit!(42)` (expression)
 ///
 /// Wraps a value of a compatible type (`bool`, `f64`, `i64`)
@@ -242,6 +251,8 @@ macro_rules! lit {
     };
 }
 
+/// The uninitialized value.
+///
 /// Usage: `nil!()` (expression)
 ///
 /// The value `Nil`.
@@ -252,6 +263,8 @@ macro_rules! nil {
     };
 }
 
+/// Increment the internal clock.
+///
 /// Usage: `tick!(self)` (statement)
 /// Assumption: `self` has a field `__clock: usize`.
 ///
@@ -263,6 +276,8 @@ macro_rules! tick {
     };
 }
 
+/// Convert from `int` to `float`.
+///
 /// Usage: `float!($v)` (expression)
 ///
 /// Converts a `Nillable<u64>` to a `Nillable<f64>`.
@@ -273,7 +288,7 @@ macro_rules! float {
     };
 }
 
-/// The `->` operator in Lustre.
+/// The `->` Lustre operator.
 ///
 /// Usage: `then!(self <~ $dt; $lhs, $rhs)` (expression)
 /// Assumption: `self` has a field `__clock: usize`
@@ -334,7 +349,7 @@ macro_rules! ifx {
     };
 }
 
-/// Apply a binary operator
+/// Application of a binary operator.
 ///
 /// Usage: `binop!(+; $lhs, $rhs)`, ... (expression)
 /// Reminder: `Nillable` has wrapper implementations for `+`, `-`, `/`, `*`, `%`, `|`, `&`, `^`
@@ -346,7 +361,7 @@ macro_rules! binop {
     ($op:tt ; $lhs:expr, $rhs:expr) => { $lhs $op $rhs };
 }
 
-/// Apply a unary operator
+/// Application of a unary operator.
 ///
 /// Usage: `binop!(-; $val)`, ... (expression)
 /// Reminder: `Nillable` has wrapper implementations for `-`, `!`
@@ -384,7 +399,7 @@ macro_rules! nillable_cmp_eq {
     };
 }
 
-/// Comparison operators on `Nillable`
+/// Comparison operators on `Nillable`.
 ///
 /// Usage: `cmp!(<=; $lhs, $rhs)`, ... (expression)
 /// Reminder: `Nillable` has wrapper implementations for `<=`, `>=`, `<`, `>`, `!=`, `==`

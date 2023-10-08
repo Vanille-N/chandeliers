@@ -1,3 +1,5 @@
+//! Fixed-size streams of values.
+//!
 //! This module implements an abstraction of the notion of "past values of a
 //! variable" by implementing a type that can represent a circular stream of
 //! bounded size.
@@ -24,6 +26,7 @@ pub struct O<T> {
 }
 
 /// Current value of type `T`, and previous values.
+///
 /// Trait bounds ensure that any `S<N, T>` is actually more specifically
 /// a `S<S<S<S<..., T>, T>, T>, T>`.
 #[derive(Debug, Clone, Default)]
@@ -50,7 +53,7 @@ impl Sealed for i64 {}
 impl Sealed for f64 {}
 impl Sealed for bool {}
 
-/// This trait guarantees that you can't construct an `S<_, _>` that
+/// This trait guarantees that you cannot construct an `S<_, _>` that
 /// isn't usable.
 trait Counting<T>: Sized {}
 impl<T> Counting<T> for O<T> where T: Sealed {}
@@ -61,7 +64,8 @@ where
 {
 }
 
-/// A value of `O<_>`
+/// A value of `O<_>`.
+///
 /// Usage: `o!(true)`
 macro_rules! o {
     ($e:expr) => {
@@ -69,7 +73,8 @@ macro_rules! o {
     };
 }
 
-/// A value of `S<_, _>`
+/// A value of `S<_, _>`.
+///
 /// Usage: `s!(true, o!(false))`
 macro_rules! s {
     ($e:expr, $n:expr) => {
@@ -151,11 +156,9 @@ where
 /// Prepend a new value to the history to add one level of `S<_, _>` to the type.
 #[allow(private_bounds)]
 pub trait Extend<N, T>: Sized {
-    /// Required method.
     /// Extend the history with the most recent value.
     fn extend(self, new: Nillable<T>) -> N;
 
-    /// Provided method.
     /// Extend the history with an undefined value.
     fn extend_undefined(self) -> N {
         self.extend(Nillable::Nil)
@@ -179,15 +182,15 @@ where
     }
 }
 
-/// Rotate the history by 1, by adding a new value a the front
-/// and at the same time forgetting an old value from the back.
+/// Advance the history by 1.
+///
+/// We add a new value a the front and at the same time we forget an
+/// old value from the back to keep the same size.
 #[allow(private_bounds)]
 pub trait Update<T>: Counting<T> {
-    /// Required method.
     /// Prepend a new value.
     fn update(self, new: Nillable<T>) -> Self;
 
-    /// Provided methods
     /// Mutable prepend a new value in-place.
     fn update_mut(&mut self, new: Nillable<T>) {
         replace_with::replace_with_or_abort(self, |s| s.update(new));
@@ -229,13 +232,13 @@ where
 /// Construct a new empty or singleton history of a given type.
 #[allow(private_bounds)]
 pub trait IntoHistory: Sealed {
-    /// History of size one (always an `O<_>`)
+    /// History of size one (always an `O<_>`).
     #[inline(always)]
     fn into_history(self) -> O<Self> {
         o!(Defined(self))
     }
 
-    /// History of size zero (also an `O<_>`, but this time it contains a `Nil`)
+    /// History of size zero (also an `O<_>`, but this time it contains a `Nil`).
     #[inline(always)]
     fn empty_history() -> O<Self> {
         o!(Nillable::Nil)

@@ -1,14 +1,16 @@
-///! This modules defines the `Nillable<T>` datatype which implements
-///! values of type `T` with an extra element `Nil` that contaminates any
-///! expression it is a part of.
-///! Unlike `Option<T>`, `Nillable<T>` implements all the binary operators
-///! that one can apply to `T`.
-///!
-///! E.g.
-///! - `Defined(5) + Defined(6)` is `Defined(11)`
-///! - `Defined(5) + Nil` is `Nil`
-///! - `Nil + Defined(0.1)` is `Nil`
-///!
+//! Possibly uninitialized values.
+//!
+//! This modules defines the `Nillable<T>` datatype which implements
+//! values of type `T` with an extra element `Nil` that contaminates any
+//! expression it is a part of.
+//! Unlike `Option<T>`, `Nillable<T>` implements all the binary operators
+//! that one can apply to `T`.
+//!
+//! E.g.
+//! - `Defined(5) + Defined(6)` is `Defined(11)`
+//! - `Defined(5) + Nil` is `Nil`
+//! - `Nil + Defined(0.1)` is `Nil`
+
 use std::fmt;
 
 /// Values of `T` or `Nil`.
@@ -72,7 +74,6 @@ impl<T> Nillable<T> {
         }
     }
 }
-
 /// `Nillable` implements all standard binary operators (not comparison
 /// operators though) by mapping them to the inner value if it exists.
 macro_rules! nillable_impl_ops_binary {
@@ -131,6 +132,8 @@ impl<T> Nillable<T>
 where
     T: PartialEq,
 {
+    /// Equality test for `Nillable`.
+    ///
     /// `Nillable` does not implement equality, because `Nil` contaminates
     /// all expressions it is a part of.
     /// The function `eq` implements only a partial equality that
@@ -143,6 +146,8 @@ where
         }
     }
 
+    /// Identity test for `Nillable`.
+    ///
     /// Determines whether `self` and `other` are identical.
     /// `Nil` is identical to itself, and two `Defined(_)` are
     /// identical if their inner values are `PartialEq`.
@@ -156,6 +161,8 @@ where
     }
 }
 
+/// Identity assertion.
+///
 /// Since `Nillable<T>` does not implement `PartialEq`,
 /// the canonical way to perform equality assertions is
 /// `assert_is!(a, b)` that panics if `a` and `b` are not identical.
@@ -168,12 +175,14 @@ macro_rules! assert_is {
     };
 }
 
-/// Similarly to equality, `Nillable` does not implement `PartialOrd`
-/// because `Nil` is incomparable with every other value.
 impl<T> Nillable<T>
 where
     T: PartialOrd,
 {
+    /// Partial ordering of `Nillable`s.
+    ///
+    /// Similarly to equality, `Nillable` does not implement `PartialOrd`
+    /// because `Nil` is incomparable with every other value.
     #[inline(always)]
     pub fn cmp(self, other: Self) -> Option<std::cmp::Ordering> {
         match (self, other) {
