@@ -1,7 +1,12 @@
 [package]
 name = "chandeliers-sem"
-version = "0.1.0"
+version = "0.0.1"
 edition = "2021"
+authors = [ "Neven <vanille@crans.org>" ]
+description = "Semantics of Candle, a shallow embedding of Lustre in Rust"
+readme = "README.md"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/Vanille-N/chandeliers"
 
 [dependencies]
 replace_with = "0.1.7"
