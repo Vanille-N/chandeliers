@@ -1,6 +1,6 @@
 //! Tools for defining the semantics of Lustre.
 
-// `std::intrinsics::likely` is used for by `candle` for clock comparisons
+// `std::intrinsics::likely` is used by `candle` for clock comparisons
 #![feature(core_intrinsics)]
 // `candle` may generate comparisons `n >= 0` for `n: u64`
 #![allow(unused_comparisons)]
@@ -20,7 +20,7 @@ pub mod traits {
     pub use crate::time_travel::{Ago, Update};
 }
 
-/// The macros that define the semantics of `candle` by translating it to Rust.
+/// The macros that define the semantics of Candle by translating it to Rust.
 pub mod macros {
     /// Types
     pub use crate::ty;
