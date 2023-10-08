@@ -1,13 +1,5 @@
 use crate::macros::*;
 
-macro_rules! assert_is {
-    ($lhs:expr, $rhs:expr) => {
-        if !$lhs.is($rhs) {
-            panic!("{} is not identical to {}", $lhs, $rhs);
-        }
-    };
-}
-
 #[allow(non_camel_case_types)]
 #[derive(Debug, Default, Clone)]
 pub struct counting {

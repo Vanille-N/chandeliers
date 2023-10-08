@@ -8,15 +8,10 @@
 #[cfg(test)]
 mod tests;
 
-/// Definition of the `Nillable` type which implements an abstraction for
-/// possibly uninitialized values, where uninitialized is a poison value.
 pub mod nillable;
 
-/// Fixed-size streams of values.
 pub mod time_travel;
 
-/// Syntax and semantics of the `candle` language, a shallow embedding of
-/// Lustre in Rust.
 #[macro_use]
 pub mod candle;
 
