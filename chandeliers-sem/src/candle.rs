@@ -114,6 +114,7 @@
 /// past_ty!(T, +) ~ S<O<T>, T>
 /// past_ty!(T, +++) ~ S<S<S<O<T>, T>, T>, T>
 /// ```
+#[doc(hidden)]
 #[macro_export]
 macro_rules! past_ty {
     ( $t:ty, ) => { $crate::time_travel::O<$t> };
@@ -128,6 +129,7 @@ macro_rules! past_ty {
 /// ```ignore
 /// present_ty!(T) ~ Nillable<T>
 /// ```
+#[doc(hidden)]
 #[macro_export]
 macro_rules! present_ty {
     ( $t:ty ) => { $crate::nillable::Nillable<$t> };
@@ -142,6 +144,7 @@ macro_rules! present_ty {
 /// ty_mapping!(bool) ~ bool
 /// ty_mapping!(T) ~ T
 /// ```
+#[doc(hidden)]
 #[macro_export]
 macro_rules! ty_mapping {
     ( float ) => {
@@ -224,7 +227,7 @@ macro_rules! var {
     };
     ($this:ident <~ $dt:expr ; $field:tt) => {{
         use $crate::traits::*;
-        $this.$field.ago($dt)
+        *$this.$field.ago($dt)
     }};
 }
 
@@ -355,7 +358,8 @@ macro_rules! unop {
     ($op:tt ; $e:expr) => { $op $e };
 }
 
-// Do not use directly, call `cmp` instead.
+/// Do not use directly, call `cmp` instead.
+#[doc(hidden)]
 #[macro_export]
 macro_rules! nillable_cmp_ord {
     ($ord:ident, $res:expr, $lhs:expr, $rhs:expr) => {
@@ -367,7 +371,8 @@ macro_rules! nillable_cmp_ord {
     };
 }
 
-// Do not use directly, call `cmp` instead.
+/// Do not use directly, call `cmp` instead.
+#[doc(hidden)]
 #[macro_export]
 macro_rules! nillable_cmp_eq {
     ($equal:expr, $lhs:expr, $rhs:expr) => {
