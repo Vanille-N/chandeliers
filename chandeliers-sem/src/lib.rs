@@ -4,7 +4,10 @@
 
 use std::fmt;
 
-pub mod test;
+#[cfg(test)]
+pub mod sanity;
+#[cfg(test)]
+pub mod impls;
 
 #[derive(Debug, Clone, Copy)]
 pub enum Nillable<T> {
