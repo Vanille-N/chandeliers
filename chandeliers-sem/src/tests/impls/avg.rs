@@ -16,26 +16,30 @@ use crate::macros::*;
 
 #[allow(non_camel_case_types)]
 #[derive(Debug, Clone, Default)]
-struct weighted_sum {
+pub struct weighted_sum {
     __trace: bool,
     __clock: usize,
 }
 
 #[allow(non_camel_case_types)]
 #[derive(Debug, Clone, Default)]
-struct cumul_avg {
+pub struct cumul_avg {
     __trace: bool,
     __clock: usize,
     n: ty!(int+),
     avg: ty!(float+),
-    __nodes_blocks: (weighted_sum,),
+    __nodes: (weighted_sum,),
 }
 
 impl weighted_sum {
-    fn update_mut(&mut self, x: ty!(float), y: ty!(float), weight: ty!(float)) -> ty!(float) {
-        if self.__trace {
-            println!("(x={},y={},weight={}) => weighted_sum()", x, y, weight);
-        }
+    pub fn update_mut(&mut self, x: ty!(float), y: ty!(float), weight: ty!(float)) -> ty!(float) {
+        node_trace!(
+            self,
+            "(x={},y={},weight={}) => weighted_sum()",
+            x,
+            y,
+            weight
+        );
         // == BEGIN ==
         let sum = binop!(+;
             binop!(*; var!(self <~ 0; weight), var!(self <~ 0; x)),
@@ -46,18 +50,14 @@ impl weighted_sum {
         );
         // == END ==
         tick!(self);
-        if self.__trace {
-            println!("weighted_sum() => (sum={})", sum);
-        }
+        node_trace!(self, "weighted_sum() => (sum={})", sum);
         sum
     }
 }
 
 impl cumul_avg {
-    fn update_mut(&mut self, x: ty!(float)) -> ty!(float) {
-        if self.__trace {
-            println!("(x={}) => cumul_avg(n={})", x, self.n);
-        }
+    pub fn update_mut(&mut self, x: ty!(float)) -> ty!(float) {
+        node_trace!(self, "(x={}) => cumul_avg(n={})", x, self.n);
         // == BEGIN ==
         let n = then!(self <~ 0; lit!(1), var!(self <~ 1; n) + lit!(1));
         update!(self, n);
@@ -72,9 +72,13 @@ impl cumul_avg {
         update!(self, avg);
         // == END ==
         tick!(self);
-        if self.__trace {
-            println!("cumul_avg(n={},avg={}) => (avg={})", self.n, self.avg, avg);
-        }
+        node_trace!(
+            self,
+            "cumul_avg(n={},avg={}) => (avg={})",
+            self.n,
+            self.avg,
+            avg
+        );
         avg
     }
 }
@@ -83,7 +87,7 @@ impl cumul_avg {
 fn cumul_avg_behavior() {
     let mut node = cumul_avg::default();
     node.__trace = true;
-    node.__nodes_blocks.0.__trace = true;
+    node.__nodes.0.__trace = true;
     let v = node.update_mut(lit!(0.5));
     println!("{}\n", v);
     let v = node.update_mut(lit!(1.0));
@@ -94,4 +98,3 @@ fn cumul_avg_behavior() {
     println!("{}\n", v);
     //panic!();
 }
-

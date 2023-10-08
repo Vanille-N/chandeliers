@@ -5,19 +5,19 @@ macro_rules! assert_is {
         if !$lhs.is($rhs) {
             panic!("{} is not identical to {}", $lhs, $rhs);
         }
-    }
+    };
 }
 
 #[allow(non_camel_case_types)]
 #[derive(Debug, Default, Clone)]
-struct counting {
+pub struct counting {
     __trace: bool,
     __clock: usize,
     n: ty!(int+),
 }
 
 impl counting {
-    fn update_mut(&mut self) -> ty!(int) {
+    pub fn update_mut(&mut self) -> ty!(int) {
         let n = then!(self <~ 0; lit!(0), var!(self <~ 1; n) + lit!(1));
         update!(self, n);
         tick!(self);
@@ -27,23 +27,23 @@ impl counting {
 
 #[allow(non_camel_case_types)]
 #[derive(Debug, Default, Clone)]
-struct counting_twice {
+pub struct counting_twice {
     __trace: bool,
     __clock: usize,
     b: ty!(bool+),
-    __nodes_blocks: (counting, counting,),
+    __nodes: (counting, counting),
 }
 
 #[allow(non_camel_case_types)]
 #[derive(Debug, Default, Clone)]
-struct counting_late {
+pub struct counting_late {
     __trace: bool,
     __clock: usize,
-    __nodes_blocks: (counting,),
+    __nodes: (counting,),
 }
 
 impl counting_twice {
-    fn update_mut(&mut self) -> ty!(int) {
+    pub fn update_mut(&mut self) -> ty!(int) {
         let b = then!(self <~ 0; lit!(true), ! var!(self <~ 1; b));
         update!(self, b);
         let _0 = substep!(self <~ 0; 0 => {});
@@ -55,7 +55,7 @@ impl counting_twice {
 }
 
 impl counting_late {
-    fn update_mut(&mut self) -> ty!(int) {
+    pub fn update_mut(&mut self) -> ty!(int) {
         let _0 = substep!(self <~ 2; 0 => {});
         let c = then!(self <~ 0; lit!(0), then!(self <~ 1; lit!(0), _0));
         tick!(self);
