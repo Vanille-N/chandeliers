@@ -2,22 +2,26 @@
 
 use crate::*;
 
-use syn::parse::Parse;
 use proc_macro2::TokenStream;
+use syn::parse::Parse;
 use syn::parse_macro_input;
 use syn::Token;
 
 macro_rules! success {
-    ($obj:expr) => {{ $obj.unwrap() }};
+    ($obj:expr) => {{
+        $obj.unwrap()
+    }};
 }
 macro_rules! failure {
-    ($obj:expr) => {{ assert!($obj.is_err()) }};
+    ($obj:expr) => {{
+        assert!($obj.is_err())
+    }};
 }
 
 macro_rules! parse_as {
     ($typ:ty, $from:expr) => {{
         syn::parse_str::<$typ>($from)
-    }}
+    }};
 }
 
 #[test]
@@ -90,8 +94,10 @@ fn expr() {
     success!(parse_as!(Expr, "0"));
     success!(parse_as!(Expr, "5476"));
     success!(parse_as!(Expr, "3.1415"));
-    /*FIXME*/success!(parse_as!(Expr, "\"abc\""));
-    /*FIXME*/success!(parse_as!(Expr, "'x'"));
+    /*FIXME*/
+    success!(parse_as!(Expr, "\"abc\""));
+    /*FIXME*/
+    success!(parse_as!(Expr, "'x'"));
     success!(parse_as!(Expr, "x"));
     success!(parse_as!(Expr, "(x)"));
     success!(parse_as!(Expr, "((x))"));

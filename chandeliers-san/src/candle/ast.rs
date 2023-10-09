@@ -15,7 +15,7 @@ impl<T> Default for Tuple<T> {
     }
 }
 
-pub(crate) mod clock {
+pub mod clock {
     use std::fmt;
 
     #[derive(Debug, Clone, Copy)]
@@ -47,7 +47,7 @@ where
     }
 }
 
-pub(crate) mod ty {
+pub mod ty {
     use super::clock;
     use super::Tuple;
     use std::fmt;
@@ -91,7 +91,7 @@ pub(crate) mod ty {
     }
 }
 
-pub(crate) mod expr {
+pub mod expr {
     use super::clock;
     use super::Tuple;
     use std::fmt;
@@ -289,7 +289,7 @@ pub(crate) mod expr {
     }
 }
 
-pub(crate) mod stmt {
+pub mod stmt {
     use super::clock;
     use super::expr;
     use super::Tuple;
@@ -331,7 +331,7 @@ pub(crate) mod stmt {
     }
 }
 
-pub(crate) mod decl {
+pub mod decl {
     use super::expr;
     use super::stmt;
     use super::ty;
@@ -345,7 +345,7 @@ pub(crate) mod decl {
     }
 
     #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-    pub struct NodeName(String);
+    pub struct NodeName(pub String);
 
     impl fmt::Display for NodeName {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

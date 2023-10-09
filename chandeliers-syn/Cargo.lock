@@ -3,9 +3,14 @@
 version = 3
 
 [[package]]
+name = "chandeliers-san"
+version = "0.1.0"
+
+[[package]]
 name = "chandeliers-syn"
 version = "0.1.0"
 dependencies = [
+ "chandeliers-san",
  "proc-macro2",
  "quote",
  "syn",
