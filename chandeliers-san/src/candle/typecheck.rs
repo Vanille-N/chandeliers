@@ -29,8 +29,8 @@ use ast::Tuple;
 #[derive(Debug, Default)]
 pub struct TyCtx {
     vars: HashMap<ast::expr::Var, TyBase>,
-    nodes_in: HashMap<ast::expr::NodeId, TyTuple>,
-    nodes_out: HashMap<ast::expr::NodeId, TyTuple>,
+    nodes_in: HashMap<ast::expr::NodeId, Tuple<TyBase>>,
+    nodes_out: HashMap<ast::expr::NodeId, Tuple<TyBase>>,
 }
 impl TyCtx {
     fn get_var(&self, v: &ast::expr::Var) -> TcResult<TyTuple> {
@@ -43,7 +43,7 @@ impl TyCtx {
 
     fn get_node_out(&self, n: &ast::expr::NodeId) -> TcResult<TyTuple> {
         match self.nodes_out.get(n) {
-            Some(t) => Ok(t.clone()),
+            Some(t) => Ok(t.as_flat_tytuple()),
             None => TcError::new().map_err(|e| e.with(format!("Node {n} does not exist"))),
         }
     }
@@ -65,7 +65,31 @@ impl TypeCheckStmt for ast::stmt::Statement {
                 let source_ty = source.typecheck(ctx)?;
                 target_ty.identical(&source_ty)
             }
-            _ => todo!(),
+            Self::Update(_) => Ok(()),
+            Self::Trace { .. } => Ok(()),
+            Self::Assert(e) => {
+                let t = e.typecheck(ctx)?;
+                let t = t.is_primitive()?;
+                t.is_bool()?;
+                Ok(())
+            }
+            Self::Substep { clk: _, id, args } => {
+                let Some(expected_tys) = ctx.nodes_out.get(id) else {
+                    return TcError::new().map_err(|e| {
+                        e.with(format!("Block {} is not registered", id))
+                    });
+                };
+                if expected_tys.elems.len() != args.elems.len() {
+                    TcError::new().map_err(|e| {
+                        e.with(format!("Block {} expects {} arguments but {} were given", id, expected_tys.elems.len(), args.elems.len()))
+                    })?;
+                }
+                for (i, arg) in args.elems.iter().enumerate() {
+                    let actual_ty = arg.typecheck(ctx)?;
+                    TyTuple::Single(expected_tys.elems[i]).identical(&actual_ty)?;
+                }
+                Ok(())
+            }
         }
     }
 }
@@ -248,12 +272,6 @@ impl TyBase {
 
 impl TyTuple {
     fn identical(&self, other: &Self) -> TcResult<()> {
-        if let Self::Multiple(ts) = self {
-            assert!(ts.elems.len() != 1);
-        }
-        if let Self::Multiple(ts) = self {
-            assert!(ts.elems.len() != 1);
-        }
         match (self, other) {
             (Self::Single(t), Self::Single(u)) => {
                 if t != u {
@@ -296,15 +314,23 @@ impl TyTuple {
     }
 }
 
+impl Tuple<TyBase> {
+    fn as_flat_tytuple(&self) -> TyTuple {
+        TyTuple::Multiple(Tuple {
+            elems: self.elems.iter().map(|t| TyTuple::Single(*t)).collect(),
+        })
+    }
+}
+
 impl ast::decl::Node {
     pub fn typecheck(
         &self,
         ext: HashMap<ast::decl::NodeName, (Tuple<TyBase>, Tuple<TyBase>)>,
     ) -> TcResult<(Tuple<TyBase>, Tuple<TyBase>)> {
         let mut ctx = TyCtx::default();
-        for vs in &[self.inputs, self.outputs, self.locals] {
+        for vs in &[&self.inputs, &self.outputs, &self.locals] {
             for v in &vs.elems {
-                if ctx.vars.insert(v.name, v.ty.base).is_some() {
+                if ctx.vars.insert(v.name.clone(), v.ty.base).is_some() {
                     TcError::new().map_err(|e| {
                         e.with(format!(
                             "Variable {} is declared twice in node {}",
@@ -316,15 +342,18 @@ impl ast::decl::Node {
         }
         for (id, blk) in self.blocks.iter().enumerate() {
             let Some((i, o)) = ext.get(blk) else {
-                return TcError::new().map_err(|e| {
-                    e.with(format!(
-                            "Block {} is not defined",
-                            blk,
-                    ))
-                });
+                return TcError::new()
+                    .map_err(|e| e.with(format!("Block {} is not defined", blk,)));
             };
-            ctx.nodes_in.insert(NodeId { id }, i.as_flat_tytuple());
-            ctx.nodes_out.insert(NodeId { id }, o.as_flat_tytuple());
+            let id = ast::expr::NodeId { id };
+            ctx.nodes_in.insert(id, i.clone());
+            ctx.nodes_out.insert(id, o.clone());
         }
+        for st in &self.stmts {
+            st.typecheck(&ctx)?;
+        }
+        let inputs = Tuple { elems: self.inputs.elems.iter().map(|v| v.ty.base).collect() };
+        let outputs = Tuple { elems: self.outputs.elems.iter().map(|v| v.ty.base).collect() };
+        Ok((inputs, outputs))
     }
 }

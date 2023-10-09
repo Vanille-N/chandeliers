@@ -130,7 +130,7 @@ pub(crate) mod expr {
         pub depth: clock::Depth,
     }
 
-    #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
     pub struct NodeId {
         pub id: usize,
     }
@@ -332,11 +332,11 @@ pub(crate) mod stmt {
 }
 
 pub(crate) mod decl {
-    use std::fmt;
     use super::expr;
     use super::stmt;
     use super::ty;
     use super::Tuple;
+    use std::fmt;
 
     #[derive(Debug, Clone)]
     pub struct Var {
