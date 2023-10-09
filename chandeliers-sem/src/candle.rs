@@ -54,7 +54,7 @@
 //! impl counter {
 //!     pub fn update_mut(&mut self) -> ty!(int) {
 //!         node_trace!(self, "() => counter(n={})", self.n);
-//!         let n = then!(self <~ 0; lit!(0), var!(self <~ 1; n) + lit!(1));
+//!         let n = later!(self <~ 0; lit!(0), var!(self <~ 1; n) + lit!(1));
 //!         update!(self, n);
 //!         tick!(self);
 //!         node_trace!(self, "counter(n={}) => (n={})", self.n, self.n);
@@ -184,7 +184,7 @@ macro_rules! ty {
     ( $t:ident + $($rest:tt)* ) => { $crate::past_ty!($crate::ty_mapping!($t), $($rest)*) };
 }
 
-/// Conditional debug printing.
+/// Conditional debug printing. [pure]
 ///
 /// Usage: `node_trace!(self, "debugging at step {}", self.__clock);` (statement)
 /// Assumption: `self` has a field `__trace: bool`.
@@ -217,9 +217,9 @@ macro_rules! update {
     };};
 }
 
-/// Fetch a variable from the environment.
+/// Fetch a variable from the environment. [pure]
 ///
-/// Usage: `var!(self <~ $dt; $var)` (statement)
+/// Usage: `var!(self <~ $dt; $var)` (expression)
 /// Assumption: if `$dt = 0` then `$var` exists as a local variable.
 ///             (`0` must appear textually, not as a variable)
 /// Assumption: if `$dt > 0` then `$var` exists as a field of `self`.
@@ -238,7 +238,7 @@ macro_rules! var {
     }};
 }
 
-/// Wrap a value as a `Nillable`.
+/// Wrap a value as a `Nillable`. [pure]
 ///
 /// Usage: `lit!(true)`, `lit!(0.5)`, `lit!(42)` (expression)
 ///
@@ -251,7 +251,7 @@ macro_rules! lit {
     };
 }
 
-/// The uninitialized value.
+/// The uninitialized value. [pure]
 ///
 /// Usage: `nil!()` (expression)
 ///
@@ -263,7 +263,7 @@ macro_rules! nil {
     };
 }
 
-/// Increment the internal clock.
+/// Increment the internal clock. [side-effects: only call once at the end]
 ///
 /// Usage: `tick!(self)` (statement)
 /// Assumption: `self` has a field `__clock: usize`.
@@ -276,7 +276,7 @@ macro_rules! tick {
     };
 }
 
-/// Convert from `int` to `float`.
+/// Convert from `int` to `float`. [pure]
 ///
 /// Usage: `float!($v)` (expression)
 ///
@@ -288,16 +288,16 @@ macro_rules! float {
     };
 }
 
-/// The `->` Lustre operator.
+/// The `->` Lustre operator. [pure]
 ///
-/// Usage: `then!(self <~ $dt; $lhs, $rhs)` (expression)
+/// Usage: `later!(self <~ $dt; $lhs, $rhs)` (expression)
 /// Assumption: `self` has a field `__clock: usize`
 ///
 /// This performs a comparison against the clock:
 /// for instants before `$dt` (inclusive) it will return the left value,
 /// and for instants after `$dt` it will return the right value.
 #[macro_export]
-macro_rules! then {
+macro_rules! later {
     ($this:ident <~ $dt:expr ; $lhs:expr, $rhs:expr) => {
         if std::intrinsics::likely($this.__clock > $dt) {
             $rhs
@@ -307,7 +307,7 @@ macro_rules! then {
     };
 }
 
-/// Invocation of subnodes.
+/// Invocation of subnodes. [side-effects: only call once for each node id]
 ///
 /// Usage: `substep!(self <~ $dt; $id => { ... })` (expression)
 /// Assumption: `self` has a `__clock` field.
@@ -331,7 +331,7 @@ macro_rules! substep {
     }
 }
 
-/// Conditional on `Nillable`s
+/// Conditional on `Nillable`s. [pure]
 ///
 /// Usage: `ifx!(($b) then { $yes } else { $no })` (expression)
 ///
@@ -349,7 +349,7 @@ macro_rules! ifx {
     };
 }
 
-/// Application of a binary operator.
+/// Application of a binary operator. [pure]
 ///
 /// Usage: `binop!(+; $lhs, $rhs)`, ... (expression)
 /// Reminder: `Nillable` has wrapper implementations for `+`, `-`, `/`, `*`, `%`, `|`, `&`, `^`
@@ -361,7 +361,7 @@ macro_rules! binop {
     ($op:tt ; $lhs:expr, $rhs:expr) => { $lhs $op $rhs };
 }
 
-/// Application of a unary operator.
+/// Application of a unary operator. [pure]
 ///
 /// Usage: `binop!(-; $val)`, ... (expression)
 /// Reminder: `Nillable` has wrapper implementations for `-`, `!`
@@ -399,7 +399,7 @@ macro_rules! nillable_cmp_eq {
     };
 }
 
-/// Comparison operators on `Nillable`.
+/// Comparison operators on `Nillable`. [pure]
 ///
 /// Usage: `cmp!(<=; $lhs, $rhs)`, ... (expression)
 /// Reminder: `Nillable` has wrapper implementations for `<=`, `>=`, `<`, `>`, `!=`, `==`

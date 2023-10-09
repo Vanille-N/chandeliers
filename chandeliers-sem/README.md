@@ -56,7 +56,7 @@ impl counter {
     pub fn update_mut(&mut self, i: ty!(bool)) -> ty!(int) {
         node_trace!(self, "(i={}) => counter(n={})", i, self.n);
         let n = binop!(+;
-            then!(self <~ 0; lit!(0), var!(self <~ 1; n)),
+            later!(self <~ 0; lit!(0), var!(self <~ 1; n)),
             ifx!((var!(self <~ 0; i)) then { lit!(1) } else { lit!(0) })
         );
         update!(self, n);

@@ -10,7 +10,7 @@ pub struct counting {
 
 impl counting {
     pub fn update_mut(&mut self) -> ty!(int) {
-        let n = then!(self <~ 0; lit!(0), var!(self <~ 1; n) + lit!(1));
+        let n = later!(self <~ 0; lit!(0), var!(self <~ 1; n) + lit!(1));
         update!(self, n);
         tick!(self);
         n
@@ -36,7 +36,7 @@ pub struct counting_late {
 
 impl counting_twice {
     pub fn update_mut(&mut self) -> ty!(int) {
-        let b = then!(self <~ 0; lit!(true), ! var!(self <~ 1; b));
+        let b = later!(self <~ 0; lit!(true), ! var!(self <~ 1; b));
         update!(self, b);
         let _0 = substep!(self <~ 0; 0 => {});
         let _1 = substep!(self <~ 0; 1 => {});
@@ -49,7 +49,7 @@ impl counting_twice {
 impl counting_late {
     pub fn update_mut(&mut self) -> ty!(int) {
         let _0 = substep!(self <~ 2; 0 => {});
-        let c = then!(self <~ 0; lit!(0), then!(self <~ 1; lit!(0), _0));
+        let c = later!(self <~ 0; lit!(0), later!(self <~ 1; lit!(0), _0));
         tick!(self);
         c
     }

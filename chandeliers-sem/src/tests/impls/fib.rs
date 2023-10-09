@@ -10,13 +10,13 @@ pub struct fib {
 
 impl fib {
     pub fn update_mut(&mut self) -> ty!(int) {
-        let x = then!(self <~ 0; lit!(0),
-            then!(self <~ 1; lit!(1),
+        let x = later!(self <~ 0; lit!(0),
+            later!(self <~ 1; lit!(1),
                 binop!(+; var!(self <~ 2; x), var!(self <~ 1; x))
             )
         );
-        update!(self, x);
         tick!(self);
+        update!(self, x);
         x
     }
 }

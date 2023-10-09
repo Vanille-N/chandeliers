@@ -40,7 +40,6 @@ impl weighted_sum {
             y,
             weight
         );
-        // == BEGIN ==
         let sum = binop!(+;
             binop!(*; var!(self <~ 0; weight), var!(self <~ 0; x)),
             binop!(*;
@@ -48,7 +47,6 @@ impl weighted_sum {
                 var!(self <~ 0; y)
             )
         );
-        // == END ==
         tick!(self);
         node_trace!(self, "weighted_sum() => (sum={})", sum);
         sum
@@ -58,20 +56,18 @@ impl weighted_sum {
 impl cumul_avg {
     pub fn update_mut(&mut self, x: ty!(float)) -> ty!(float) {
         node_trace!(self, "(x={}) => cumul_avg(n={})", x, self.n);
-        // == BEGIN ==
-        let n = then!(self <~ 0; lit!(1), var!(self <~ 1; n) + lit!(1));
+        let n = later!(self <~ 0; lit!(1), var!(self <~ 1; n) + lit!(1));
         update!(self, n);
         let avg = substep!(
             self <~ 0;
             0 => {
                 var!(self <~ 0; x),
-                then!(self <~ 0; lit!(0.0), var!(self <~ 1; avg)),
+                later!(self <~ 0; lit!(0.0), var!(self <~ 1; avg)),
                 binop!(/; lit!(1.0), float!(var!(self <~ 0; n))),
             }
         );
-        update!(self, avg);
-        // == END ==
         tick!(self);
+        update!(self, avg);
         node_trace!(
             self,
             "cumul_avg(n={},avg={}) => (avg={})",
