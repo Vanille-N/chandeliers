@@ -1,12 +1,9 @@
 #![feature(proc_macro_diagnostic)]
 
-use proc_macro2::TokenStream;
-use quote::ToTokens;
 use syn::parse_macro_input;
+use quote::ToTokens;
 
 use chandeliers_syn as syntax;
-use chandeliers_san as sanitizer;
-use chandeliers_sem as semantics;
 
 use syntax::ast::InputSpan;
 

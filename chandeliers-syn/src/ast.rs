@@ -1,4 +1,3 @@
-use proc_macro2::TokenStream;
 use syn::parse::{Parse, ParseStream, Result};
 use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
@@ -202,6 +201,7 @@ pub mod expr {
     //    [ f( _, ... ) ]
     //    [ v ]
 
+    #[allow(private_bounds)]
     #[derive(syn_derive::Parse)]
     pub enum ExprHierarchyParser<Here, Below>
     where
@@ -274,8 +274,8 @@ pub mod expr {
         fn hint(s: ParseStream) -> bool {
             fn is_parenthesized(s: ParseStream) -> Result<Paren> {
                 s.parse::<Ident>()?;
-                let content;
-                let p = syn::parenthesized!(content in s);
+                let _content;
+                let p = syn::parenthesized!(_content in s);
                 Ok(p)
             }
             is_parenthesized(s).is_ok()
@@ -296,8 +296,8 @@ pub mod expr {
     impl Hint for ParenExpr {
         fn hint(s: ParseStream) -> bool {
             fn is_parenthesized(s: ParseStream) -> Result<Paren> {
-                let content;
-                let p = syn::parenthesized!(content in s);
+                let _content;
+                let p = syn::parenthesized!(_content in s);
                 Ok(p)
             }
             is_parenthesized(s).is_ok()
@@ -537,16 +537,16 @@ pub struct Node {
     pub name: Ident,
 
     #[syn(parenthesized)]
-    inputs_paren: Paren,
-    #[syn(in = inputs_paren)]
+    _inputs_paren: Paren,
+    #[syn(in = _inputs_paren)]
     #[parse(ArgsTys::parse_terminated)]
     pub inputs: ArgsTys,
 
     _returns: kw::returns,
 
     #[syn(parenthesized)]
-    outputs_paren: Paren,
-    #[syn(in = outputs_paren)]
+    _outputs_paren: Paren,
+    #[syn(in = _outputs_paren)]
     #[parse(ArgsTys::parse_terminated)]
     pub outputs: ArgsTys,
 
@@ -762,7 +762,7 @@ where
     T: InputSpan,
 {
     fn force_input_span(&self) -> Span {
-        assert!(self.len() != 0, "Empty punctuated has no span");
+        assert!(!self.is_empty(), "Empty punctuated has no span");
         if self.len() == 1 {
             self.first().unwrap().input_span()
         } else {

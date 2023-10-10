@@ -15,6 +15,8 @@ dependencies = [
 name = "chandeliers-macros"
 version = "0.1.0"
 dependencies = [
+ "chandeliers-san",
+ "chandeliers-sem",
  "chandeliers-syn",
  "proc-macro2",
  "quote",
@@ -23,9 +25,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "chandeliers-san"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+]
+
+[[package]]
+name = "chandeliers-sem"
+version = "0.0.4"
+dependencies = [
+ "replace_with",
+]
+
+[[package]]
 name = "chandeliers-syn"
 version = "0.1.0"
 dependencies = [
+ "chandeliers-san",
  "proc-macro2",
  "quote",
  "syn",
@@ -90,6 +108,12 @@ checksum = "5267fca4496028628a95160fc423a33e8b2e6af8a5302579e322e4b520293cae"
 dependencies = [
  "proc-macro2",
 ]
+
+[[package]]
+name = "replace_with"
+version = "0.1.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e3a8614ee435691de62bcffcf4a66d91b3594bf1428a5722e79103249a095690"
 
 [[package]]
 name = "ryu"

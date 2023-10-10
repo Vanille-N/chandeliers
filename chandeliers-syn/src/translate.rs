@@ -3,10 +3,9 @@ use super::translate::candle::Sp;
 use lus::InputSpan;
 
 use chandeliers_san::candle::ast as candle;
-use proc_macro2::{Span, TokenStream};
+use proc_macro2::TokenStream;
 use quote::quote_spanned;
 
-#[must_use]
 pub type TrResult<T> = Result<T, TokenStream>;
 
 type BlockNames = Vec<Sp<candle::decl::NodeName>>;
@@ -35,7 +34,7 @@ impl lus::Node {
         let span = self.input_span();
         let name = self
             .name
-            .map_ref_with_span(|_, name| candle::decl::NodeName(self.name.to_string()));
+            .map_ref_with_span(|_, name| candle::decl::NodeName(name.to_string()));
         let inputs = self.inputs.translate()?;
         let outputs = self.outputs.translate()?;
         let locals = self.locals.translate()?;
@@ -84,9 +83,9 @@ impl lus::Decls {
         ty: Sp<candle::ty::TyBase>,
     ) -> TrResult<()> {
         for id in self.ids {
-            vars.elems.push(id.map_with_span(|span, id| {
+            vars.elems.push(id.map_with_span(|_, id| {
                 candle::decl::Var {
-                    name: id.map_with_span(|span, name| candle::expr::Var {
+                    name: id.map_with_span(|_, name| candle::expr::Var {
                         name: name.to_string(),
                     }),
                     ty: ty.map(|span, ty| {
@@ -113,7 +112,7 @@ impl lus::Type {
 
 impl lus::BaseType {
     pub fn translate(self) -> TrResult<Sp<candle::ty::TyBase>> {
-        Ok(self.map_with_span(|span, t| match t {
+        Ok(self.map_with_span(|_, t| match t {
             Self::Int(_) => candle::ty::TyBase::Int,
             Self::Float(_) => candle::ty::TyBase::Float,
             Self::Bool(_) => candle::ty::TyBase::Bool,
@@ -437,10 +436,10 @@ impl TranslateExpr for lus::expr::AddExpr {
         use syn::punctuated::Pair;
         assert!(!self.items.trailing_punct());
 
-        let mut it = self.items.into_pairs();
+        let mut its = self.items.into_pairs();
         let mut lhs;
         let mut op;
-        match it.next().expect("AddExpr should have at least one member") {
+        match its.next().expect("AddExpr should have at least one member") {
             Pair::Punctuated(e, o) => {
                 lhs = e.translate(blocks, stmts, depth)?;
                 op = o.translate()?;
@@ -449,7 +448,7 @@ impl TranslateExpr for lus::expr::AddExpr {
                 return e.translate(blocks, stmts, depth);
             }
         }
-        while let Some(it) = it.next() {
+        for it in its {
             match it {
                 Pair::Punctuated(e, o) => {
                     let rhs = e.translate(blocks, stmts, depth)?;
@@ -496,10 +495,10 @@ impl TranslateExpr for lus::expr::MulExpr {
         use syn::punctuated::Pair;
         assert!(!self.items.trailing_punct());
 
-        let mut it = self.items.into_pairs();
+        let mut its = self.items.into_pairs();
         let mut lhs;
         let mut op;
-        match it.next().expect("MulExpr should have at least one member") {
+        match its.next().expect("MulExpr should have at least one member") {
             Pair::Punctuated(e, o) => {
                 lhs = e.translate(blocks, stmts, depth)?;
                 op = o.translate()?;
@@ -508,7 +507,7 @@ impl TranslateExpr for lus::expr::MulExpr {
                 return e.translate(blocks, stmts, depth);
             }
         }
-        while let Some(it) = it.next() {
+        for it in its {
             match it {
                 Pair::Punctuated(e, o) => {
                     let rhs = e.translate(blocks, stmts, depth)?;
@@ -576,7 +575,7 @@ impl TranslateExpr for lus::expr::ParenExpr {
         }
         match es.elems.len() {
             0 => {
-                return Err(quote_spanned! {span=>
+                Err(quote_spanned! {span=>
                     compile_error!("Tuple should have at least one element");
                 })
             }
@@ -630,8 +629,8 @@ impl TranslateExpr for lus::expr::CallExpr {
 impl TranslateExpr for lus::expr::VarExpr {
     fn translate(
         self,
-        blocks: &mut BlockNames,
-        stmts: &mut StmtList,
+        _blocks: &mut BlockNames,
+        _stmts: &mut StmtList,
         depth: usize,
     ) -> TrResult<Sp<CandleExpr>> {
         let span = self.input_span();
@@ -649,9 +648,9 @@ impl TranslateExpr for lus::expr::VarExpr {
 impl TranslateExpr for lus::expr::LitExpr {
     fn translate(
         self,
-        blocks: &mut BlockNames,
-        stmts: &mut StmtList,
-        depth: usize,
+        _blocks: &mut BlockNames,
+        _stmts: &mut StmtList,
+        _depth: usize,
     ) -> TrResult<Sp<CandleExpr>> {
         let span = self.input_span();
         use syn::Lit;
