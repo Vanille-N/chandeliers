@@ -11,6 +11,7 @@ syn = "2.0"
 quote = "1.0"
 proc-macro2 = "1.0"
 chandeliers-syn = { path = "../chandeliers-syn" }
+chandeliers-san = { path = "../chandeliers-san" }
 chandeliers-sem = { path = "../chandeliers-sem" }
 trybuild = "1.0"
 

@@ -178,8 +178,8 @@ pub mod expr {
     //    [ not _ ]
     //    [ _ <= _ ], [ _ >= _ ], [ _ < _ ], [ _ > _ ] [ _ = _ ] (==)
     //    [ _ fby _ ] (<-)
-    //    [ pre _ ]
     //    [ _ -> _ ] (<-)
+    //    [ pre _ ]
     //    [ _ + _ ], [ _ - _ ] (->)
     //    [ _ * _ ], [ _ / _ ], [ _ % _ ] (->)
     //    [ - _ ]
@@ -243,7 +243,7 @@ pub mod expr {
     pub struct CallExpr {
         pub fun: Ident,
         #[syn(parenthesized)]
-        _paren_token: Paren,
+        pub _paren_token: Paren,
         #[syn(in = _paren_token)]
         #[parse(Punctuated::parse_terminated)]
         pub args: Punctuated<Box<Expr>, Token![,]>,
@@ -251,14 +251,21 @@ pub mod expr {
     pub type CallLevelExpr = ExprHierarchy<CallExpr, VarLevelExpr>;
     impl Hint for CallExpr {
         fn hint(s: ParseStream) -> bool {
-            s.parse::<CallExpr>().is_ok()
+            fn is_parenthesized(s: ParseStream) -> Result<Paren> {
+                s.parse::<Ident>()?;
+                let content;
+                let p = syn::parenthesized!(content in s);
+                Ok(p)
+            }
+            is_parenthesized(s).is_ok()
+
         }
     }
 
     #[derive(syn_derive::Parse)]
     pub struct ParenExpr {
         #[syn(parenthesized)]
-        _paren: Paren,
+        pub _paren: Paren,
         #[syn(in = _paren)]
         #[parse(Punctuated::parse_terminated)]
         pub inner: Punctuated<Box<Expr>, Token![,]>,
@@ -266,13 +273,18 @@ pub mod expr {
     pub type ParenLevelExpr = ExprHierarchy<ParenExpr, CallLevelExpr>;
     impl Hint for ParenExpr {
         fn hint(s: ParseStream) -> bool {
-            s.parse::<ParenExpr>().is_ok()
+            fn is_parenthesized(s: ParseStream) -> Result<Paren> {
+                let content;
+                let p = syn::parenthesized!(content in s);
+                Ok(p)
+            }
+            is_parenthesized(s).is_ok()
         }
     }
 
     #[derive(syn_derive::Parse)]
     pub struct NegExpr {
-        _neg: Token![-],
+        pub _neg: Token![-],
         pub inner: Box<NegLevelExpr>,
     }
     pub type NegLevelExpr = ExprHierarchy<NegExpr, ParenLevelExpr>;
@@ -289,7 +301,7 @@ pub mod expr {
         #[parse(peek = Token![/])]
         Div(Token![/]),
         #[parse(peek = Token![%])]
-        Mod(Token![%]),
+        Rem(Token![%]),
     }
 
     fn exactly_token_neg(s: ParseStream) -> bool {
@@ -315,6 +327,8 @@ pub mod expr {
         Gt(Token![>]),
         #[parse(peek = Token![=])]
         Eq(Token![=]),
+        #[parse(peek = punct::Neq)]
+        Ne(punct::Neq),
     }
 
     #[derive(syn_derive::Parse)]
@@ -332,18 +346,11 @@ pub mod expr {
     pub type AddLevelExpr = AddExpr;
 
     #[derive(syn_derive::Parse)]
-    pub struct ThenExpr {
-        #[parse(punctuated_parse_separated_nonempty_costly)]
-        pub items: Punctuated<AddLevelExpr, Token![->]>,
-    }
-    pub type ThenLevelExpr = ThenExpr;
-
-    #[derive(syn_derive::Parse)]
     pub struct PreExpr {
-        _pre: kw::pre,
+        pub _pre: kw::pre,
         pub inner: Box<PreLevelExpr>,
     }
-    pub type PreLevelExpr = ExprHierarchy<PreExpr, ThenLevelExpr>;
+    pub type PreLevelExpr = ExprHierarchy<PreExpr, AddLevelExpr>;
     impl Hint for PreExpr {
         fn hint(s: ParseStream) -> bool {
             s.peek(kw::pre)
@@ -351,9 +358,16 @@ pub mod expr {
     }
 
     #[derive(syn_derive::Parse)]
+    pub struct ThenExpr {
+        #[parse(punctuated_parse_separated_nonempty_costly)]
+        pub items: Punctuated<PreLevelExpr, Token![->]>,
+    }
+    pub type ThenLevelExpr = ThenExpr;
+
+    #[derive(syn_derive::Parse)]
     pub struct FbyExpr {
         #[parse(punctuated_parse_separated_nonempty_costly)]
-        pub items: Punctuated<PreLevelExpr, kw::fby>,
+        pub items: Punctuated<ThenLevelExpr, kw::fby>,
     }
     pub type FbyLevelExpr = FbyExpr;
 
@@ -366,7 +380,7 @@ pub mod expr {
 
     #[derive(syn_derive::Parse)]
     pub struct NotExpr {
-        _not: kw::not,
+        pub _not: kw::not,
         pub inner: Box<NotLevelExpr>,
     }
     pub type NotLevelExpr = ExprHierarchy<NotExpr, CmpLevelExpr>;
@@ -392,11 +406,11 @@ pub mod expr {
 
     #[derive(syn_derive::Parse)]
     pub struct IfExpr {
-        _if: Token![if],
+        pub _if: Token![if],
         pub cond: OrLevelExpr,
-        _then: kw::then,
+        pub _then: kw::then,
         pub yes: OrLevelExpr,
-        _else: Token![else],
+        pub _else: Token![else],
         pub no: OrLevelExpr,
     }
     impl Hint for IfExpr {
@@ -521,3 +535,136 @@ pub enum AttrNode {
 }
 
 pub struct Prog(Vec<Node>);
+
+use proc_macro2::Span;
+
+pub trait InputSpan {
+    fn input_span(&self) -> Span;
+}
+
+impl InputSpan for Token![#] { fn input_span(&self) -> Span { self.span() } }
+impl InputSpan for Token![-] { fn input_span(&self) -> Span { self.span() } }
+impl InputSpan for Ident { fn input_span(&self) -> Span { self.span() } }
+impl InputSpan for kw::pre { fn input_span(&self) -> Span { self.span() } }
+impl InputSpan for syn::Lit { fn input_span(&self) -> Span { self.span() } }
+impl InputSpan for Paren { fn input_span(&self) -> Span { self.span.join() } }
+
+fn joined<L: InputSpan, R: InputSpan>(l: &L, r: &R) -> Span {
+    l.input_span().join(r.input_span()).unwrap()
+}
+
+impl<T, P> InputSpan for Punctuated<T, P>
+where T: InputSpan {
+    fn input_span(&self) -> Span {
+        if self.len() == 1 {
+            self.first().unwrap().input_span()
+        } else {
+            joined(self.first().unwrap(), self.last().unwrap())
+        }
+    }
+}
+
+impl<X, Y> InputSpan for expr::ExprHierarchy<X, Y>
+where X: InputSpan,
+      Y: InputSpan,
+{
+    fn input_span(&self) -> Span {
+        match self {
+            Self::Here(x) => x.input_span(),
+            Self::Below(y) => y.input_span(),
+        }
+    }
+}
+
+impl InputSpan for AttrNode {
+    fn input_span(&self) -> Span {
+        match self {
+            Self::Tagged(a, n) => joined(a, n.as_ref()),
+            Self::Node(n) => n.input_span(),
+        }
+    }
+}
+
+impl InputSpan for Attribute {
+    fn input_span(&self) -> Span {
+        joined(&self.marker, &self.attr)
+    }
+}
+
+impl InputSpan for expr::LitExpr {
+    fn input_span(&self) -> Span {
+        self.lit.input_span()
+    }
+}
+
+impl InputSpan for expr::CmpExpr {
+    fn input_span(&self) -> Span {
+        self.items.input_span()
+    }
+}
+
+impl InputSpan for AttrDef {
+    fn input_span(&self) -> Span {
+        joined(&self.action, &self._paren)
+    }
+}
+
+impl InputSpan for Node {
+    fn input_span(&self) -> Span {
+        self._node.span().join(self._kwtel.span()).unwrap()
+    }
+}
+
+impl InputSpan for expr::FbyExpr {
+    fn input_span(&self) -> Span {
+        self.items.input_span()
+    }
+}
+
+impl InputSpan for expr::ThenExpr {
+    fn input_span(&self) -> Span {
+        self.items.input_span()
+    }
+}
+
+impl InputSpan for expr::PreExpr {
+    fn input_span(&self) -> Span {
+        joined(&self._pre, self.inner.as_ref())
+    }
+}
+
+impl InputSpan for expr::AddExpr {
+    fn input_span(&self) -> Span {
+        self.items.input_span()
+    }
+}
+
+impl InputSpan for expr::MulExpr {
+    fn input_span(&self) -> Span {
+        self.items.input_span()
+    }
+}
+
+impl InputSpan for expr::NegExpr {
+    fn input_span(&self) -> Span {
+        joined(&self._neg, self.inner.as_ref())
+    }
+}
+
+impl InputSpan for expr::VarExpr {
+    fn input_span(&self) -> Span {
+        self.name.input_span()
+    }
+}
+
+impl InputSpan for expr::CallExpr {
+    fn input_span(&self) -> Span {
+        joined(&self.fun, &self._paren_token)
+    }
+}
+
+impl InputSpan for expr::ParenExpr {
+    fn input_span(&self) -> Span {
+        self._paren.span.join()
+    }
+}

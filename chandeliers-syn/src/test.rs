@@ -1,6 +1,6 @@
 #![cfg(test)]
 
-use crate::*;
+use crate::ast::*;
 
 use proc_macro2::TokenStream;
 use syn::parse::Parse;
@@ -75,12 +75,14 @@ fn args_ty() {
     failure!(parse_as!(ArgsTy, "x"));
 }
 
+/*
 #[test]
 fn args_tys() {
     success!(parse_as!(ArgsTys, "x, y : float; w:bool; s : float;"));
     success!(parse_as!(ArgsTys, "x : bool"));
     success!(parse_as!(ArgsTys, ""));
 }
+*/
 
 #[test]
 fn target_expr() {

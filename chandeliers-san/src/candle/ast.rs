@@ -2,6 +2,8 @@
 
 use std::fmt;
 
+// FIXME: insert spans everywhere
+
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Tuple<T> {
     pub elems: Vec<T>,

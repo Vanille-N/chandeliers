@@ -85,6 +85,21 @@ fn main() {
 //       <----------ignore----------
 
 lustre::decl! {
+    node equivalence(a, b, c : bool) returns (ok : bool);
+    var s1, co1, s2, co2: bool;
+    let
+        a = 1;
+        b = -true;
+        c = 0.14;
+        d = 1 -> 0 -> pre pre x;
+        x = 0 fby (if b then 1 + 1 else 2);
+        y = float(1);
+        z = 0 fby foo(0 -> 1, (1, 2), x);
+        y = float(1);
+    tel
+}
+/*
+lustre::decl! {
     #[allow(unused_attr, recursive)]
     #[allow(unused_var, "a")]
     #[allow(non_positive_dependency)]
@@ -102,4 +117,6 @@ lustre::decl! {
       assert ok;
     tel
 }
+*/
+
 
