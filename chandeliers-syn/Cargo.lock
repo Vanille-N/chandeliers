@@ -5,6 +5,9 @@ version = 3
 [[package]]
 name = "chandeliers-san"
 version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+]
 
 [[package]]
 name = "chandeliers-syn"

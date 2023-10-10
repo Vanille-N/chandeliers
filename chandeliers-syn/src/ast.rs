@@ -9,6 +9,10 @@ trait Hint {
     fn hint(s: ParseStream) -> bool;
 }
 
+pub fn skip<T>(_s: ParseStream) -> Result<Option<T>> {
+    Ok(None)
+}
+
 pub mod kw {
     use syn::custom_keyword;
 
@@ -71,18 +75,24 @@ pub enum BaseType {
 
 #[derive(syn_derive::Parse)]
 pub struct Type {
+    #[parse(skip)]
+    pub span: Option<Span>,
     #[parse(BaseType::parse)]
     pub base: BaseType,
 }
 
 #[derive(syn_derive::Parse)]
 pub struct Decls {
+    #[parse(skip)]
+    pub span: Option<Span>,
     #[parse(Punctuated::parse_separated_nonempty)]
     pub ids: Punctuated<Ident, Token![,]>,
 }
 
 #[derive(syn_derive::Parse)]
 pub struct ArgsTy {
+    #[parse(skip)]
+    pub span: Option<Span>,
     pub args: Decls,
     _colon: Token![:],
     pub ty: Type,
@@ -90,11 +100,13 @@ pub struct ArgsTy {
 
 #[derive(Default)]
 pub struct ArgsTys {
+    pub span: Option<Span>,
     pub items: Punctuated<ArgsTy, Token![;]>,
 }
 impl ArgsTys {
     fn parse_terminated(input: ParseStream) -> Result<Self> {
         Ok(Self {
+            span: None,
             items: Punctuated::parse_terminated(input)?,
         })
     }
@@ -102,6 +114,7 @@ impl ArgsTys {
 impl ArgsTys {
     fn parse_separated_trailing_until_let(input: ParseStream) -> Result<Self> {
         Ok(Self {
+            span: None,
             items: punctuated_parse_separated_trailing_until::<ArgsTy, Token![;], Token![let]>(
                 input,
             )?,
@@ -118,6 +131,8 @@ pub enum TargetExpr {
 
 #[derive(syn_derive::Parse)]
 pub struct TargetExprTuple {
+    #[parse(skip)]
+    pub span: Option<Span>,
     #[syn(parenthesized)]
     _paren_token: Paren,
     #[syn(in = _paren_token)]
@@ -219,6 +234,8 @@ pub mod expr {
 
     #[derive(syn_derive::Parse)]
     pub struct LitExpr {
+        #[parse(skip)]
+        pub span: Option<Span>,
         pub lit: Lit,
     }
     pub type LitLevelExpr = LitExpr;
@@ -230,6 +247,8 @@ pub mod expr {
 
     #[derive(syn_derive::Parse)]
     pub struct VarExpr {
+        #[parse(skip)]
+        pub span: Option<Span>,
         pub name: Ident,
     }
     pub type VarLevelExpr = ExprHierarchy<VarExpr, LitLevelExpr>;
@@ -241,6 +260,8 @@ pub mod expr {
 
     #[derive(syn_derive::Parse)]
     pub struct CallExpr {
+        #[parse(skip)]
+        pub span: Option<Span>,
         pub fun: Ident,
         #[syn(parenthesized)]
         pub _paren_token: Paren,
@@ -258,12 +279,13 @@ pub mod expr {
                 Ok(p)
             }
             is_parenthesized(s).is_ok()
-
         }
     }
 
     #[derive(syn_derive::Parse)]
     pub struct ParenExpr {
+        #[parse(skip)]
+        pub span: Option<Span>,
         #[syn(parenthesized)]
         pub _paren: Paren,
         #[syn(in = _paren)]
@@ -284,6 +306,8 @@ pub mod expr {
 
     #[derive(syn_derive::Parse)]
     pub struct NegExpr {
+        #[parse(skip)]
+        pub span: Option<Span>,
         pub _neg: Token![-],
         pub inner: Box<NegLevelExpr>,
     }
@@ -333,6 +357,8 @@ pub mod expr {
 
     #[derive(syn_derive::Parse)]
     pub struct MulExpr {
+        #[parse(skip)]
+        pub span: Option<Span>,
         #[parse(punctuated_parse_separated_nonempty_costly)]
         pub items: Punctuated<NegLevelExpr, MulOp>,
     }
@@ -340,6 +366,8 @@ pub mod expr {
 
     #[derive(syn_derive::Parse)]
     pub struct AddExpr {
+        #[parse(skip)]
+        pub span: Option<Span>,
         #[parse(punctuated_parse_separated_nonempty_costly)]
         pub items: Punctuated<MulLevelExpr, AddOp>,
     }
@@ -347,6 +375,8 @@ pub mod expr {
 
     #[derive(syn_derive::Parse)]
     pub struct PreExpr {
+        #[parse(skip)]
+        pub span: Option<Span>,
         pub _pre: kw::pre,
         pub inner: Box<PreLevelExpr>,
     }
@@ -359,6 +389,8 @@ pub mod expr {
 
     #[derive(syn_derive::Parse)]
     pub struct ThenExpr {
+        #[parse(skip)]
+        pub span: Option<Span>,
         #[parse(punctuated_parse_separated_nonempty_costly)]
         pub items: Punctuated<PreLevelExpr, Token![->]>,
     }
@@ -366,6 +398,8 @@ pub mod expr {
 
     #[derive(syn_derive::Parse)]
     pub struct FbyExpr {
+        #[parse(skip)]
+        pub span: Option<Span>,
         #[parse(punctuated_parse_separated_nonempty_costly)]
         pub items: Punctuated<ThenLevelExpr, kw::fby>,
     }
@@ -373,6 +407,8 @@ pub mod expr {
 
     #[derive(syn_derive::Parse)]
     pub struct CmpExpr {
+        #[parse(skip)]
+        pub span: Option<Span>,
         #[parse(punctuated_parse_separated_nonempty_costly)]
         pub items: Punctuated<FbyLevelExpr, CmpOp>,
     }
@@ -380,6 +416,8 @@ pub mod expr {
 
     #[derive(syn_derive::Parse)]
     pub struct NotExpr {
+        #[parse(skip)]
+        pub span: Option<Span>,
         pub _not: kw::not,
         pub inner: Box<NotLevelExpr>,
     }
@@ -392,6 +430,8 @@ pub mod expr {
 
     #[derive(syn_derive::Parse)]
     pub struct AndExpr {
+        #[parse(skip)]
+        pub span: Option<Span>,
         #[parse(Punctuated::parse_separated_nonempty)]
         pub items: Punctuated<NotLevelExpr, kw::and>,
     }
@@ -399,6 +439,8 @@ pub mod expr {
 
     #[derive(syn_derive::Parse)]
     pub struct OrExpr {
+        #[parse(skip)]
+        pub span: Option<Span>,
         #[parse(Punctuated::parse_separated_nonempty)]
         pub items: Punctuated<AndLevelExpr, kw::or>,
     }
@@ -406,6 +448,8 @@ pub mod expr {
 
     #[derive(syn_derive::Parse)]
     pub struct IfExpr {
+        #[parse(skip)]
+        pub span: Option<Span>,
         pub _if: Token![if],
         pub cond: OrLevelExpr,
         pub _then: kw::then,
@@ -421,13 +465,14 @@ pub mod expr {
     pub type IfLevelExpr = ExprHierarchy<IfExpr, OrLevelExpr>;
 
     pub struct Expr {
+        pub span: Option<Span>,
         pub inner: IfLevelExpr,
     }
 
     impl Parse for Expr {
         fn parse(input: ParseStream) -> Result<Self> {
             let inner: IfLevelExpr = input.parse()?;
-            Ok(Self { inner })
+            Ok(Self { span: None, inner })
         }
     }
 }
@@ -436,6 +481,8 @@ pub use expr::Expr;
 
 #[derive(syn_derive::Parse)]
 pub struct Def {
+    #[parse(skip)]
+    pub span: Option<Span>,
     pub target: TargetExpr,
     _equal: Token![=],
     pub source: expr::Expr,
@@ -443,6 +490,8 @@ pub struct Def {
 
 #[derive(syn_derive::Parse)]
 pub struct Assertion {
+    #[parse(skip)]
+    pub span: Option<Span>,
     _assert: kw::assert,
     pub expr: expr::Expr,
 }
@@ -456,20 +505,33 @@ pub enum Statement {
 
 #[derive(syn_derive::Parse)]
 pub struct VarsDecl {
+    #[parse(skip)]
+    pub span: Option<Span>,
     _var: kw::var,
     #[parse(ArgsTys::parse_separated_trailing_until_let)]
     pub decls: ArgsTys,
+}
+
+pub struct SpanMarker(Span);
+
+impl Parse for SpanMarker {
+    fn parse(input: ParseStream) -> Result<Self> {
+        Ok(SpanMarker(input.span()))
+    }
 }
 
 #[derive(syn_derive::Parse)]
 pub enum OptionalVarsDecl {
     #[parse(peek = kw::var)]
     Decls(VarsDecl),
-    None,
+    None(SpanMarker),
 }
 
 #[derive(syn_derive::Parse)]
 pub struct Node {
+    #[parse(skip)]
+    pub span: Option<Span>,
+
     _node: kw::node,
 
     pub name: Ident,
@@ -510,6 +572,8 @@ pub enum AttrArg {
 
 #[derive(syn_derive::Parse)]
 pub struct AttrDef {
+    #[parse(skip)]
+    pub span: Option<Span>,
     action: Ident,
     #[syn(parenthesized)]
     _paren: Paren,
@@ -520,6 +584,8 @@ pub struct AttrDef {
 
 #[derive(syn_derive::Parse)]
 pub struct Attribute {
+    #[parse(skip)]
+    pub span: Option<Span>,
     marker: Token![#],
     #[syn(bracketed)]
     _brack: Bracket,
@@ -538,133 +604,432 @@ pub struct Prog(Vec<Node>);
 
 use proc_macro2::Span;
 
-pub trait InputSpan {
+pub trait InputSpan: Sized {
+    fn force_input_span(&self) -> Span;
     fn input_span(&self) -> Span;
+    fn span_everything(&mut self);
+    // Provided
+    fn map_with_span<U, F>(self, f: F) -> chandeliers_san::candle::ast::Sp<U>
+    where
+        F: FnOnce(Span, Self) -> U,
+    {
+        let span = self.input_span();
+        chandeliers_san::candle::ast::Sp::new(f(span, self), span)
+    }
+    fn map_ref_with_span<U, F>(&self, f: F) -> chandeliers_san::candle::ast::Sp<U>
+    where
+        F: FnOnce(Span, &Self) -> U,
+    {
+        let span = self.input_span();
+        chandeliers_san::candle::ast::Sp::new(f(span, self), span)
+    }
+
 }
 
-impl InputSpan for Token![#] { fn input_span(&self) -> Span { self.span() } }
-impl InputSpan for Token![-] { fn input_span(&self) -> Span { self.span() } }
-impl InputSpan for Ident { fn input_span(&self) -> Span { self.span() } }
-impl InputSpan for kw::pre { fn input_span(&self) -> Span { self.span() } }
-impl InputSpan for syn::Lit { fn input_span(&self) -> Span { self.span() } }
-impl InputSpan for Paren { fn input_span(&self) -> Span { self.span.join() } }
+macro_rules! input_span_cached {
+    ($ty:ident) => {
+        fn input_span(&self) -> Span {
+            self.span.expect(&format!("A Span was not properly registered on type {}. Don't forget to call `span_everything`.", stringify!($ty)))
+        }
+    }
+}
+
+macro_rules! span_everything_trivial {
+    () => {
+        fn span_everything(&mut self) {}
+    };
+}
+
+macro_rules! input_span_trivial {
+    () => {
+        fn input_span(&self) -> Span {
+            self.force_input_span()
+        }
+    };
+}
+
+macro_rules! impl_input_span_by_spanned {
+    ($t:ty) => {
+        impl InputSpan for $t {
+            fn force_input_span(&self) -> Span {
+                self.span()
+            }
+            input_span_trivial!();
+            span_everything_trivial!();
+        }
+    };
+}
+
+macro_rules! force_input_span_by_match {
+    ( $( $variant:ident ( $field:ident ), )* ) => {
+        fn force_input_span(&self) -> Span {
+            match self {
+                $(
+                    Self::$variant ( $field ) => {
+                        $field.input_span()
+                    }
+                )*
+            }
+        }
+    }
+}
+
+macro_rules! span_everything_by_match {
+    ( $( $variant:ident ( $field:ident ), )* ) => {
+        fn span_everything(&mut self) {
+            match self {
+                $(
+                    Self::$variant ( $field ) => {
+                        $field.span_everything();
+                    }
+                )*
+            }
+        }
+    }
+}
+
+macro_rules! force_input_span_is_projection {
+    ( $field:ident ) => {
+        fn force_input_span(&self) -> Span {
+            self.$field.input_span()
+        }
+    };
+}
+macro_rules! force_input_span_is_join {
+    ( $left:ident .. $right:ident ) => {
+        fn force_input_span(&self) -> Span {
+            self.$left
+                .input_span()
+                .join(self.$right.input_span())
+                .unwrap()
+        }
+    };
+}
+
+macro_rules! span_everything_for_fields {
+    ( $( $field:ident ),* ) => {
+        fn span_everything(&mut self) {
+            $(
+                self.$field.span_everything();
+            )*
+            self.span = Some(self.force_input_span());
+        }
+    }
+}
+
+impl_input_span_by_spanned!(Token![#]);
+impl_input_span_by_spanned!(Token![-]);
+impl_input_span_by_spanned!(Token![if]);
+impl_input_span_by_spanned!(Ident);
+impl_input_span_by_spanned!(kw::pre);
+impl_input_span_by_spanned!(kw::node);
+impl_input_span_by_spanned!(kw::tel);
+impl_input_span_by_spanned!(kw::not);
+impl_input_span_by_spanned!(kw::var);
+impl_input_span_by_spanned!(kw::assert);
+impl_input_span_by_spanned!(syn::Lit);
+impl_input_span_by_spanned!(kw::int);
+impl_input_span_by_spanned!(kw::float);
+impl_input_span_by_spanned!(kw::bool);
+
+impl InputSpan for Paren {
+    fn force_input_span(&self) -> Span {
+        self.span.join()
+    }
+    input_span_trivial!();
+    span_everything_trivial!();
+}
 
 fn joined<L: InputSpan, R: InputSpan>(l: &L, r: &R) -> Span {
     l.input_span().join(r.input_span()).unwrap()
 }
 
+impl<T> InputSpan for Box<T>
+where
+    T: InputSpan,
+{
+    fn force_input_span(&self) -> Span {
+        self.as_ref().force_input_span()
+    }
+    input_span_trivial!();
+    fn span_everything(&mut self) {
+        self.as_mut().span_everything();
+    }
+}
+
 impl<T, P> InputSpan for Punctuated<T, P>
-where T: InputSpan {
-    fn input_span(&self) -> Span {
+where
+    T: InputSpan,
+{
+    fn force_input_span(&self) -> Span {
         if self.len() == 1 {
             self.first().unwrap().input_span()
         } else {
             joined(self.first().unwrap(), self.last().unwrap())
         }
     }
+    fn span_everything(&mut self) {
+        for i in self.iter_mut() {
+            i.span_everything();
+        }
+    }
+    input_span_trivial!();
 }
 
 impl<X, Y> InputSpan for expr::ExprHierarchy<X, Y>
-where X: InputSpan,
-      Y: InputSpan,
+where
+    X: InputSpan,
+    Y: InputSpan,
 {
-    fn input_span(&self) -> Span {
-        match self {
-            Self::Here(x) => x.input_span(),
-            Self::Below(y) => y.input_span(),
-        }
+    force_input_span_by_match! {
+        Here(x),
+        Below(y),
+    }
+    input_span_trivial!();
+    span_everything_by_match! {
+        Here(x),
+        Below(y),
     }
 }
 
 impl InputSpan for AttrNode {
-    fn input_span(&self) -> Span {
+    fn force_input_span(&self) -> Span {
         match self {
             Self::Tagged(a, n) => joined(a, n.as_ref()),
             Self::Node(n) => n.input_span(),
         }
     }
+    input_span_trivial!();
+    fn span_everything(&mut self) {
+        match self {
+            Self::Tagged(a, n) => {
+                a.span_everything();
+                n.span_everything();
+            }
+            Self::Node(y) => y.span_everything(),
+        }
+    }
 }
 
 impl InputSpan for Attribute {
-    fn input_span(&self) -> Span {
-        joined(&self.marker, &self.attr)
-    }
+    force_input_span_is_join!(marker..attr);
+    input_span_cached!(Attribute);
+    span_everything_for_fields!(attr);
 }
 
 impl InputSpan for expr::LitExpr {
-    fn input_span(&self) -> Span {
-        self.lit.input_span()
-    }
+    force_input_span_is_projection!(lit);
+    input_span_cached!(LitExpr);
+    span_everything_for_fields!(lit);
 }
 
 impl InputSpan for expr::CmpExpr {
-    fn input_span(&self) -> Span {
-        self.items.input_span()
-    }
+    force_input_span_is_projection!(items);
+    input_span_cached!(CmpExpr);
+    span_everything_for_fields!(items);
 }
 
 impl InputSpan for AttrDef {
-    fn input_span(&self) -> Span {
-        joined(&self.action, &self._paren)
-    }
+    force_input_span_is_join!(action.._paren);
+    input_span_cached!(AttrDef);
+    span_everything_for_fields!(values);
 }
 
 impl InputSpan for Node {
-    fn input_span(&self) -> Span {
-        self._node.span().join(self._kwtel.span()).unwrap()
+    force_input_span_is_join!(_node.._kwtel);
+    input_span_cached!(Node);
+    span_everything_for_fields!(name, inputs, outputs, locals, defs);
+}
+
+impl InputSpan for ArgsTys {
+    force_input_span_is_projection!(items);
+    input_span_cached!(ArgsTys);
+    span_everything_for_fields!(items);
+}
+
+impl InputSpan for ArgsTy {
+    force_input_span_is_join!(args..ty);
+    input_span_cached!(ArgsTy);
+    span_everything_for_fields!(args, ty);
+}
+
+impl InputSpan for Type {
+    force_input_span_is_projection!(base);
+    input_span_cached!(Type);
+    span_everything_for_fields!(base);
+}
+
+impl InputSpan for BaseType {
+    force_input_span_by_match! {
+        Int(i),
+        Bool(b),
+        Float(f),
     }
+    input_span_trivial!();
+    span_everything_trivial!();
+}
+
+impl InputSpan for Decls {
+    force_input_span_is_projection!(ids);
+    input_span_cached!(Decls);
+    span_everything_for_fields!(ids);
 }
 
 impl InputSpan for expr::FbyExpr {
-    fn input_span(&self) -> Span {
-        self.items.input_span()
-    }
+    force_input_span_is_projection!(items);
+    input_span_cached!(FbyExpr);
+    span_everything_for_fields!(items);
 }
 
 impl InputSpan for expr::ThenExpr {
-    fn input_span(&self) -> Span {
-        self.items.input_span()
-    }
+    force_input_span_is_projection!(items);
+    input_span_cached!(ThenExpr);
+    span_everything_for_fields!(items);
 }
 
 impl InputSpan for expr::PreExpr {
-    fn input_span(&self) -> Span {
-        joined(&self._pre, self.inner.as_ref())
-    }
+    force_input_span_is_join!(_pre..inner);
+    input_span_cached!(PreExpr);
+    span_everything_for_fields!(inner);
 }
 
 impl InputSpan for expr::AddExpr {
-    fn input_span(&self) -> Span {
-        self.items.input_span()
-    }
+    force_input_span_is_projection!(items);
+    input_span_cached!(AddExpr);
+    span_everything_for_fields!(items);
 }
 
 impl InputSpan for expr::MulExpr {
-    fn input_span(&self) -> Span {
-        self.items.input_span()
-    }
+    force_input_span_is_projection!(items);
+    input_span_cached!(MulExpr);
+    span_everything_for_fields!(items);
 }
 
 impl InputSpan for expr::NegExpr {
-    fn input_span(&self) -> Span {
-        joined(&self._neg, self.inner.as_ref())
-    }
+    force_input_span_is_join!(_neg..inner);
+    input_span_cached!(NegExpr);
+    span_everything_for_fields!(inner);
 }
 
 impl InputSpan for expr::VarExpr {
-    fn input_span(&self) -> Span {
-        self.name.input_span()
-    }
+    force_input_span_is_projection!(name);
+    input_span_cached!(VarExpr);
+    span_everything_for_fields!(name);
 }
 
 impl InputSpan for expr::CallExpr {
-    fn input_span(&self) -> Span {
-        joined(&self.fun, &self._paren_token)
-    }
+    force_input_span_is_join!(fun.._paren_token);
+    input_span_cached!(CallExpr);
+    span_everything_for_fields!(args);
 }
 
 impl InputSpan for expr::ParenExpr {
-    fn input_span(&self) -> Span {
-        self._paren.span.join()
+    force_input_span_is_projection!(_paren);
+    input_span_cached!(ParenExpr);
+    span_everything_for_fields!(inner);
+}
+
+impl InputSpan for Statement {
+    force_input_span_by_match! {
+        Assert(a),
+        Def(d),
     }
+    input_span_trivial!();
+    span_everything_by_match! {
+        Assert(a),
+        Def(d),
+    }
+}
+impl InputSpan for Def {
+    force_input_span_is_join!(source..target);
+    input_span_cached!(Def);
+    span_everything_for_fields!(source, target);
+}
+
+impl InputSpan for TargetExpr {
+    force_input_span_by_match! {
+        Tuple(t),
+        Var(v),
+    }
+    input_span_trivial!();
+    span_everything_by_match! {
+        Tuple(t),
+        Var(v),
+    }
+}
+impl InputSpan for TargetExprTuple {
+    force_input_span_is_projection!(_paren_token);
+    input_span_trivial!();
+    span_everything_for_fields!(fields);
+}
+
+impl InputSpan for expr::Expr {
+    force_input_span_is_projection!(inner);
+    input_span_cached!(Expr);
+    span_everything_for_fields!(inner);
+}
+
+impl InputSpan for Assertion {
+    force_input_span_is_join!(_assert..expr);
+    input_span_cached!(Assertion);
+    span_everything_for_fields!(expr);
+}
+
+impl InputSpan for expr::IfExpr {
+    force_input_span_is_join!(_if..no);
+    input_span_cached!(IfExpr);
+    span_everything_for_fields!(cond, yes, no);
+}
+
+impl InputSpan for expr::OrExpr {
+    force_input_span_is_projection!(items);
+    input_span_cached!(OrExpr);
+    span_everything_for_fields!(items);
+}
+
+impl InputSpan for expr::AndExpr {
+    force_input_span_is_projection!(items);
+    input_span_cached!(AndExpr);
+    span_everything_for_fields!(items);
+}
+
+impl InputSpan for expr::NotExpr {
+    force_input_span_is_join!(_not..inner);
+    input_span_cached!(NotExpr);
+    span_everything_for_fields!(inner);
+}
+
+impl InputSpan for AttrArg {
+    force_input_span_by_match! {
+        Ident(i),
+        Lit(l),
+    }
+    input_span_trivial!();
+    span_everything_trivial!();
+}
+
+impl InputSpan for OptionalVarsDecl {
+    force_input_span_by_match! {
+        Decls(d),
+        None(m),
+    }
+    input_span_trivial!();
+    span_everything_by_match! {
+        Decls(d),
+        None(m),
+    }
+}
+
+impl InputSpan for VarsDecl {
+    force_input_span_is_join!(_var..decls);
+    input_span_cached!(VarsDecl);
+    span_everything_for_fields!(decls);
+}
+
+impl InputSpan for SpanMarker {
+    fn force_input_span(&self) -> Span {
+        self.0
+    }
+    input_span_trivial!();
+    span_everything_trivial!();
 }

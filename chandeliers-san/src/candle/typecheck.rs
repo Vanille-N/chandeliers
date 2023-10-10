@@ -2,212 +2,237 @@
 
 use std::collections::HashMap;
 
-use crate::candle::ast;
+use crate::candle::ast::{self, Sp};
+use proc_macro2::{Span, TokenStream};
+use quote::quote_spanned;
 
 #[must_use]
-#[derive(Debug, Clone, Default)]
-pub struct TcError {
-    msgs: Vec<String>,
-}
-
-impl TcError {
-    fn new<T>() -> Result<T, Self> {
-        Err(Self::default())
-    }
-
-    fn with(mut self, msg: String) -> Self {
-        self.msgs.push(msg);
-        self
-    }
-}
-
-pub type TcResult<T> = Result<T, TcError>;
+pub type TcResult<T> = Result<T, TokenStream>;
 
 use ast::ty::{TyBase, TyTuple};
 use ast::Tuple;
 
 #[derive(Debug, Default)]
 pub struct TyCtx {
-    vars: HashMap<ast::expr::Var, TyBase>,
-    nodes_in: HashMap<ast::expr::NodeId, Tuple<TyBase>>,
-    nodes_out: HashMap<ast::expr::NodeId, Tuple<TyBase>>,
+    vars: HashMap<ast::expr::Var, Sp<TyBase>>,
+    nodes_in: HashMap<ast::expr::NodeId, Sp<Tuple<Sp<TyBase>>>>,
+    nodes_out: HashMap<ast::expr::NodeId, Sp<Tuple<Sp<TyBase>>>>,
 }
+
 impl TyCtx {
-    fn get_var(&self, v: &ast::expr::Var) -> TcResult<TyTuple> {
-        match self.vars.get(v) {
-            Some(t) => Ok(TyTuple::Single(*t)),
+    fn get_var(&self, var: &ast::expr::Var) -> TcResult<Sp<TyTuple>> {
+        match self.vars.get(var) {
+            Some(ty) => Ok(ty.map(|span, ty| TyTuple::Single(Sp::new(ty, span)))),
             None => TcError::new()
-                .map_err(|e| e.with(format!("Variable {v} was not found in the context"))),
+                .map_err(|e| e.with(format!("Variable {var} was not found in the context"))),
         }
     }
 
-    fn get_node_out(&self, n: &ast::expr::NodeId) -> TcResult<TyTuple> {
-        match self.nodes_out.get(n) {
-            Some(t) => Ok(t.as_flat_tytuple()),
-            None => TcError::new().map_err(|e| e.with(format!("Node {n} does not exist"))),
+    fn get_node_out(&self, node: &ast::expr::NodeId) -> TcResult<Sp<TyTuple>> {
+        match self.nodes_out.get(node) {
+            Some(tup) => Ok(tup.as_flat_tytuple()),
+            None => TcError::new().map_err(|e| e.with(format!("Node {node} does not exist"))),
         }
     }
 }
 
 pub trait TypeCheckStmt {
-    fn typecheck(&self, ctx: &TyCtx) -> TcResult<()>;
+    fn typecheck(&self, ctx: &TyCtx) -> TcResult<Sp<()>>;
 }
 pub trait TypeCheckExpr {
-    fn typecheck(&self, ctx: &TyCtx) -> TcResult<TyTuple>;
+    fn typecheck(&self, ctx: &TyCtx) -> TcResult<Sp<TyTuple>>;
 }
 
-impl TypeCheckStmt for ast::stmt::Statement {
-    fn typecheck(&self, ctx: &TyCtx) -> TcResult<()> {
-        match self {
-            Self::Tick => Ok(()),
-            Self::Let { target, source } => {
-                let target_ty = target.typecheck(ctx)?;
-                let source_ty = source.typecheck(ctx)?;
-                target_ty.identical(&source_ty)
-            }
-            Self::Update(_) => Ok(()),
-            Self::Trace { .. } => Ok(()),
-            Self::Assert(e) => {
-                let t = e.typecheck(ctx)?;
-                let t = t.is_primitive()?;
-                t.is_bool()?;
-                Ok(())
-            }
-            Self::Substep { clk: _, id, args } => {
-                let Some(expected_tys) = ctx.nodes_out.get(id) else {
-                    return TcError::new().map_err(|e| {
-                        e.with(format!("Block {} is not registered", id))
-                    });
-                };
-                if expected_tys.elems.len() != args.elems.len() {
-                    TcError::new().map_err(|e| {
-                        e.with(format!("Block {} expects {} arguments but {} were given", id, expected_tys.elems.len(), args.elems.len()))
-                    })?;
+impl TypeCheckStmt for Sp<ast::stmt::Statement> {
+    fn typecheck(&self, ctx: &TyCtx) -> TcResult<Sp<()>> {
+        use ast::stmt::Statement;
+        self.as_ref()
+            .map(|span, stmt| match stmt {
+                Statement::Tick => Ok(()),
+                Statement::Let { target, source } => {
+                    let target_ty = target.typecheck(ctx)?;
+                    let source_ty = source.typecheck(ctx)?;
+                    target_ty.identical(&source_ty)
                 }
-                for (i, arg) in args.elems.iter().enumerate() {
-                    let actual_ty = arg.typecheck(ctx)?;
-                    TyTuple::Single(expected_tys.elems[i]).identical(&actual_ty)?;
+                Statement::Update(_) => Ok(()),
+                Statement::Trace { .. } => Ok(()),
+                Statement::Assert(e) => {
+                    let t = e.typecheck(ctx)?;
+                    let t = t.is_primitive()?;
+                    t.is_bool()?;
+                    Ok(())
                 }
-                Ok(())
-            }
-        }
-    }
-}
-
-impl TypeCheckExpr for ast::expr::Expr {
-    fn typecheck(&self, ctx: &TyCtx) -> TcResult<TyTuple> {
-        match self {
-            Self::Lit(l) => l.typecheck(ctx),
-            Self::Reference(r) => r.typecheck(ctx),
-            Self::Tuple(es) => {
-                let mut ts = Tuple::default();
-                for e in &es.elems {
-                    ts.elems.push(
-                        e.typecheck(ctx).map_err(|e| {
-                            e.with(format!("  while trying to recurse into {self}"))
-                        })?,
-                    );
+                Statement::Substep { clk: _, id, args } => {
+                    let Some(expected_tys) = ctx.nodes_out.get(&id.t) else {
+                        return TcError::new()
+                            .map_err(|e| e.with(format!("Block {} is not registered", id)));
+                    };
+                    if expected_tys.t.elems.len() != args.t.elems.len() {
+                        TcError::new().map_err(|e| {
+                            e.with(format!(
+                                "Block {} expects {} arguments but {} were given",
+                                id,
+                                expected_tys.t.elems.len(),
+                                args.t.elems.len()
+                            ))
+                        })?;
+                    }
+                    for (i, arg) in args.t.elems.iter().enumerate() {
+                        let actual_ty = arg.typecheck(ctx)?;
+                        expected_tys
+                            .as_ref()
+                            .map(|span, tys| TyTuple::Single(tys.elems[i]))
+                            .identical(&actual_ty)?;
+                    }
+                    Ok(())
                 }
-                Ok(TyTuple::Multiple(ts))
-            }
-            Self::BinOp { op, lhs, rhs } => {
-                let left = lhs.typecheck(ctx)?;
-                let right = rhs.typecheck(ctx)?;
-                op.accepts(left.is_primitive()?, right.is_primitive()?)?;
-                Ok(left)
-            }
-            Self::UnOp { op, inner } => {
-                let inner = inner.typecheck(ctx)?;
-                op.accepts(inner.is_primitive()?)?;
-                Ok(inner)
-            }
-            Self::CmpOp { op, lhs, rhs } => {
-                let left = lhs.typecheck(ctx)?;
-                let right = rhs.typecheck(ctx)?;
-                op.accepts(left.is_primitive()?, right.is_primitive()?)?;
-                Ok(TyTuple::Single(TyBase::Bool))
-            }
-            Self::Builtin(f) => f.typecheck(ctx),
-            Self::Later {
-                clk: _,
-                before,
-                after,
-            } => {
-                let left = before.typecheck(ctx)?;
-                let right = after.typecheck(ctx)?;
-                left.identical(&right)?;
-                Ok(left)
-            }
-            Self::Ifx { cond, yes, no } => {
-                let cond = cond.typecheck(ctx)?;
-                let yes = yes.typecheck(ctx)?;
-                let no = no.typecheck(ctx)?;
-                let cond = cond.is_primitive()?;
-                cond.is_bool()?;
-                yes.identical(&no)?;
-                Ok(yes)
-            }
-        }
+            })
+            .transpose()
     }
 }
 
-impl TypeCheckExpr for ast::expr::Builtin {
-    fn typecheck(&self, ctx: &TyCtx) -> TcResult<TyTuple> {
-        match self {
-            Self::Float(e) => match e.typecheck(ctx)? {
-                TyTuple::Single(_) => Ok(TyTuple::Single(TyBase::Float)),
-                TyTuple::Multiple(_) => TcError::new().map_err(|e| {
-                    e.with(format!(
-                        "Builtin float expects a single argument, not a tuple"
-                    ))
-                }),
-            },
-        }
-    }
-}
-
-impl TypeCheckExpr for ast::expr::Lit {
-    fn typecheck(&self, _ctx: &TyCtx) -> TcResult<TyTuple> {
-        match self {
-            Self::Int(_) => Ok(TyTuple::Single(TyBase::Int)),
-            Self::Float(_) => Ok(TyTuple::Single(TyBase::Float)),
-            Self::Bool(_) => Ok(TyTuple::Single(TyBase::Bool)),
-        }
-    }
-}
-
-impl TypeCheckExpr for ast::expr::Reference {
-    fn typecheck(&self, ctx: &TyCtx) -> TcResult<TyTuple> {
-        match self {
-            Self::Var(v) => ctx.get_var(&v.var),
-            Self::Node(n) => ctx.get_node_out(n),
-        }
-    }
-}
-
-impl TypeCheckExpr for ast::stmt::VarTuple {
-    fn typecheck(&self, ctx: &TyCtx) -> TcResult<TyTuple> {
-        match self {
-            Self::Single(v) => ctx.get_var(v),
-            Self::Multiple(vs) => {
-                let mut ts = Tuple::default();
-                for v in vs.elems.iter() {
-                    ts.elems.push(v.typecheck(ctx)?);
+impl TypeCheckExpr for Sp<ast::expr::Expr> {
+    fn typecheck(&self, ctx: &TyCtx) -> TcResult<Sp<TyTuple>> {
+        use ast::expr::Expr;
+        fn aux(span: Span, expr: &Expr, ctx: &TyCtx) -> TcResult<TyTuple> {
+            match expr {
+                Expr::Lit(l) => Ok(l.typecheck(ctx)?.t),
+                Expr::Reference(r) => Ok(r.typecheck(ctx)?.t),
+                Expr::Tuple(es) => {
+                    es.as_ref()
+                        .map(|span, es| {
+                            let mut ts = Tuple::default();
+                            for e in &es.elems {
+                                ts.elems.push(e.typecheck(ctx)?);
+                            }
+                            Ok(TyTuple::Multiple(Sp::new(ts, span)))
+                        })
+                        .t
                 }
-                Ok(TyTuple::Multiple(ts))
+                Expr::BinOp { op, lhs, rhs } => {
+                    let left = lhs.typecheck(ctx)?;
+                    let right = rhs.typecheck(ctx)?;
+                    op.accepts(left.is_primitive()?, right.is_primitive()?)?;
+                    Ok(left.t)
+                }
+                Expr::UnOp { op, inner } => {
+                    let inner = inner.typecheck(ctx)?;
+                    op.accepts(inner.is_primitive()?)?;
+                    Ok(inner.t)
+                }
+                Expr::CmpOp { op, lhs, rhs } => {
+                    let left = lhs.typecheck(ctx)?;
+                    let right = rhs.typecheck(ctx)?;
+                    op.accepts(left.is_primitive()?, right.is_primitive()?)?;
+                    Ok(TyTuple::Single(Sp::new(TyBase::Bool, span)))
+                }
+                Expr::Builtin(f) => Ok(f.typecheck(ctx)?.t),
+                Expr::Later {
+                    clk: _,
+                    before,
+                    after,
+                } => {
+                    let left = before.typecheck(ctx)?;
+                    let right = after.typecheck(ctx)?;
+                    left.identical(&right)?;
+                    Ok(left.t)
+                }
+                Expr::Ifx { cond, yes, no } => {
+                    let cond = cond.typecheck(ctx)?;
+                    let yes = yes.typecheck(ctx)?;
+                    let no = no.typecheck(ctx)?;
+                    let cond = cond.is_primitive()?;
+                    cond.is_bool()?;
+                    yes.identical(&no)?;
+                    Ok(yes.t)
+                }
             }
         }
+        self.as_ref()
+            .map(|span, expr| aux(span, expr, ctx))
+            .transpose()
+    }
+}
+
+impl TypeCheckExpr for Sp<ast::expr::Builtin> {
+    fn typecheck(&self, ctx: &TyCtx) -> TcResult<Sp<TyTuple>> {
+        use ast::expr::Builtin;
+        fn aux(span: Span, builtin: &Builtin, ctx: &TyCtx) -> TcResult<TyTuple> {
+            match builtin {
+                Builtin::Float(e) => match e.typecheck(ctx)?.t {
+                    TyTuple::Single(_) => Ok(TyTuple::Single(Sp::new(TyBase::Float, span))),
+                    TyTuple::Multiple(_) => TcError::new().map_err(|e| {
+                        e.with(format!(
+                            "Builtin float expects a single argument, not a tuple"
+                        ))
+                    }),
+                },
+            }
+        }
+        self.as_ref()
+            .map(|span, builtin| aux(span, builtin, ctx))
+            .transpose()
+    }
+}
+
+impl TypeCheckExpr for Sp<ast::expr::Lit> {
+    fn typecheck(&self, _ctx: &TyCtx) -> TcResult<Sp<TyTuple>> {
+        use ast::expr::Lit;
+        Ok(self.map(|span, lit| match lit {
+            Lit::Int(_) => TyTuple::Single(Sp::new(TyBase::Int, span)),
+            Lit::Float(_) => TyTuple::Single(Sp::new(TyBase::Float, span)),
+            Lit::Bool(_) => TyTuple::Single(Sp::new(TyBase::Bool, span)),
+        }))
+    }
+}
+
+impl TypeCheckExpr for Sp<ast::expr::Reference> {
+    fn typecheck(&self, ctx: &TyCtx) -> TcResult<Sp<TyTuple>> {
+        use ast::expr::Reference;
+        fn aux(span: Span, refer: &Reference, ctx: &TyCtx) -> TcResult<TyTuple> {
+            Ok(match refer {
+                Reference::Var(v) => ctx.get_var(&v.t.var)?.t,
+                Reference::Node(n) => ctx.get_node_out(&n.t)?.t,
+            })
+        }
+        self.as_ref()
+            .map(|span, refer| aux(span, refer, ctx))
+            .transpose()
+    }
+}
+
+impl TypeCheckExpr for Sp<ast::stmt::VarTuple> {
+    fn typecheck(&self, ctx: &TyCtx) -> TcResult<Sp<TyTuple>> {
+        use ast::decl::Var;
+        use ast::stmt::VarTuple;
+        fn aux_multiple(span: Span, vs: &Tuple<Sp<VarTuple>>, ctx: &TyCtx) -> TcResult<TyTuple> {
+            let mut ts = Tuple::default();
+            for v in vs.elems.iter() {
+                ts.elems.push(v.typecheck(ctx)?);
+            }
+            Ok(TyTuple::Multiple(Sp::new(ts, span)))
+        }
+        fn aux(span: Span, vartup: &VarTuple, ctx: &TyCtx) -> TcResult<TyTuple> {
+            match vartup {
+                VarTuple::Single(v) => Ok(ctx.get_var(&v.t)?.t),
+                VarTuple::Multiple(vs) => vs.as_ref().map(|span, vs| aux_multiple(span, vs, ctx)).t,
+            }
+        }
+
+        self.as_ref()
+            .map(|span, vartup| aux(span, vartup, ctx))
+            .transpose()
     }
 }
 
 impl ast::expr::BinOp {
-    fn accepts(&self, left: TyBase, right: TyBase) -> TcResult<()> {
+    fn accepts(&self, left: Sp<TyBase>, right: Sp<TyBase>) -> TcResult<()> {
         use ast::expr::BinOp::*;
         use TyBase::*;
-        if left != right {
+        if left.t != right.t {
             TcError::new().map_err(|e| e.with(format!("Binary operator {self} expects arguments of the same type: got {left} and {right}")))?;
         }
-        match (self, left) {
+        match (self, left.t) {
             (Add | Mul | Div | Sub | Rem, Bool) => TcError::new()
                 .map_err(|e| e.with(format!("Operator {self} does not expect a bool argument"))),
             (Rem, Float) => TcError::new().map_err(|e| {
@@ -223,10 +248,10 @@ impl ast::expr::BinOp {
 }
 
 impl ast::expr::UnOp {
-    fn accepts(&self, inner: TyBase) -> TcResult<()> {
+    fn accepts(&self, inner: Sp<TyBase>) -> TcResult<()> {
         use ast::expr::UnOp::*;
         use TyBase::*;
-        match (self, inner) {
+        match (self, inner.t) {
             (Neg, Bool) | (Not, Float) => TcError::new()
                 .map_err(|e| e.with(format!("Operator {self} cannot be applied to {inner}"))),
             _ => Ok(()),
@@ -235,13 +260,13 @@ impl ast::expr::UnOp {
 }
 
 impl ast::expr::CmpOp {
-    fn accepts(&self, left: TyBase, right: TyBase) -> TcResult<()> {
+    fn accepts(&self, left: Sp<TyBase>, right: Sp<TyBase>) -> TcResult<()> {
         use ast::expr::CmpOp::*;
         use TyBase::*;
-        if left != right {
+        if left.t != right.t {
             TcError::new().map_err(|e| e.with(format!("Comparison operator {self} expects arguments of the same type: got {left} and {right}")))?;
         }
-        match (self, left) {
+        match (self, left.t) {
             (Ne, Float) | (Eq, Float) => {
                 TcError::new().map_err(|e| e.with(format!("Equality on float is not reliable")))
             }
@@ -250,98 +275,118 @@ impl ast::expr::CmpOp {
     }
 }
 
-impl TyBase {
+impl Sp<TyBase> {
     fn always(self) -> TcResult<()> {
         Ok(())
     }
 
     fn is_numeric(self) -> TcResult<()> {
-        match self {
-            Self::Int | Self::Float => Ok(()),
-            Self::Bool => TcError::new().map_err(|e| e.with(format!("bool is not a numeric type"))),
+        match self.t {
+            TyBase::Int | TyBase::Float => Ok(()),
+            TyBase::Bool => {
+                TcError::new().map_err(|e| e.with(format!("bool is not a numeric type")))
+            }
         }
     }
 
     fn is_bool(self) -> TcResult<()> {
-        match self {
-            Self::Bool => Ok(()),
+        match self.t {
+            TyBase::Bool => Ok(()),
             _ => TcError::new().map_err(|e| e.with(format!("Expected bool, got {self}"))),
         }
     }
 }
 
-impl TyTuple {
+impl Sp<TyTuple> {
     fn identical(&self, other: &Self) -> TcResult<()> {
-        match (self, other) {
-            (Self::Single(t), Self::Single(u)) => {
-                if t != u {
-                    return TcError::new().map_err(|e| e.with(format!("Expected {t}, got {u}")));
+        use TyTuple::*;
+        match (&self.t, &other.t) {
+            (Single(left), Single(right)) => {
+                if left.t != right.t {
+                    return TcError::new()
+                        .map_err(|e| e.with(format!("Expected {left}, got {right}")));
                 } else {
                     Ok(())
                 }
             }
-            (Self::Multiple(ts), Self::Multiple(us)) => {
-                if ts.elems.len() != us.elems.len() {
+            (Multiple(ts), Multiple(us)) => {
+                if ts.t.elems.len() != us.t.elems.len() {
                     return TcError::new().map_err(|e| {
                         e.with(format!(
                             "Tuple types {self} and {other} do not have the same length"
                         ))
                     });
                 }
-                for (t, u) in ts.elems.iter().zip(us.elems.iter()) {
+                for (t, u) in ts.t.elems.iter().zip(us.t.elems.iter()) {
                     t.identical(u).map_err(|e| {
                         e.with(format!("  while trying to match {self} with {other}"))
                     })?;
                 }
                 Ok(())
             }
-            (Self::Multiple(_), Self::Single(_)) => TcError::new()
+            (Multiple(_), Single(_)) => TcError::new()
                 .map_err(|e| e.with(format!("Left type is a tuple while right type is a scalar"))),
-            (Self::Single(_), Self::Multiple(_)) => TcError::new()
+            (Single(_), Multiple(_)) => TcError::new()
                 .map_err(|e| e.with(format!("Left type is a scalar while right type is a tuple"))),
         }
     }
 
-    fn is_primitive(&self) -> TcResult<TyBase> {
-        if let Self::Multiple(ts) = self {
-            assert!(ts.elems.len() != 1);
+    fn is_primitive(&self) -> TcResult<Sp<TyBase>> {
+        use TyTuple::*;
+        if let Multiple(ts) = &self.t {
+            assert!(ts.t.elems.len() != 1);
         }
-        match self {
-            Self::Single(t) => Ok(*t),
-            Self::Multiple(_) => TcError::new()
-                .map_err(|e| e.with(format!("Expected a scalar type, got a tuple type"))),
-        }
+        self.as_ref()
+            .map(|span, t| match t {
+                Single(t) => Ok(t.t),
+                Multiple(_) => TcError::new()
+                    .map_err(|e| e.with(format!("Expected a scalar type, got a tuple type"))),
+            })
+            .transpose()
     }
 }
 
-impl Tuple<TyBase> {
-    fn as_flat_tytuple(&self) -> TyTuple {
-        TyTuple::Multiple(Tuple {
-            elems: self.elems.iter().map(|t| TyTuple::Single(*t)).collect(),
+impl Sp<Tuple<Sp<TyBase>>> {
+    fn as_flat_tytuple(&self) -> Sp<TyTuple> {
+        self.as_ref().map(|span, tup| {
+            TyTuple::Multiple(Sp::new(
+                Tuple {
+                    elems: tup
+                        .elems
+                        .iter()
+                        .map(|t| t.map(|span, t| TyTuple::Single(Sp::new(t, span))))
+                        .collect(),
+                },
+                span,
+            ))
         })
     }
 }
 
-impl ast::decl::Node {
+impl Sp<ast::decl::Node> {
     pub fn typecheck(
         &self,
-        ext: HashMap<ast::decl::NodeName, (Tuple<TyBase>, Tuple<TyBase>)>,
-    ) -> TcResult<(Tuple<TyBase>, Tuple<TyBase>)> {
+        ext: HashMap<ast::decl::NodeName, (Sp<Tuple<Sp<TyBase>>>, Sp<Tuple<Sp<TyBase>>>)>,
+    ) -> TcResult<()> {
         let mut ctx = TyCtx::default();
-        for vs in &[&self.inputs, &self.outputs, &self.locals] {
-            for v in &vs.elems {
-                if ctx.vars.insert(v.name.clone(), v.ty.base).is_some() {
+        for vs in &[&self.t.inputs, &self.t.outputs, &self.t.locals] {
+            for v in &vs.t.elems {
+                if ctx
+                    .vars
+                    .insert(v.t.name.t.clone(), v.t.ty.as_ref().map(|_, t| t.base.t))
+                    .is_some()
+                {
                     TcError::new().map_err(|e| {
                         e.with(format!(
                             "Variable {} is declared twice in node {}",
-                            v.name, self.name
+                            v.t.name, self.t.name
                         ))
                     })?;
                 }
             }
         }
-        for (id, blk) in self.blocks.iter().enumerate() {
-            let Some((i, o)) = ext.get(blk) else {
+        for (id, blk) in self.t.blocks.iter().enumerate() {
+            let Some((i, o)) = ext.get(&blk.t) else {
                 return TcError::new()
                     .map_err(|e| e.with(format!("Block {} is not defined", blk,)));
             };
@@ -349,11 +394,36 @@ impl ast::decl::Node {
             ctx.nodes_in.insert(id, i.clone());
             ctx.nodes_out.insert(id, o.clone());
         }
-        for st in &self.stmts {
+        for st in &self.t.stmts {
             st.typecheck(&ctx)?;
         }
-        let inputs = Tuple { elems: self.inputs.elems.iter().map(|v| v.ty.base).collect() };
-        let outputs = Tuple { elems: self.outputs.elems.iter().map(|v| v.ty.base).collect() };
-        Ok((inputs, outputs))
+        Ok(())
+    }
+
+    pub fn signature(&self) -> TcResult<(Sp<Tuple<Sp<TyBase>>>, Sp<Tuple<Sp<TyBase>>>)> {
+        let inputs = Tuple {
+            elems: self
+                .t
+                .inputs
+                .t
+                .elems
+                .iter()
+                .map(|v| v.t.ty.as_ref().map(|_, t| t.base.t))
+                .collect(),
+        };
+        let outputs = Tuple {
+            elems: self
+                .t
+                .outputs
+                .t
+                .elems
+                .iter()
+                .map(|v| v.t.ty.as_ref().map(|_, t| t.base.t))
+                .collect(),
+        };
+        Ok((
+            Sp::new(inputs, self.t.inputs.span),
+            Sp::new(outputs, self.t.outputs.span),
+        ))
     }
 }

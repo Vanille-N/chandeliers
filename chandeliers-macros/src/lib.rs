@@ -8,13 +8,20 @@ use chandeliers_syn as syntax;
 use chandeliers_san as sanitizer;
 use chandeliers_sem as semantics;
 
+use syntax::ast::InputSpan;
+
 #[proc_macro]
 pub fn decl(i: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    let prog: syntax::ast::AttrNode = parse_macro_input!(i as syntax::ast::AttrNode);
+    let mut prog: syntax::ast::AttrNode = parse_macro_input!(i as syntax::ast::AttrNode);
+    prog.span_everything();
     let prog = match prog.translate() {
         Ok(prog) => prog,
         Err(e) => return e.into(),
     };
+    match prog.typecheck(Default::default()) {
+        Ok(()) => {},
+        Err(e) => return e.into(),
+    }
     dbg!(&prog);
     unimplemented!();
     //let prog: semantics::Node = prog.into();
