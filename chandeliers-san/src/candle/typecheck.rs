@@ -6,7 +6,6 @@ use crate::candle::ast::{self, Sp};
 use proc_macro2::{Span, TokenStream};
 use quote::quote_spanned;
 
-#[must_use]
 pub type TcResult<T> = Result<T, TokenStream>;
 
 use ast::ty::{TyBase, TyTuple};
@@ -20,18 +19,24 @@ pub struct TyCtx {
 }
 
 impl TyCtx {
-    fn get_var(&self, var: &ast::expr::Var) -> TcResult<Sp<TyTuple>> {
-        match self.vars.get(var) {
+    fn get_var(&self, var: Sp<&ast::expr::Var>) -> TcResult<Sp<TyTuple>> {
+        match self.vars.get(&var.t) {
             Some(ty) => Ok(ty.map(|span, ty| TyTuple::Single(Sp::new(ty, span)))),
-            None => TcError::new()
-                .map_err(|e| e.with(format!("Variable {var} was not found in the context"))),
+            None => {
+                let s = format!("Variable {var} was not found in the context");
+                Err(quote_spanned! {var.span=>
+                    compile_error!(#s);
+                })
+            },
         }
     }
 
-    fn get_node_out(&self, node: &ast::expr::NodeId) -> TcResult<Sp<TyTuple>> {
-        match self.nodes_out.get(node) {
+    fn get_node_out(&self, node: Sp<&ast::expr::NodeId>) -> TcResult<Sp<TyTuple>> {
+        match self.nodes_out.get(&node.t) {
             Some(tup) => Ok(tup.as_flat_tytuple()),
-            None => TcError::new().map_err(|e| e.with(format!("Node {node} does not exist"))),
+            None => {
+                unreachable!("TyCtx is improperly initialized: it does not know {node}");
+            },
         }
     }
 }
@@ -64,18 +69,18 @@ impl TypeCheckStmt for Sp<ast::stmt::Statement> {
                 }
                 Statement::Substep { clk: _, id, args } => {
                     let Some(expected_tys) = ctx.nodes_out.get(&id.t) else {
-                        return TcError::new()
-                            .map_err(|e| e.with(format!("Block {} is not registered", id)));
+                        unreachable!("Substep is malformed: {id} is not a block");
                     };
                     if expected_tys.t.elems.len() != args.t.elems.len() {
-                        TcError::new().map_err(|e| {
-                            e.with(format!(
-                                "Block {} expects {} arguments but {} were given",
-                                id,
-                                expected_tys.t.elems.len(),
-                                args.t.elems.len()
-                            ))
-                        })?;
+                        let s = format!(
+                            "Block {} expects {} arguments but {} were given",
+                            id,
+                            expected_tys.t.elems.len(),
+                            args.t.elems.len()
+                        );
+                        return Err(quote_spanned! {self.span=>
+                            compile_error!(#s);//FIXME
+                        });
                     }
                     for (i, arg) in args.t.elems.iter().enumerate() {
                         let actual_ty = arg.typecheck(ctx)?;
@@ -161,11 +166,12 @@ impl TypeCheckExpr for Sp<ast::expr::Builtin> {
             match builtin {
                 Builtin::Float(e) => match e.typecheck(ctx)?.t {
                     TyTuple::Single(_) => Ok(TyTuple::Single(Sp::new(TyBase::Float, span))),
-                    TyTuple::Multiple(_) => TcError::new().map_err(|e| {
-                        e.with(format!(
-                            "Builtin float expects a single argument, not a tuple"
-                        ))
-                    }),
+                    TyTuple::Multiple(m) => {
+                        let s = format!("Builtin float expects a single argument, not a tuple");
+                        Err(quote_spanned! {m.span=>
+                            compile_error!(#s);
+                        })
+                    },
                 },
             }
         }
@@ -191,8 +197,8 @@ impl TypeCheckExpr for Sp<ast::expr::Reference> {
         use ast::expr::Reference;
         fn aux(span: Span, refer: &Reference, ctx: &TyCtx) -> TcResult<TyTuple> {
             Ok(match refer {
-                Reference::Var(v) => ctx.get_var(&v.t.var)?.t,
-                Reference::Node(n) => ctx.get_node_out(&n.t)?.t,
+                Reference::Var(v) => ctx.get_var(v.as_ref().map(|_, v| &v.var))?.t,
+                Reference::Node(n) => ctx.get_node_out(n.as_ref())?.t,
             })
         }
         self.as_ref()
@@ -214,7 +220,7 @@ impl TypeCheckExpr for Sp<ast::stmt::VarTuple> {
         }
         fn aux(span: Span, vartup: &VarTuple, ctx: &TyCtx) -> TcResult<TyTuple> {
             match vartup {
-                VarTuple::Single(v) => Ok(ctx.get_var(&v.t)?.t),
+                VarTuple::Single(v) => Ok(ctx.get_var(v.as_ref())?.t),
                 VarTuple::Multiple(vs) => vs.as_ref().map(|span, vs| aux_multiple(span, vs, ctx)).t,
             }
         }
@@ -229,19 +235,32 @@ impl ast::expr::BinOp {
     fn accepts(&self, left: Sp<TyBase>, right: Sp<TyBase>) -> TcResult<()> {
         use ast::expr::BinOp::*;
         use TyBase::*;
+        let span = left.span.join(right.span).unwrap();
         if left.t != right.t {
-            TcError::new().map_err(|e| e.with(format!("Binary operator {self} expects arguments of the same type: got {left} and {right}")))?;
+            let s = format!("Binary operator {self} expects arguments of the same type: got {left} and {right}");
+            return Err(quote_spanned! {span=>
+                compile_error!(#s);
+            });
         }
         match (self, left.t) {
-            (Add | Mul | Div | Sub | Rem, Bool) => TcError::new()
-                .map_err(|e| e.with(format!("Operator {self} does not expect a bool argument"))),
-            (Rem, Float) => TcError::new().map_err(|e| {
-                e.with(format!(
-                    "Operator {self} expects integer arguments: got floats"
-                ))
-            }),
-            (BitAnd | BitOr | BitXor, Float) => TcError::new()
-                .map_err(|e| e.with(format!("Cannot apply bitwise operators to float"))),
+            (Add | Mul | Div | Sub | Rem, Bool) => {
+                let s = format!("Operator {self} does not expect a bool argument");
+                Err(quote_spanned! {span=>
+                    compile_error!(#s);
+                })
+            },
+            (Rem, Float) => {
+                let s = format!("Operator {self} expects integer arguments: got floats");
+                Err(quote_spanned! {span=>
+                    compile_error!(#s);
+                })
+            },
+            (BitAnd | BitOr | BitXor, Float) => {
+                let s = format!("Cannot apply logical operators to float");
+                Err(quote_spanned! {span=>
+                    compile_error!(#s);
+                })
+            },
             _ => Ok(()),
         }
     }
@@ -252,8 +271,12 @@ impl ast::expr::UnOp {
         use ast::expr::UnOp::*;
         use TyBase::*;
         match (self, inner.t) {
-            (Neg, Bool) | (Not, Float) => TcError::new()
-                .map_err(|e| e.with(format!("Operator {self} cannot be applied to {inner}"))),
+            (Neg, Bool) | (Not, Float) => {
+                let s = format!("Operator {self} cannot be applied to {inner}");
+                Err(quote_spanned! {inner.span=>
+                    compile_error!(#s);
+                })
+            },
             _ => Ok(()),
         }
     }
@@ -263,13 +286,20 @@ impl ast::expr::CmpOp {
     fn accepts(&self, left: Sp<TyBase>, right: Sp<TyBase>) -> TcResult<()> {
         use ast::expr::CmpOp::*;
         use TyBase::*;
+        let span = left.span.join(right.span).unwrap();
         if left.t != right.t {
-            TcError::new().map_err(|e| e.with(format!("Comparison operator {self} expects arguments of the same type: got {left} and {right}")))?;
+            let s = format!("Comparison operator {self} expects arguments of the same type: got {left} and {right}");
+            return Err(quote_spanned! {span=>
+                compile_error!(#s);
+            });
         }
         match (self, left.t) {
             (Ne, Float) | (Eq, Float) => {
-                TcError::new().map_err(|e| e.with(format!("Equality on float is not reliable")))
-            }
+                let s = format!("Equality on float is not reliable");
+                Err(quote_spanned! {span=>
+                    compile_error!(#s);
+                })
+            },
             _ => Ok(()),
         }
     }
@@ -280,19 +310,15 @@ impl Sp<TyBase> {
         Ok(())
     }
 
-    fn is_numeric(self) -> TcResult<()> {
-        match self.t {
-            TyBase::Int | TyBase::Float => Ok(()),
-            TyBase::Bool => {
-                TcError::new().map_err(|e| e.with(format!("bool is not a numeric type")))
-            }
-        }
-    }
-
     fn is_bool(self) -> TcResult<()> {
         match self.t {
             TyBase::Bool => Ok(()),
-            _ => TcError::new().map_err(|e| e.with(format!("Expected bool, got {self}"))),
+            _ => {
+                let s = format!("Expected bool, got {self}");
+                Err(quote_spanned! {self.span=>
+                    compile_error!(#s);
+                })
+            }
         }
     }
 }
@@ -303,31 +329,38 @@ impl Sp<TyTuple> {
         match (&self.t, &other.t) {
             (Single(left), Single(right)) => {
                 if left.t != right.t {
-                    return TcError::new()
-                        .map_err(|e| e.with(format!("Expected {left}, got {right}")));
+                    let s = format!("Expected {left}, got {right}");
+                    Err(quote_spanned! {other.span=>
+                        compile_error!(#s);
+                    })
                 } else {
                     Ok(())
                 }
             }
             (Multiple(ts), Multiple(us)) => {
                 if ts.t.elems.len() != us.t.elems.len() {
-                    return TcError::new().map_err(|e| {
-                        e.with(format!(
-                            "Tuple types {self} and {other} do not have the same length"
-                        ))
+                    let s = format!("Expected {self}, got {other} instead that does not have the same length");
+                    return Err(quote_spanned! {other.span=>
+                        compile_error!(#s);
                     });
                 }
                 for (t, u) in ts.t.elems.iter().zip(us.t.elems.iter()) {
-                    t.identical(u).map_err(|e| {
-                        e.with(format!("  while trying to match {self} with {other}"))
-                    })?;
+                    t.identical(u)?;
                 }
                 Ok(())
             }
-            (Multiple(_), Single(_)) => TcError::new()
-                .map_err(|e| e.with(format!("Left type is a tuple while right type is a scalar"))),
-            (Single(_), Multiple(_)) => TcError::new()
-                .map_err(|e| e.with(format!("Left type is a scalar while right type is a tuple"))),
+            (Multiple(_), Single(_)) => {
+                let s = format!("Expected a tuple {}, got a scalar {}", self, other);
+                Err(quote_spanned! {other.span=>
+                    compile_error!(#s);
+                })
+            },
+            (Single(_), Multiple(_)) => {
+                let s = format!("Expected a scalar {}, got a tuple {}", self, other);
+                Err(quote_spanned! {other.span=>
+                    compile_error!(#s);
+                })
+            },
         }
     }
 
@@ -339,8 +372,12 @@ impl Sp<TyTuple> {
         self.as_ref()
             .map(|span, t| match t {
                 Single(t) => Ok(t.t),
-                Multiple(_) => TcError::new()
-                    .map_err(|e| e.with(format!("Expected a scalar type, got a tuple type"))),
+                Multiple(_) => {
+                    let s = format!("Expected a scalar type, got a tuple type");
+                    Err(quote_spanned! {self.span=>
+                        compile_error!(#s);
+                    })
+                },
             })
             .transpose()
     }
@@ -376,19 +413,19 @@ impl Sp<ast::decl::Node> {
                     .insert(v.t.name.t.clone(), v.t.ty.as_ref().map(|_, t| t.base.t))
                     .is_some()
                 {
-                    TcError::new().map_err(|e| {
-                        e.with(format!(
-                            "Variable {} is declared twice in node {}",
-                            v.t.name, self.t.name
-                        ))
-                    })?;
+                    let s = format!("Variable {} is declared twice in node {}", v.t.name, self.t.name);
+                    return Err(quote_spanned! {v.span=>
+                        compile_error!(#s);
+                    });
                 }
             }
         }
         for (id, blk) in self.t.blocks.iter().enumerate() {
             let Some((i, o)) = ext.get(&blk.t) else {
-                return TcError::new()
-                    .map_err(|e| e.with(format!("Block {} is not defined", blk,)));
+                let s = format!("Block {blk} is not defined");
+                return Err(quote_spanned! {blk.span =>
+                    compile_error!(#s);//FIXME
+                });
             };
             let id = ast::expr::NodeId { id };
             ctx.nodes_in.insert(id, i.clone());

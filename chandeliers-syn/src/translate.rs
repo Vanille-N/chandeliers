@@ -260,10 +260,10 @@ impl TranslateExpr for lus::expr::OrExpr {
         depth: usize,
     ) -> TrResult<Sp<CandleExpr>> {
         let mut it = self.items.into_iter();
-        let mut or = it.next().unwrap().translate(blocks, stmts, depth)?;
+        let mut or = it.next().expect("OrExpr should have at least one member").translate(blocks, stmts, depth)?;
         for e in it {
             let e = e.translate(blocks, stmts, depth)?;
-            let span = e.span.join(or.span).unwrap();
+            let span = e.span.join(or.span).expect("Faulty span");
             or = Sp::new(CandleExpr::BinOp {
                 op: candle::expr::BinOp::BitOr,
                 lhs: Box::new(or),
@@ -282,10 +282,10 @@ impl TranslateExpr for lus::expr::AndExpr {
         depth: usize,
     ) -> TrResult<Sp<CandleExpr>> {
         let mut it = self.items.into_iter();
-        let mut or = it.next().unwrap().translate(blocks, stmts, depth)?;
+        let mut or = it.next().expect("AndExpr should have at least one member").translate(blocks, stmts, depth)?;
         for e in it {
             let e = e.translate(blocks, stmts, depth)?;
-            let span = e.span.join(or.span).unwrap();
+            let span = e.span.join(or.span).expect("Faulty span");
             or = Sp::new(CandleExpr::BinOp {
                 op: candle::expr::BinOp::BitAnd,
                 lhs: Box::new(or),
@@ -324,7 +324,7 @@ impl TranslateExpr for lus::expr::CmpExpr {
         assert!(!self.items.trailing_punct());
         let mut it = self.items.into_pairs();
         // We must have a first element
-        let first = it.next().unwrap();
+        let first = it.next().expect("CmpExpr should have at least one member");
         let second = match it.next() {
             Some(second) => second,
             None => {
@@ -378,11 +378,11 @@ impl TranslateExpr for lus::expr::FbyExpr {
         depth: usize,
     ) -> TrResult<Sp<CandleExpr>> {
         let mut it = self.items.into_iter().enumerate().rev();
-        let (extra_depth, fby) = it.next().unwrap();
+        let (extra_depth, fby) = it.next().expect("FbyExpr should have at least one member");
         let mut fby = fby.translate(blocks, stmts, depth + extra_depth)?;
         for (d, e) in it {
             let e = e.translate(blocks, stmts, depth + d)?;
-            let span = fby.span.join(e.span).unwrap();
+            let span = fby.span.join(e.span).expect("Faulty span");
             fby = Sp::new(CandleExpr::Later {
                 clk: candle::clock::Depth { dt: depth + d },
                 before: Box::new(e),
@@ -412,11 +412,11 @@ impl TranslateExpr for lus::expr::ThenExpr {
         depth: usize,
     ) -> TrResult<Sp<CandleExpr>> {
         let mut it = self.items.into_iter().enumerate().rev();
-        let (_, then) = it.next().unwrap();
+        let (_, then) = it.next().expect("ThenExpr should have at least one member");
         let mut then = then.translate(blocks, stmts, depth)?;
         for (d, e) in it {
             let e = e.translate(blocks, stmts, depth)?;
-            let span = then.span.join(e.span).unwrap();
+            let span = then.span.join(e.span).expect("Faulty span");
             then = Sp::new(CandleExpr::Later {
                 clk: candle::clock::Depth { dt: depth + d },
                 before: Box::new(e),
@@ -440,7 +440,7 @@ impl TranslateExpr for lus::expr::AddExpr {
         let mut it = self.items.into_pairs();
         let mut lhs;
         let mut op;
-        match it.next().unwrap() {
+        match it.next().expect("AddExpr should have at least one member") {
             Pair::Punctuated(e, o) => {
                 lhs = e.translate(blocks, stmts, depth)?;
                 op = o.translate()?;
@@ -453,7 +453,7 @@ impl TranslateExpr for lus::expr::AddExpr {
             match it {
                 Pair::Punctuated(e, o) => {
                     let rhs = e.translate(blocks, stmts, depth)?;
-                    let span = lhs.span.join(rhs.span).unwrap();
+                    let span = lhs.span.join(rhs.span).expect("Faulty span");
                     lhs = Sp::new(CandleExpr::BinOp {
                         op,
                         lhs: Box::new(lhs),
@@ -463,7 +463,7 @@ impl TranslateExpr for lus::expr::AddExpr {
                 }
                 Pair::End(e) => {
                     let rhs = e.translate(blocks, stmts, depth)?;
-                    let span = lhs.span.join(rhs.span).unwrap();
+                    let span = lhs.span.join(rhs.span).expect("Faulty span");
                     lhs = Sp::new(CandleExpr::BinOp {
                         op,
                         lhs: Box::new(lhs),
@@ -499,7 +499,7 @@ impl TranslateExpr for lus::expr::MulExpr {
         let mut it = self.items.into_pairs();
         let mut lhs;
         let mut op;
-        match it.next().unwrap() {
+        match it.next().expect("MulExpr should have at least one member") {
             Pair::Punctuated(e, o) => {
                 lhs = e.translate(blocks, stmts, depth)?;
                 op = o.translate()?;
@@ -512,7 +512,7 @@ impl TranslateExpr for lus::expr::MulExpr {
             match it {
                 Pair::Punctuated(e, o) => {
                     let rhs = e.translate(blocks, stmts, depth)?;
-                    let span = lhs.span.join(rhs.span).unwrap();
+                    let span = lhs.span.join(rhs.span).expect("Faulty span");
                     lhs = Sp::new(CandleExpr::BinOp {
                         op,
                         lhs: Box::new(lhs),
@@ -522,7 +522,7 @@ impl TranslateExpr for lus::expr::MulExpr {
                 }
                 Pair::End(e) => {
                     let rhs = e.translate(blocks, stmts, depth)?;
-                    let span = lhs.span.join(rhs.span).unwrap();
+                    let span = lhs.span.join(rhs.span).expect("Faulty span");
                     lhs = Sp::new(CandleExpr::BinOp {
                         op,
                         lhs: Box::new(lhs),
@@ -580,7 +580,7 @@ impl TranslateExpr for lus::expr::ParenExpr {
                     compile_error!("Tuple should have at least one element");
                 })
             }
-            1 => Ok(es.elems.pop().unwrap()),
+            1 => Ok(es.elems.pop().expect("ParenExpr cannot be empty")),
             _ => Ok(Sp::new(CandleExpr::Tuple(Sp::new(es, span)), span)),
         }
     }
@@ -594,7 +594,7 @@ impl TranslateExpr for lus::expr::CallExpr {
         depth: usize,
     ) -> TrResult<Sp<CandleExpr>> {
         let span = self.input_span();
-        let args_span = self.args.input_span();
+        let args_span = self._paren.input_span();
         let mut es = candle::Tuple::default();
         for e in self.args.into_iter() {
             es.elems.push(e.translate(blocks, stmts, depth)?);
@@ -608,7 +608,7 @@ impl TranslateExpr for lus::expr::CallExpr {
                     })
                 } else {
                     Ok(Sp::new(CandleExpr::Builtin(Sp::new(candle::expr::Builtin::Float(Box::new(
-                        es.elems.pop().unwrap(),
+                        es.elems.pop().expect("Float argument count failure"),
                     )), span)), span))
                 }
             }
@@ -657,8 +657,8 @@ impl TranslateExpr for lus::expr::LitExpr {
         use syn::Lit;
         let lit = match self.lit {
             Lit::Bool(b) => candle::expr::Lit::Bool(b.value()),
-            Lit::Int(i) => candle::expr::Lit::Int(i.base10_parse().unwrap()),
-            Lit::Float(f) => candle::expr::Lit::Float(f.base10_parse().unwrap()),
+            Lit::Int(i) => candle::expr::Lit::Int(i.base10_parse().expect("Failed to parse Int")),
+            Lit::Float(f) => candle::expr::Lit::Float(f.base10_parse().expect("Failed to parse Float")),
             _ => {
                 return Err(quote_spanned! {self.input_span()=>
                     compile_error!("Lustre only accepts bool/int/float literals");

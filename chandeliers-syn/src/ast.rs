@@ -134,8 +134,8 @@ pub struct TargetExprTuple {
     #[parse(skip)]
     pub span: Option<Span>,
     #[syn(parenthesized)]
-    _paren_token: Paren,
-    #[syn(in = _paren_token)]
+    _paren: Paren,
+    #[syn(in = _paren)]
     #[parse(Punctuated::parse_terminated)]
     pub fields: Punctuated<TargetExpr, Token![,]>,
 }
@@ -264,8 +264,8 @@ pub mod expr {
         pub span: Option<Span>,
         pub fun: Ident,
         #[syn(parenthesized)]
-        pub _paren_token: Paren,
-        #[syn(in = _paren_token)]
+        pub _paren: Paren,
+        #[syn(in = _paren)]
         #[parse(Punctuated::parse_terminated)]
         pub args: Punctuated<Box<Expr>, Token![,]>,
     }
@@ -537,16 +537,16 @@ pub struct Node {
     pub name: Ident,
 
     #[syn(parenthesized)]
-    inputs_paren_token: Paren,
-    #[syn(in = inputs_paren_token)]
+    inputs_paren: Paren,
+    #[syn(in = inputs_paren)]
     #[parse(ArgsTys::parse_terminated)]
     pub inputs: ArgsTys,
 
     _returns: kw::returns,
 
     #[syn(parenthesized)]
-    outputs_paren_token: Paren,
-    #[syn(in = outputs_paren_token)]
+    outputs_paren: Paren,
+    #[syn(in = outputs_paren)]
     #[parse(ArgsTys::parse_terminated)]
     pub outputs: ArgsTys,
 
@@ -701,7 +701,7 @@ macro_rules! force_input_span_is_join {
             self.$left
                 .input_span()
                 .join(self.$right.input_span())
-                .unwrap()
+                .expect("Faulty span")
         }
     };
 }
@@ -741,7 +741,7 @@ impl InputSpan for Paren {
 }
 
 fn joined<L: InputSpan, R: InputSpan>(l: &L, r: &R) -> Span {
-    l.input_span().join(r.input_span()).unwrap()
+    l.input_span().join(r.input_span()).expect("Faulty span")
 }
 
 impl<T> InputSpan for Box<T>
@@ -762,6 +762,7 @@ where
     T: InputSpan,
 {
     fn force_input_span(&self) -> Span {
+        assert!(self.len() != 0, "Empty punctuated has no span");
         if self.len() == 1 {
             self.first().unwrap().input_span()
         } else {
@@ -918,7 +919,7 @@ impl InputSpan for expr::VarExpr {
 }
 
 impl InputSpan for expr::CallExpr {
-    force_input_span_is_join!(fun.._paren_token);
+    force_input_span_is_join!(fun.._paren);
     input_span_cached!(CallExpr);
     span_everything_for_fields!(args);
 }
@@ -958,7 +959,7 @@ impl InputSpan for TargetExpr {
     }
 }
 impl InputSpan for TargetExprTuple {
-    force_input_span_is_projection!(_paren_token);
+    force_input_span_is_projection!(_paren);
     input_span_trivial!();
     span_everything_for_fields!(fields);
 }

@@ -85,6 +85,15 @@ fn main() {
 //       <----------ignore----------
 
 lustre::decl! {
+    node foo(a : int; f : float) returns (b : bool);
+    var m, n : int;
+    let
+        f = float(1);
+    tel
+}
+
+/*
+lustre::decl! {
     node equivalence(a, b, c : bool) returns (ok : bool);
     var s1, co1, s2, co2: bool;
     let
@@ -98,6 +107,7 @@ lustre::decl! {
         y = float(1);
     tel
 }
+*/
 /*
 lustre::decl! {
     #[allow(unused_attr, recursive)]
@@ -118,5 +128,3 @@ lustre::decl! {
     tel
 }
 */
-
-
