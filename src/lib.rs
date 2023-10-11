@@ -84,12 +84,30 @@ fn main() {
 //       <--allow---    <-tolerate--
 //       <----------ignore----------
 
+/* Works
 lustre::decl! {
+    const A : int = B + Z;
+    const B : int = Z;
+    const C : int = A;
+    extern const W : int;
+    const D : int = C + E;
+    const E : int = W + Z;
+    extern const Z : int;
+}
+*/
+
+lustre::decl! {
+    const B : int = A + 1;
+    const C : int = B + A;
+    const A : int = 3;
+
     node foo(a : int; f : float) returns (b : bool);
     var m, n : int;
     let
-        f = float(1);
-    tel
+        a = A;
+        n = 1 + bar(1.0);
+    tel;
+    extern node bar(i : float) returns (n : int);
 }
 
 /*

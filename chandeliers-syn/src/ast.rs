@@ -563,6 +563,60 @@ pub struct Node {
 }
 
 #[derive(syn_derive::Parse)]
+pub struct Const {
+    #[parse(skip)]
+    pub span: Option<Span>,
+    _const: Token![const],
+    pub name: Ident,
+    _colon: Token![:],
+    pub ty: Type,
+    _equal: Token![=],
+    pub value: Expr,
+}
+
+#[derive(syn_derive::Parse)]
+pub struct ExtNode {
+    #[parse(skip)]
+    pub span: Option<Span>,
+    _extern: Token![extern],
+    _node: kw::node,
+    pub name: Ident,
+
+    #[syn(parenthesized)]
+    _inputs_paren: Paren,
+    #[syn(in = _inputs_paren)]
+    #[parse(ArgsTys::parse_terminated)]
+    pub inputs: ArgsTys,
+
+    _returns: kw::returns,
+
+    #[syn(parenthesized)]
+    _outputs_paren: Paren,
+    #[syn(in = _outputs_paren)]
+    #[parse(ArgsTys::parse_terminated)]
+    pub outputs: ArgsTys,
+}
+
+#[derive(syn_derive::Parse)]
+pub struct ExtConst {
+    #[parse(skip)]
+    pub span: Option<Span>,
+    _extern: Token![extern],
+    _const: Token![const],
+    pub name: Ident,
+    _colon: Token![:],
+    pub ty: Type,
+}
+
+#[derive(syn_derive::Parse)]
+#[parse(prefix = <Token![extern]>::parse)]
+pub enum Extern {
+    #[parse(peek = Token![const])]
+    Const(ExtConst),
+    Node(ExtNode),
+}
+
+#[derive(syn_derive::Parse)]
 pub enum AttrArg {
     #[parse(peek = Ident)]
     Ident(Ident),
@@ -594,13 +648,29 @@ pub struct Attribute {
 }
 
 #[derive(syn_derive::Parse)]
-pub enum AttrNode {
-    #[parse(peek = Token![#])]
-    Tagged(Attribute, Box<AttrNode>),
+pub enum Decl {
+    #[parse(peek = Token![extern])]
+    Extern(Extern),
+    #[parse(peek = Token![const])]
+    Const(Const),
     Node(Node),
 }
 
-pub struct Prog(Vec<Node>);
+
+#[derive(syn_derive::Parse)]
+pub enum AttrDecl {
+    #[parse(peek = Token![#])]
+    Tagged(Attribute, Box<AttrDecl>),
+    Node(Decl),
+}
+
+#[derive(syn_derive::Parse)]
+pub struct Prog {
+    #[parse(skip)]
+    pub span: Option<Span>,
+    #[parse(Punctuated::parse_terminated)]
+    pub decls: Punctuated<AttrDecl, Token![;]>,
+}
 
 use proc_macro2::Span;
 
@@ -720,6 +790,8 @@ macro_rules! span_everything_for_fields {
 impl_input_span_by_spanned!(Token![#]);
 impl_input_span_by_spanned!(Token![-]);
 impl_input_span_by_spanned!(Token![if]);
+impl_input_span_by_spanned!(Token![const]);
+impl_input_span_by_spanned!(Token![extern]);
 impl_input_span_by_spanned!(Ident);
 impl_input_span_by_spanned!(kw::pre);
 impl_input_span_by_spanned!(kw::node);
@@ -793,7 +865,7 @@ where
     }
 }
 
-impl InputSpan for AttrNode {
+impl InputSpan for AttrDecl {
     fn force_input_span(&self) -> Span {
         match self {
             Self::Tagged(a, n) => joined(a, n.as_ref()),
@@ -810,6 +882,12 @@ impl InputSpan for AttrNode {
             Self::Node(y) => y.span_everything(),
         }
     }
+}
+
+impl InputSpan for Prog {
+    force_input_span_is_projection!(decls);
+    input_span_cached!(Prog);
+    span_everything_for_fields!(decls);
 }
 
 impl InputSpan for Attribute {
@@ -840,6 +918,50 @@ impl InputSpan for Node {
     force_input_span_is_join!(_node.._kwtel);
     input_span_cached!(Node);
     span_everything_for_fields!(name, inputs, outputs, locals, defs);
+}
+
+impl InputSpan for ExtNode {
+    force_input_span_is_join!(_extern.._outputs_paren);
+    input_span_cached!(Node);
+    span_everything_for_fields!(name, inputs, outputs);
+}
+
+impl InputSpan for Decl {
+    force_input_span_by_match! {
+        Const(c),
+        Node(n),
+        Extern(e),
+    }
+    input_span_trivial!();
+    span_everything_by_match! {
+        Const(c),
+        Node(n),
+        Extern(e),
+    }
+}
+
+impl InputSpan for Extern {
+    force_input_span_by_match! {
+        Const(c),
+        Node(n),
+    }
+    input_span_trivial!();
+    span_everything_by_match! {
+        Const(c),
+        Node(n),
+    }
+}
+
+impl InputSpan for Const {
+    force_input_span_is_join!(_const..value);
+    input_span_cached!(Const);
+    span_everything_for_fields!(name, ty, value);
+}
+
+impl InputSpan for ExtConst {
+    force_input_span_is_join!(_const..ty);
+    input_span_cached!(ExtConst);
+    span_everything_for_fields!(name, ty);
 }
 
 impl InputSpan for ArgsTys {

@@ -13,16 +13,28 @@ use ast::Tuple;
 
 type SpTyBaseTuple = Sp<Tuple<Sp<TyBase>>>;
 
-#[derive(Debug, Default)]
-pub struct TyCtx {
+#[derive(Debug)]
+pub struct TyCtx<'i> {
+    global: &'i HashMap<ast::expr::Var, Sp<TyBase>>,
     vars: HashMap<ast::expr::Var, Sp<TyBase>>,
     nodes_in: HashMap<ast::expr::NodeId, SpTyBaseTuple>,
     nodes_out: HashMap<ast::expr::NodeId, SpTyBaseTuple>,
 }
 
-impl TyCtx {
+impl<'i> TyCtx<'i> {
+    fn from_ext(global: &'i HashMap<ast::expr::Var, Sp<TyBase>>) -> TyCtx<'i> {
+        Self {
+            global,
+            vars: Default::default(),
+            nodes_in: Default::default(),
+            nodes_out: Default::default(),
+        }
+    }
+}
+
+impl TyCtx<'_> {
     fn get_var(&self, var: Sp<&ast::expr::Var>) -> TcResult<Sp<TyTuple>> {
-        match self.vars.get(var.t) {
+        match self.vars.get(var.t).or_else(|| self.global.get(var.t)) {
             Some(ty) => Ok(ty.map(|span, ty| TyTuple::Single(Sp::new(ty, span)))),
             None => {
                 let s = format!("Variable {var} was not found in the context");
@@ -48,6 +60,7 @@ pub trait TypeCheckStmt {
 }
 pub trait TypeCheckExpr {
     fn typecheck(&self, ctx: &TyCtx) -> TcResult<Sp<TyTuple>>;
+    fn is_const(&self) -> TcResult<()>;
 }
 
 impl TypeCheckStmt for Sp<ast::stmt::Statement> {
@@ -70,7 +83,7 @@ impl TypeCheckStmt for Sp<ast::stmt::Statement> {
                     Ok(())
                 }
                 Statement::Substep { clk: _, id, args } => {
-                    let Some(expected_tys) = ctx.nodes_out.get(&id.t) else {
+                    let Some(expected_tys) = ctx.nodes_in.get(&id.t) else {
                         unreachable!("Substep is malformed: {id} is not a block");
                     };
                     if expected_tys.t.elems.len() != args.t.elems.len() {
@@ -112,7 +125,11 @@ impl TypeCheckExpr for Sp<ast::expr::Expr> {
                             for e in &es.elems {
                                 ts.elems.push(e.typecheck(ctx)?);
                             }
-                            Ok(TyTuple::Multiple(Sp::new(ts, span)))
+                            if ts.elems.len() > 1 {
+                                Ok(TyTuple::Multiple(Sp::new(ts, span)))
+                            } else {
+                                unimplemented!("Tuple to Single");
+                            }
                         })
                         .t
                 }
@@ -159,6 +176,40 @@ impl TypeCheckExpr for Sp<ast::expr::Expr> {
             .map(|span, expr| aux(span, expr, ctx))
             .transpose()
     }
+
+    fn is_const(&self) -> TcResult<()> {
+        use ast::expr::Expr;
+        match &self.t {
+            Expr::Lit(_) => Ok(()),
+            Expr::Reference(_) => Ok(()),
+            Expr::Tuple(_) => Ok(()),
+            Expr::BinOp { lhs, rhs, .. } => {
+                lhs.is_const()?;
+                rhs.is_const()?;
+                Ok(())
+            }
+            Expr::UnOp { inner, .. } => inner.is_const(),
+            Expr::Builtin(b) => b.is_const(),
+            Expr::CmpOp { lhs, rhs, .. } => {
+                lhs.is_const()?;
+                rhs.is_const()?;
+                Ok(())
+            }
+            Expr::Later { before, after, .. } => {
+                let span = before.span.join(after.span).expect("Faulty span");
+                Err(quote_spanned! {span=>
+                    compile_error!("Later is not valid in const contexts");
+                })
+            }
+            Expr::Ifx { cond, yes, no } => {
+                cond.is_const()?;
+                yes.is_const()?;
+                no.is_const()?;
+                Ok(())
+            }
+        }
+    }
+
 }
 
 impl TypeCheckExpr for Sp<ast::expr::Builtin> {
@@ -181,6 +232,12 @@ impl TypeCheckExpr for Sp<ast::expr::Builtin> {
             .map(|span, builtin| aux(span, builtin, ctx))
             .transpose()
     }
+
+    fn is_const(&self) -> TcResult<()> {
+        Err(quote_spanned! {self.span=>
+            compile_error!("Function calls are not valid in const contexts");
+        })
+    }
 }
 
 impl TypeCheckExpr for Sp<ast::expr::Lit> {
@@ -192,6 +249,10 @@ impl TypeCheckExpr for Sp<ast::expr::Lit> {
             Lit::Bool(_) => TyTuple::Single(Sp::new(TyBase::Bool, span)),
         }))
     }
+    fn is_const(&self) -> TcResult<()> {
+        Ok(())
+    }
+
 }
 
 impl TypeCheckExpr for Sp<ast::expr::Reference> {
@@ -207,6 +268,10 @@ impl TypeCheckExpr for Sp<ast::expr::Reference> {
             .map(|span, refer| aux(span, refer, ctx))
             .transpose()
     }
+    fn is_const(&self) -> TcResult<()> {
+        Ok(())
+    }
+
 }
 
 impl TypeCheckExpr for Sp<ast::stmt::VarTuple> {
@@ -217,7 +282,11 @@ impl TypeCheckExpr for Sp<ast::stmt::VarTuple> {
             for v in vs.elems.iter() {
                 ts.elems.push(v.typecheck(ctx)?);
             }
-            Ok(TyTuple::Multiple(Sp::new(ts, span)))
+            if ts.elems.len() > 1 {
+                Ok(TyTuple::Multiple(Sp::new(ts, span)))
+            } else {
+                unimplemented!("Tuple to Single")
+            }
         }
         fn aux(_span: Span, vartup: &VarTuple, ctx: &TyCtx) -> TcResult<TyTuple> {
             match vartup {
@@ -229,6 +298,10 @@ impl TypeCheckExpr for Sp<ast::stmt::VarTuple> {
         self.as_ref()
             .map(|span, vartup| aux(span, vartup, ctx))
             .transpose()
+    }
+
+    fn is_const(&self) -> TcResult<()> {
+        Ok(())
     }
 }
 
@@ -328,7 +401,7 @@ impl Sp<TyTuple> {
                 if left.t != right.t {
                     let s = format!("Expected {left}, got {right}");
                     Err(quote_spanned! {other.span=>
-                        compile_error!(#s);
+                        compile_error!(#s);//FIXME: must show both spans
                     })
                 } else {
                     Ok(())
@@ -338,7 +411,7 @@ impl Sp<TyTuple> {
                 if ts.t.elems.len() != us.t.elems.len() {
                     let s = format!("Expected {self}, got {other} instead that does not have the same length");
                     return Err(quote_spanned! {other.span=>
-                        compile_error!(#s);
+                        compile_error!(#s);//FIXME: must show both spans
                     });
                 }
                 for (t, u) in ts.t.elems.iter().zip(us.t.elems.iter()) {
@@ -349,13 +422,13 @@ impl Sp<TyTuple> {
             (Multiple(_), Single(_)) => {
                 let s = format!("Expected a tuple {}, got a scalar {}", self, other);
                 Err(quote_spanned! {other.span=>
-                    compile_error!(#s);
+                    compile_error!(#s);//FIXME: must show both spans
                 })
             },
             (Single(_), Multiple(_)) => {
                 let s = format!("Expected a scalar {}, got a tuple {}", self, other);
                 Err(quote_spanned! {other.span=>
-                    compile_error!(#s);
+                    compile_error!(#s);//FIXME: must show both spans
                 })
             },
         }
@@ -363,9 +436,6 @@ impl Sp<TyTuple> {
 
     fn is_primitive(&self) -> TcResult<Sp<TyBase>> {
         use TyTuple::*;
-        if let Multiple(ts) = &self.t {
-            assert!(ts.t.elems.len() != 1);
-        }
         self.as_ref()
             .map(|_, t| match t {
                 Single(t) => Ok(t.t),
@@ -383,16 +453,22 @@ impl Sp<TyTuple> {
 impl SpTyBaseTuple {
     fn as_flat_tytuple(&self) -> Sp<TyTuple> {
         self.as_ref().map(|span, tup| {
-            TyTuple::Multiple(Sp::new(
-                Tuple {
-                    elems: tup
-                        .elems
-                        .iter()
-                        .map(|t| t.map(|span, t| TyTuple::Single(Sp::new(t, span))))
-                        .collect(),
-                },
-                span,
-            ))
+            if tup.elems.len() > 1 {
+                TyTuple::Multiple(Sp::new(
+                    Tuple {
+                        elems: tup
+                            .elems
+                            .iter()
+                            .map(|t| t.map(|span, t| TyTuple::Single(Sp::new(t, span))))
+                            .collect(),
+                    },
+                    span,
+                ))
+            } else {
+                TyTuple::Single(Sp::new(
+                    tup.elems.last().expect("Length > 1").t, span
+                ))
+            }
         })
     }
 }
@@ -400,9 +476,10 @@ impl SpTyBaseTuple {
 impl Sp<ast::decl::Node> {
     pub fn typecheck(
         &self,
-        ext: HashMap<ast::decl::NodeName, (SpTyBaseTuple, SpTyBaseTuple)>,
+        extfun: &HashMap<ast::decl::NodeName, (SpTyBaseTuple, SpTyBaseTuple)>,
+        extvar: &HashMap<ast::expr::Var, Sp<TyBase>>,
     ) -> TcResult<()> {
-        let mut ctx = TyCtx::default();
+        let mut ctx = TyCtx::from_ext(extvar);
         for vs in &[&self.t.inputs, &self.t.outputs, &self.t.locals] {
             for v in &vs.t.elems {
                 if ctx
@@ -418,7 +495,7 @@ impl Sp<ast::decl::Node> {
             }
         }
         for (id, blk) in self.t.blocks.iter().enumerate() {
-            let Some((i, o)) = ext.get(&blk.t) else {
+            let Some((i, o)) = extfun.get(&blk.t) else {
                 let s = format!("Block {blk} is not defined");
                 return Err(quote_spanned! {blk.span =>
                     compile_error!(#s);//FIXME
@@ -434,7 +511,7 @@ impl Sp<ast::decl::Node> {
         Ok(())
     }
 
-    pub fn signature(&self) -> TcResult<(SpTyBaseTuple, SpTyBaseTuple)> {
+    pub fn signature(&self) -> (SpTyBaseTuple, SpTyBaseTuple) {
         let inputs = Tuple {
             elems: self
                 .t
@@ -455,9 +532,109 @@ impl Sp<ast::decl::Node> {
                 .map(|v| v.t.ty.as_ref().map(|_, t| t.base.t))
                 .collect(),
         };
-        Ok((
+        (
             Sp::new(inputs, self.t.inputs.span),
             Sp::new(outputs, self.t.outputs.span),
-        ))
+        )
+    }
+}
+
+impl Sp<ast::decl::ExtNode> {
+    pub fn signature(&self) -> (SpTyBaseTuple, SpTyBaseTuple) {
+        let inputs = Tuple {
+            elems: self
+                .t
+                .inputs
+                .t
+                .elems
+                .iter()
+                .map(|v| v.t.ty.as_ref().map(|_, t| t.base.t))
+                .collect(),
+        };
+        let outputs = Tuple {
+            elems: self
+                .t
+                .outputs
+                .t
+                .elems
+                .iter()
+                .map(|v| v.t.ty.as_ref().map(|_, t| t.base.t))
+                .collect(),
+        };
+        (
+            Sp::new(inputs, self.t.inputs.span),
+            Sp::new(outputs, self.t.outputs.span),
+        )
+    }
+}
+
+impl Sp<ast::decl::Const> {
+    pub fn typecheck(&self, varctx: &HashMap<ast::expr::Var, Sp<TyBase>>) -> TcResult<()> {
+        self.t.value.is_const()?;
+        let e = self.t.value.typecheck(&TyCtx::from_ext(varctx))?;
+        self.t.ty.map(|span, t| TyTuple::Single(Sp::new(t, span))).identical(&e)?;
+        Ok(())
+    }
+
+    pub fn signature(&self) -> (Sp<ast::expr::Var>, Sp<TyBase>) {
+        (self.t.name.clone(), self.t.ty)
+    }
+}
+
+impl Sp<ast::decl::ExtConst> {
+    pub fn signature(&self) -> (Sp<ast::expr::Var>, Sp<TyBase>) {
+        (self.t.name.clone(), self.t.ty)
+    }
+}
+
+
+impl Sp<ast::decl::Prog> {
+    pub fn typecheck(&self) -> TcResult<()> {
+        let mut varctx = HashMap::new();
+        let mut functx = HashMap::new();
+        for decl in &self.t.decls {
+            match &decl.t {
+                ast::decl::Decl::Const(c) => {
+                    c.typecheck(&varctx)?;
+                    let (name, ty) = c.signature();
+                    if varctx.insert(name.t.clone(), ty).is_some() {
+                        let s = format!("Redefinition of const {}", name);
+                        return Err(quote_spanned! {c.span=>
+                            compile_error!(#s);
+                        });
+                    }
+                }
+                ast::decl::Decl::Node(n) => {
+                    n.typecheck(&functx, &varctx)?;
+                    let (i, o) = n.signature();
+                    if functx.insert(n.t.name.t.clone(), (i, o)).is_some() {
+                        let s = format!("Redefinition of node {}", n.t.name);
+                        return Err(quote_spanned! {n.span=>
+                            compile_error!(#s);
+                        });
+                    }
+                }
+                ast::decl::Decl::ExtConst(c) => {
+                    let (name, ty) = c.signature();
+                    if varctx.insert(name.t.clone(), ty).is_some() {
+                        let s = format!("Redefinition of const {}", name);
+                        return Err(quote_spanned! {c.span=>
+                            compile_error!(#s);
+                        });
+                    }
+                }
+                ast::decl::Decl::ExtNode(n) => {
+                    let (i, o) = n.signature();
+                    if functx.insert(n.t.name.t.clone(), (i, o)).is_some() {
+                        let s = format!("Redefinition of node {}", n.t.name);
+                        return Err(quote_spanned! {n.span=>
+                            compile_error!(#s);
+                        });
+                    }
+                }
+
+            }
+        }
+        Ok(())
     }
 }

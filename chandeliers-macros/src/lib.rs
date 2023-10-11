@@ -9,16 +9,21 @@ use syntax::ast::InputSpan;
 
 #[proc_macro]
 pub fn decl(i: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    let mut prog: syntax::ast::AttrNode = parse_macro_input!(i as syntax::ast::AttrNode);
+    let mut prog: syntax::ast::Prog = parse_macro_input!(i as syntax::ast::Prog);
     prog.span_everything();
     let prog = match prog.translate() {
         Ok(prog) => prog,
         Err(e) => return e.into(),
     };
-    match prog.typecheck(Default::default()) {
+    let prog = match prog.causality() {
+        Ok(prog) => prog,
+        Err(e) => return e.into(),
+    };
+    match prog.typecheck() {
         Ok(()) => {},
         Err(e) => return e.into(),
     }
+    // FIXME: Positivity
     dbg!(&prog);
     unimplemented!();
     //let prog: semantics::Node = prog.into();

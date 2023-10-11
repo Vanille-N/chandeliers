@@ -20,11 +20,23 @@ pub trait TranslateExpr {
     ) -> TrResult<Sp<CandleExpr>>;
 }
 
-impl lus::AttrNode {
-    pub fn translate(self) -> TrResult<Sp<candle::decl::Node>> {
+impl lus::AttrDecl {
+    pub fn translate(self) -> TrResult<Sp<candle::decl::Decl>> {
         match self {
             Self::Tagged(_, n) => n.translate(),
             Self::Node(n) => n.translate(),
+        }
+    }
+}
+
+impl lus::Decl {
+    pub fn translate(self) -> TrResult<Sp<candle::decl::Decl>> {
+        let span = self.input_span();
+        match self {
+            Self::Const(c) => Ok(Sp::new(candle::decl::Decl::Const(c.translate()?), span)),
+            Self::Node(n) => Ok(Sp::new(candle::decl::Decl::Node(n.translate()?), span)),
+            Self::Extern(lus::Extern::Const(c)) => Ok(Sp::new(candle::decl::Decl::ExtConst(c.translate()?), span)),
+            Self::Extern(lus::Extern::Node(n)) => Ok(Sp::new(candle::decl::Decl::ExtNode(n.translate()?), span)),
         }
     }
 }
@@ -54,6 +66,64 @@ impl lus::Node {
             },
             span,
         ))
+    }
+}
+
+impl lus::Const {
+    pub fn translate(self) -> TrResult<Sp<candle::decl::Const>> {
+        let span = self.input_span();
+        let name = self.name.map_ref_with_span(|_, name| candle::expr::Var { name: name.to_string() });
+        let ty = self.ty.translate()?;
+        let mut v1 = Vec::new();
+        let mut v2 = Vec::new();
+        let value = self.value.translate(&mut v1, &mut v2, 0)?;
+        if !v1.is_empty() || !v2.is_empty() {
+            let s = format!("Expression {value} is not const: const expressions must not contain any function calls");
+            return Err(quote_spanned! {span=>
+                compile_error!(#s);
+            });
+        }
+        Ok(Sp::new(candle::decl::Const { name, ty, value }, span))
+    }
+}
+
+impl lus::ExtNode {
+    pub fn translate(self) -> TrResult<Sp<candle::decl::ExtNode>> {
+        let span = self.input_span();
+        let name = self
+            .name
+            .map_ref_with_span(|_, name| candle::decl::NodeName(name.to_string()));
+        let inputs = self.inputs.translate()?;
+        let outputs = self.outputs.translate()?;
+        Ok(Sp::new(
+            candle::decl::ExtNode {
+                name,
+                inputs,
+                outputs,
+            },
+            span,
+        ))
+    }
+}
+
+impl lus::ExtConst {
+    pub fn translate(self) -> TrResult<Sp<candle::decl::ExtConst>> {
+        let span = self.input_span();
+        let name = self.name.map_ref_with_span(|_, name| candle::expr::Var { name: name.to_string() });
+        let ty = self.ty.translate()?;
+        Ok(Sp::new(candle::decl::ExtConst { name, ty }, span))
+    }
+}
+
+
+impl lus::Prog {
+    pub fn translate(self) -> TrResult<Sp<candle::decl::Prog>> {
+        let span = self.input_span();
+        let mut decls = Vec::new();
+        for decl in self.decls.into_iter() {
+            decls.push(decl.translate()?);
+        }
+        Ok(Sp::new(candle::decl::Prog { decls }, span))
     }
 }
 
@@ -203,7 +273,11 @@ impl lus::TargetExprTuple {
         for t in self.fields {
             vs.elems.push(t.translate()?);
         }
-        Ok(Sp::new(candle::stmt::VarTuple::Multiple(Sp::new(vs, span)), span))
+        if vs.elems.len() > 1 {
+            Ok(Sp::new(candle::stmt::VarTuple::Multiple(Sp::new(vs, span)), span))
+        } else {
+            unimplemented!("Tuple to Single")
+        }
     }
 }
 

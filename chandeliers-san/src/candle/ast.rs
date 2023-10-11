@@ -385,6 +385,7 @@ pub mod decl {
     use super::ty;
     use super::Sp;
     use super::Tuple;
+    use super::ty::TyBase;
     use std::fmt;
 
     #[derive(Debug, Clone)]
@@ -410,5 +411,38 @@ pub mod decl {
         pub locals: Sp<Tuple<Sp<Var>>>,
         pub blocks: Vec<Sp<NodeName>>,
         pub stmts: Vec<Sp<stmt::Statement>>,
+    }
+
+    #[derive(Debug, Clone)]
+    pub struct Const {
+        pub name: Sp<expr::Var>,
+        pub ty: Sp<TyBase>,
+        pub value: Sp<expr::Expr>,
+    }
+
+    #[derive(Debug, Clone)]
+    pub struct ExtNode {
+        pub name: Sp<NodeName>,
+        pub inputs: Sp<Tuple<Sp<Var>>>,
+        pub outputs: Sp<Tuple<Sp<Var>>>,
+    }
+
+    #[derive(Debug, Clone)]
+    pub struct ExtConst {
+        pub name: Sp<expr::Var>,
+        pub ty: Sp<TyBase>,
+    }
+
+    #[derive(Debug, Clone)]
+    pub enum Decl {
+        Const(Sp<Const>),
+        Node(Sp<Node>),
+        ExtConst(Sp<ExtConst>),
+        ExtNode(Sp<ExtNode>),
+    }
+
+    #[derive(Debug, Clone)]
+    pub struct Prog {
+        pub decls: Vec<Sp<Decl>>,
     }
 }
