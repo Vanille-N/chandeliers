@@ -327,7 +327,7 @@ macro_rules! substep {
                 .update_mut(
                     $( $arg ),*
                 )
-        } else { nil!() }
+        } else { $crate::nil!() }
     }
 }
 
@@ -379,9 +379,9 @@ macro_rules! unop {
 macro_rules! nillable_cmp_ord {
     ($ord:ident, $res:expr, $lhs:expr, $rhs:expr) => {
         match $lhs.cmp($rhs) {
-            Some(std::cmp::Ordering::$ord) => lit!($res),
-            Some(_) => lit!(!$res),
-            None => nil!(),
+            Some(std::cmp::Ordering::$ord) => $crate::lit!($res),
+            Some(_) => $crate::lit!(!$res),
+            None => $crate::nil!(),
         }
     };
 }
@@ -392,9 +392,9 @@ macro_rules! nillable_cmp_ord {
 macro_rules! nillable_cmp_eq {
     ($equal:expr, $lhs:expr, $rhs:expr) => {
         match $lhs.eq($rhs) {
-            Some(true) => lit!($equal),
-            Some(false) => lit!(!$equal),
-            None => nil!(),
+            Some(true) => $crate::lit!($equal),
+            Some(false) => $crate::lit!(!$equal),
+            None => $crate::nil!(),
         }
     };
 }
