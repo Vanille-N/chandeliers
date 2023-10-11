@@ -360,8 +360,6 @@ pub mod stmt {
 
     #[derive(Debug, Clone)]
     pub enum Statement {
-        Tick,
-        Update(expr::Var),
         Let {
             target: Sp<VarTuple>,
             source: Sp<expr::Expr>,

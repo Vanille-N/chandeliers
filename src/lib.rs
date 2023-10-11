@@ -96,6 +96,7 @@ lustre::decl! {
 }
 */
 
+/*
 lustre::decl! {
     const B : int = A + 1;
     const C : int = B + A;
@@ -109,6 +110,7 @@ lustre::decl! {
     tel;
     extern node bar(i : float) returns (n : int);
 }
+*/
 
 /*
 lustre::decl! {
@@ -146,3 +148,16 @@ lustre::decl! {
     tel
 }
 */
+
+lustre::decl! {
+    extern node baz(i : int) returns (m : int);
+
+    node foo(a : int) returns (b : bool);
+    var m : int;
+    let
+        b = (m = 1);
+        m = baz(baz(baz(a + 1)));
+    tel
+}
+
+

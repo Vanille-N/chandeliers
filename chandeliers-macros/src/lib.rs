@@ -4,8 +4,10 @@ use syn::parse_macro_input;
 use quote::ToTokens;
 
 use chandeliers_syn as syntax;
+use chandeliers_san as sanitizer;
 
 use syntax::ast::InputSpan;
+use sanitizer::candle::causality::Causality;
 
 #[proc_macro]
 pub fn decl(i: proc_macro::TokenStream) -> proc_macro::TokenStream {
@@ -23,14 +25,10 @@ pub fn decl(i: proc_macro::TokenStream) -> proc_macro::TokenStream {
         Ok(()) => {},
         Err(e) => return e.into(),
     }
-    // FIXME: Positivity
-    dbg!(&prog);
-    unimplemented!();
-    //let prog: semantics::Node = prog.into();
-    //let mut toks = TokenStream::new();
-    //prog.to_tokens(&mut toks);
-    //dbg!(&toks);
-    //proc_macro::TokenStream::from(toks)
+    let mut toks = proc_macro2::TokenStream::new();
+    prog.to_tokens(&mut toks);
+    dbg!(&toks);
+    toks.into()
 }
 
 #[test]

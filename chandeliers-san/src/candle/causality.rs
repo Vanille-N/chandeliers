@@ -2,7 +2,7 @@
 
 use std::hash::Hash;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use proc_macro2::{Span, TokenStream};
 use quote::quote_spanned;
@@ -10,21 +10,59 @@ use quote::quote_spanned;
 use crate::candle::ast;
 pub type CycResult<T> = Result<T, TokenStream>;
 
-impl ast::Sp<ast::decl::Prog> {
-    pub fn causality(self) -> CycResult<Self> {
-        use ast::decl::Prog;
-        fn aux(prog: Prog) -> CycResult<Prog> {
-            let Prog { decls } = prog;
-            let mut g = Graph::default(|dec: &ast::Sp<ast::decl::Decl>| dec.span);
-            for decl in decls {
-                g.insert(decl)?;
-            }
-            let decls = g.scheduling()?;
-            Ok(Prog { decls })
+pub trait Causality: Sized {
+    fn causality(self) -> CycResult<Self>;
+}
+
+impl Causality for ast::decl::Prog {
+    fn causality(self) -> CycResult<Self> {
+        let Self { decls } = self;
+        let mut g = Graph::default(|dec: &ast::Sp<ast::decl::Decl>| dec.span);
+        for decl in decls {
+            g.insert(decl.causality()?)?;
         }
-        self.map(|_, prog| aux(prog)).transpose()
+        let decls = g.scheduling()?;
+        Ok(Self { decls })
     }
 }
+
+impl<T: Causality> Causality for ast::Sp<T> {
+    fn causality(self) -> CycResult<Self> {
+        self.map(|_, t| t.causality()).transpose()
+    }
+}
+
+impl Causality for ast::decl::Decl {
+    fn causality(self) -> CycResult<Self> {
+        Ok(match self {
+            Self::Node(n) => Self::Node(n.causality()?),
+            _ => self,
+        })
+    }
+}
+
+impl Causality for ast::decl::Node {
+    fn causality(self) -> CycResult<Self> {
+        use impl_depends::Reference;
+        let Self { name, inputs, outputs, locals, blocks, stmts } = self;
+        let mut g = Graph::default(|stmt: &ast::Sp<ast::stmt::Statement>| stmt.span);
+        for i in &inputs.t.elems {
+            g.already_provided(Reference::VarName(i.t.name.t.name.clone()));
+        }
+        for stmt in stmts {
+            g.insert(stmt)?;
+        }
+        for l in &locals.t.elems {
+            g.must_provide(l.span, Reference::VarName(l.t.name.t.name.clone()))?;
+        }
+        for o in &outputs.t.elems {
+            g.must_provide(o.span, Reference::VarName(o.t.name.t.name.clone()))?;
+        }
+        let stmts = g.scheduling()?;
+        Ok(Self { name, inputs, outputs, locals, blocks, stmts })
+    }
+}
+
 
 #[derive(Debug, Clone)]
 struct Graph<Obj, Unit, ObjSpan> {
@@ -32,6 +70,8 @@ struct Graph<Obj, Unit, ObjSpan> {
     atomics: (Vec<Unit>, HashMap<Unit, usize>),
     provide: Vec<Vec<usize>>,
     require: Vec<Vec<usize>>,
+    provided_by_ext: HashSet<usize>,
+    provided_for_ext: HashSet<usize>,
     span: ObjSpan,
 }
 
@@ -53,7 +93,38 @@ where
             atomics: Default::default(),
             provide: Default::default(),
             require: Default::default(),
+            provided_by_ext: Default::default(),
+            provided_for_ext: Default::default(),
             span,
+        }
+    }
+
+    fn get_or_insert_atomic(&mut self, o: Unit) -> usize {
+        match self.atomics.1.get(&o) {
+            Some(uid) => *uid,
+            None => {
+                let uid = self.atomics.0.len();
+                self.atomics.0.push(o.clone());
+                self.atomics.1.insert(o.clone(), uid);
+                uid
+            }
+        }
+    }
+
+    fn already_provided(&mut self, o: Unit) {
+        let uid = self.get_or_insert_atomic(o);
+        self.provided_by_ext.insert(uid);
+    }
+
+    fn must_provide(&mut self, span: Span, o: Unit) -> CycResult<()> {
+        let uid = self.get_or_insert_atomic(o.clone());
+        if !self.provided_for_ext.contains(&uid) {
+            let s = format!("No definition provided for {}", o);
+            Err(quote_spanned! {span=>
+                compile_error!(#s);
+            })
+        } else {
+            Ok(())
         }
     }
 
@@ -65,27 +136,12 @@ where
         t.provides(&mut provide_units);
         t.requires(&mut require_units);
         for prov in provide_units {
-            let uid = match self.atomics.1.get(&prov) {
-                Some(uid) => *uid,
-                None => {
-                    let uid = self.atomics.0.len();
-                    self.atomics.0.push(prov.clone());
-                    self.atomics.1.insert(prov.clone(), uid);
-                    uid
-                }
-            };
+            let uid = self.get_or_insert_atomic(prov);
             provide_uids.push(uid);
+            self.provided_for_ext.insert(uid);
         }
         for req in require_units {
-            let uid = match self.atomics.1.get(&req) {
-                Some(uid) => *uid,
-                None => {
-                    let uid = self.atomics.0.len();
-                    self.atomics.0.push(req.clone());
-                    self.atomics.1.insert(req.clone(), uid);
-                    uid
-                }
-            };
+            let uid = self.get_or_insert_atomic(req);
             require_uids.push(uid);
         }
         assert!(self.elements.len() == self.provide.len());
@@ -103,12 +159,18 @@ where
             let mut constraints = vec![vec![]; nb];
             for (id, provs) in self.provide.iter().enumerate() {
                 for &p in provs {
+                    if self.provided_by_ext.contains(&p) {
+                        let s = format!("Cannot redefine {} (already provided by the context)", self.atomics.0[p]);
+                        return Err(quote_spanned! {(self.span)(&self.elements[id])=>
+                            compile_error!(#s);
+                        });
+                    }
                     if provider[p].is_some() {
                         // FIXME: also show first definition site
                         let s = format!("{} is declared twice", self.atomics.0[p]);
                         return Err(quote_spanned! {(self.span)(&self.elements[id])=>
                             compile_error!(#s);
-                        })
+                        });
                     } else {
                         provider[p] = Some(id);
                     }
@@ -125,9 +187,9 @@ where
             }
             (provider, constraints)
         };
-        dbg!(&self.atomics);
-        dbg!(&constraints);
-        dbg!(&provider);
+        //dbg!(&self.atomics);
+        //dbg!(&constraints);
+        //dbg!(&provider);
         // Tarjan
         let scc = {
             #[derive(Default, Clone)]
@@ -365,16 +427,12 @@ mod impl_depends {
     impl Depends for stmt::Statement {
         type Output = Reference;
         provide_by_match! {
-            Self::Tick => ;
-            Self::Update(_) => ;
             Self::Let { target, .. } => target;
             Self::Substep { id, .. } => id;
             Self::Trace { .. } => ;
             Self::Assert(_) => ;
         }
         require_by_match! {
-            Self::Tick => ;
-            Self::Update(_) => ;
             Self::Let { source, .. } => source;
             Self::Substep { args, .. } => args;
             Self::Trace { .. } => ;
@@ -415,7 +473,7 @@ mod impl_depends {
 
     impl Depends for expr::NodeId {
         type Output = Reference;
-        provide_nothing!();
+        provide_this!(|this: &Self| Reference::NodeId(this.id));
         require_this!(|this: &Self| Reference::NodeId(this.id));
     }
 
@@ -441,6 +499,9 @@ mod impl_depends {
             Self::Single(s) => s;
             Self::Multiple(m) => m;
         }
-        require_nothing!();
+        require_by_match! {
+            Self::Single(s) => s;
+            Self::Multiple(m) => m;
+        }
     }
 }

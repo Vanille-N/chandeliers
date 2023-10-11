@@ -68,13 +68,11 @@ impl TypeCheckStmt for Sp<ast::stmt::Statement> {
         use ast::stmt::Statement;
         self.as_ref()
             .map(|_, stmt| match stmt {
-                Statement::Tick => Ok(()),
                 Statement::Let { target, source } => {
                     let target_ty = target.typecheck(ctx)?;
                     let source_ty = source.typecheck(ctx)?;
                     target_ty.identical(&source_ty)
                 }
-                Statement::Update(_) => Ok(()),
                 Statement::Trace { .. } => Ok(()),
                 Statement::Assert(e) => {
                     let t = e.typecheck(ctx)?;
