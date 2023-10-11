@@ -149,15 +149,56 @@ lustre::decl! {
 }
 */
 
+/*
 lustre::decl! {
-    extern node baz(i : int) returns (m : int);
-
-    node foo(a : int) returns (b : bool);
-    var m : int;
+    node baz(i : int) returns (m : int);
     let
-        b = (m = 1);
-        m = baz(baz(baz(a + 1)));
+        m = i;
+    tel;
+
+    const Z : int = X + 2;
+    const X : int = 1 + (2 % 3) + 4 + 7;
+    const Y : bool = (X = 5) or (X + 1 < 4);
+
+    node foo(a, b, c : int; d, e, f : float) returns (g, h : bool);
+    var m, n, o : int;
+    let
+        h = (n = 1);
+        (n, o) = (0,1) fby (n,n+o);
+        g = h;
+        m = 0 -> pre baz(baz(baz(a + 1)));
+    tel
+}
+*/
+
+
+lustre::decl! {
+    node add(a, b : int) returns (sum : int);
+    let
+        sum = a + b;
     tel
 }
 
+#[test]
+fn add_correct() {
+    use chandeliers_sem::*;
+    let mut add = add::default();
+    assert_is!(add.update_mut(lit!(5), lit!(4)), lit!(9));
+}
 
+lustre::decl! {
+    const FIB0 : int = 0;
+    const FIB1 : int = 1;
+    node fib() returns (x : int);
+    let x = FIB0 -> FIB1 -> (pre x + pre pre x); tel;
+}
+
+#[test]
+fn fib_behavior() {
+    let mut fib = fib::default();
+    let mut vals = vec![];
+    for _ in 0..10 {
+        vals.push(fib.update_mut().unwrap());
+    }
+    assert_eq!(&vals, &[0, 1, 1, 2, 3, 5, 8, 13, 21, 34]);
+}

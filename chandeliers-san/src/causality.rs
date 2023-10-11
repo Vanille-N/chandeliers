@@ -7,7 +7,7 @@ use std::collections::{HashMap, HashSet};
 use proc_macro2::{Span, TokenStream};
 use quote::quote_spanned;
 
-use crate::candle::ast;
+use crate::ast;
 pub type CycResult<T> = Result<T, TokenStream>;
 
 pub trait Causality: Sized {
@@ -275,7 +275,7 @@ where
 mod impl_depends {
     use std::fmt;
     use super::Depends;
-    use crate::candle::ast::*;
+    use crate::ast::*;
 
     #[derive(Debug, Clone, PartialEq, Eq, Hash)]
     pub(super) enum Reference {
@@ -468,6 +468,7 @@ mod impl_depends {
         require_by_match! {
             Self::Var(v) => v;
             Self::Node(n) => n;
+            Self::Global(g) => g;
         }
     }
 

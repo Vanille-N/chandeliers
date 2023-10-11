@@ -62,9 +62,11 @@ impl<T> Default for Tuple<T> {
 
 pub mod clock {
     use std::fmt;
+    use super::Span;
 
     #[derive(Debug, Clone, Copy)]
     pub struct Depth {
+        pub span: Span,
         pub dt: usize,
     }
 
@@ -173,7 +175,7 @@ pub mod expr {
 
     #[derive(Debug, Clone)]
     pub struct ClockVar {
-        pub var: Var,
+        pub var: Sp<Var>,
         pub depth: clock::Depth,
     }
 
@@ -196,6 +198,7 @@ pub mod expr {
 
     #[derive(Debug, Clone)]
     pub enum Reference {
+        Global(Sp<Var>),
         Var(Sp<ClockVar>),
         Node(Sp<NodeId>),
     }
@@ -205,6 +208,7 @@ pub mod expr {
             match self {
                 Self::Var(v) => write!(f, "{v}"),
                 Self::Node(n) => write!(f, "{n}"),
+                Self::Global(g) => write!(f, "{g}"),
             }
         }
     }

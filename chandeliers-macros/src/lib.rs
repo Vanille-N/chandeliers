@@ -7,7 +7,7 @@ use chandeliers_syn as syntax;
 use chandeliers_san as sanitizer;
 
 use syntax::ast::InputSpan;
-use sanitizer::candle::causality::Causality;
+use sanitizer::causality::Causality;
 
 #[proc_macro]
 pub fn decl(i: proc_macro::TokenStream) -> proc_macro::TokenStream {
@@ -27,7 +27,6 @@ pub fn decl(i: proc_macro::TokenStream) -> proc_macro::TokenStream {
     }
     let mut toks = proc_macro2::TokenStream::new();
     prog.to_tokens(&mut toks);
-    dbg!(&toks);
     toks.into()
 }
 

@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 
-use crate::candle::ast::{self, Sp};
+use crate::ast::{self, Sp};
 use proc_macro2::{Span, TokenStream};
 use quote::quote_spanned;
 
@@ -34,10 +34,22 @@ impl<'i> TyCtx<'i> {
 
 impl TyCtx<'_> {
     fn get_var(&self, var: Sp<&ast::expr::Var>) -> TcResult<Sp<TyTuple>> {
-        match self.vars.get(var.t).or_else(|| self.global.get(var.t)) {
+        match self.vars.get(var.t) {
             Some(ty) => Ok(ty.map(|span, ty| TyTuple::Single(Sp::new(ty, span)))),
             None => {
-                let s = format!("Variable {var} was not found in the context");
+                let s = format!("Variable {var} was not found in the context (assumed to be a local variable)");
+                Err(quote_spanned! {var.span=>
+                    compile_error!(#s);
+                })
+            },
+        }
+    }
+
+    fn get_global(&self, var: Sp<&ast::expr::Var>) -> TcResult<Sp<TyTuple>> {
+        match self.global.get(var.t) {
+            Some(ty) => Ok(ty.map(|span, ty| TyTuple::Single(Sp::new(ty, span)))),
+            None => {
+                let s = format!("Variable {var} was not found in the context (assumed to be a global variable)");
                 Err(quote_spanned! {var.span=>
                     compile_error!(#s);
                 })
@@ -258,8 +270,9 @@ impl TypeCheckExpr for Sp<ast::expr::Reference> {
         use ast::expr::Reference;
         fn aux(_span: Span, refer: &Reference, ctx: &TyCtx) -> TcResult<TyTuple> {
             Ok(match refer {
-                Reference::Var(v) => ctx.get_var(v.as_ref().map(|_, v| &v.var))?.t,
+                Reference::Var(v) => ctx.get_var(v.as_ref().map(|_, v| &v.var.t))?.t,
                 Reference::Node(n) => ctx.get_node_out(n.as_ref())?.t,
+                Reference::Global(v) => ctx.get_global(v.as_ref())?.t,
             })
         }
         self.as_ref()

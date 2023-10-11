@@ -1,9 +1,11 @@
+use std::collections::HashSet;
+
 use super::ast as lus;
 use super::translate::candle::Sp;
 use lus::InputSpan;
 
-use chandeliers_san::candle::ast as candle;
-use proc_macro2::TokenStream;
+use chandeliers_san::ast as candle;
+use proc_macro2::{TokenStream, Span};
 use quote::quote_spanned;
 
 pub type TrResult<T> = Result<T, TokenStream>;
@@ -17,6 +19,7 @@ pub trait TranslateExpr {
         blocks: &mut BlockNames,
         stmts: &mut StmtList,
         depth: usize,
+        shadow_glob: &HashSet<String>,
     ) -> TrResult<Sp<CandleExpr>>;
 }
 
@@ -47,13 +50,20 @@ impl lus::Node {
         let name = self
             .name
             .map_ref_with_span(|_, name| candle::decl::NodeName(name.to_string()));
-        let inputs = self.inputs.translate()?;
-        let outputs = self.outputs.translate()?;
+        let inputs = self.inputs.translate(self._inputs_paren.span.join())?;
+        let outputs = self.outputs.translate(self._outputs_paren.span.join())?;
         let locals = self.locals.translate()?;
         let mut blocks = Vec::new();
         let mut stmts = Vec::new();
+        let mut shadow_glob = HashSet::new();
+        for shadows in &[&inputs, &outputs, &locals] {
+            for s in &shadows.t.elems {
+                shadow_glob.insert(s.t.name.t.name.clone());
+            }
+        }
+
         for def in self.defs.into_iter() {
-            def.translate(&mut blocks, &mut stmts)?;
+            def.translate(&mut blocks, &mut stmts, &shadow_glob)?;
         }
         Ok(Sp::new(
             candle::decl::Node {
@@ -76,7 +86,7 @@ impl lus::Const {
         let ty = self.ty.translate()?;
         let mut v1 = Vec::new();
         let mut v2 = Vec::new();
-        let value = self.value.translate(&mut v1, &mut v2, 0)?;
+        let value = self.value.translate(&mut v1, &mut v2, 0, &HashSet::new())?;
         if !v1.is_empty() || !v2.is_empty() {
             let s = format!("Expression {value} is not const: const expressions must not contain any function calls");
             return Err(quote_spanned! {span=>
@@ -93,8 +103,8 @@ impl lus::ExtNode {
         let name = self
             .name
             .map_ref_with_span(|_, name| candle::decl::NodeName(name.to_string()));
-        let inputs = self.inputs.translate()?;
-        let outputs = self.outputs.translate()?;
+        let inputs = self.inputs.translate(self._inputs_paren.span.join())?;
+        let outputs = self.outputs.translate(self._outputs_paren.span.join())?;
         Ok(Sp::new(
             candle::decl::ExtNode {
                 name,
@@ -128,8 +138,7 @@ impl lus::Prog {
 }
 
 impl lus::ArgsTys {
-    pub fn translate(self) -> TrResult<Sp<candle::Tuple<Sp<candle::decl::Var>>>> {
-        let span = self.input_span();
+    pub fn translate(self, span: Span) -> TrResult<Sp<candle::Tuple<Sp<candle::decl::Var>>>> {
         let mut vs = candle::Tuple::default();
         for item in self.items {
             item.translate(&mut vs)?;
@@ -164,6 +173,7 @@ impl lus::Decls {
                             depth: candle::clock::Depth {
                                 // FIXME: don't forget to change this by depth propagation
                                 dt: 0,
+                                span,
                             },
                         }
                     }),
@@ -201,7 +211,8 @@ impl lus::OptionalVarsDecl {
 
 impl lus::VarsDecl {
     pub fn translate(self) -> TrResult<Sp<candle::Tuple<Sp<candle::decl::Var>>>> {
-        self.decls.translate()
+        let span = self.input_span();
+        self.decls.translate(span)
     }
 }
 
@@ -210,10 +221,11 @@ impl lus::Statement {
         self,
         blocks: &mut Vec<Sp<candle::decl::NodeName>>,
         stmts: &mut Vec<Sp<candle::stmt::Statement>>,
+        shadow_glob: &HashSet<String>,
     ) -> TrResult<()> {
         match self {
-            Self::Assert(ass) => ass.translate(blocks, stmts),
-            Self::Def(def) => def.translate(blocks, stmts),
+            Self::Assert(ass) => ass.translate(blocks, stmts, shadow_glob),
+            Self::Def(def) => def.translate(blocks, stmts, shadow_glob),
         }
     }
 }
@@ -223,9 +235,10 @@ impl lus::Assertion {
         self,
         blocks: &mut Vec<Sp<candle::decl::NodeName>>,
         stmts: &mut Vec<Sp<candle::stmt::Statement>>,
+        shadow_glob: &HashSet<String>,
     ) -> TrResult<()> {
         let span = self.input_span();
-        let e = self.expr.translate(blocks, stmts, 0)?;
+        let e = self.expr.translate(blocks, stmts, 0, shadow_glob)?;
         stmts.push(Sp::new(candle::stmt::Statement::Assert(e), span));
         Ok(())
     }
@@ -236,10 +249,11 @@ impl lus::Def {
         self,
         blocks: &mut Vec<Sp<candle::decl::NodeName>>,
         stmts: &mut Vec<Sp<candle::stmt::Statement>>,
+        shadow_glob: &HashSet<String>,
     ) -> TrResult<()> {
         let span = self.input_span();
         let target = self.target.translate()?;
-        let source = self.source.translate(blocks, stmts, 0)?;
+        let source = self.source.translate(blocks, stmts, 0, shadow_glob)?;
         stmts.push(Sp::new(
             candle::stmt::Statement::Let { target, source },
             span,
@@ -291,10 +305,11 @@ where
         blocks: &mut BlockNames,
         stmts: &mut StmtList,
         depth: usize,
+        shadow_glob: &HashSet<String>,
     ) -> TrResult<Sp<CandleExpr>> {
         match self {
-            Self::Here(x) => x.translate(blocks, stmts, depth),
-            Self::Below(y) => y.translate(blocks, stmts, depth),
+            Self::Here(x) => x.translate(blocks, stmts, depth, shadow_glob),
+            Self::Below(y) => y.translate(blocks, stmts, depth, shadow_glob),
         }
     }
 }
@@ -305,8 +320,9 @@ impl TranslateExpr for lus::Expr {
         blocks: &mut BlockNames,
         stmts: &mut StmtList,
         depth: usize,
+        shadow_glob: &HashSet<String>,
     ) -> TrResult<Sp<CandleExpr>> {
-        self.inner.translate(blocks, stmts, depth)
+        self.inner.translate(blocks, stmts, depth, shadow_glob)
     }
 }
 
@@ -316,11 +332,12 @@ impl TranslateExpr for lus::expr::IfExpr {
         blocks: &mut BlockNames,
         stmts: &mut StmtList,
         depth: usize,
+        shadow_glob: &HashSet<String>,
     ) -> TrResult<Sp<CandleExpr>> {
         let span = self.input_span();
-        let cond = Box::new(self.cond.translate(blocks, stmts, depth)?);
-        let yes = Box::new(self.yes.translate(blocks, stmts, depth)?);
-        let no = Box::new(self.no.translate(blocks, stmts, depth)?);
+        let cond = Box::new(self.cond.translate(blocks, stmts, depth, shadow_glob)?);
+        let yes = Box::new(self.yes.translate(blocks, stmts, depth, shadow_glob)?);
+        let no = Box::new(self.no.translate(blocks, stmts, depth, shadow_glob)?);
         Ok(Sp::new(CandleExpr::Ifx { cond, yes, no }, span))
     }
 }
@@ -331,11 +348,12 @@ impl TranslateExpr for lus::expr::OrExpr {
         blocks: &mut BlockNames,
         stmts: &mut StmtList,
         depth: usize,
+        shadow_glob: &HashSet<String>,
     ) -> TrResult<Sp<CandleExpr>> {
         let mut it = self.items.into_iter();
-        let mut or = it.next().expect("OrExpr should have at least one member").translate(blocks, stmts, depth)?;
+        let mut or = it.next().expect("OrExpr should have at least one member").translate(blocks, stmts, depth, shadow_glob)?;
         for e in it {
-            let e = e.translate(blocks, stmts, depth)?;
+            let e = e.translate(blocks, stmts, depth, shadow_glob)?;
             let span = e.span.join(or.span).expect("Faulty span");
             or = Sp::new(CandleExpr::BinOp {
                 op: candle::expr::BinOp::BitOr,
@@ -353,11 +371,12 @@ impl TranslateExpr for lus::expr::AndExpr {
         blocks: &mut BlockNames,
         stmts: &mut StmtList,
         depth: usize,
+        shadow_glob: &HashSet<String>,
     ) -> TrResult<Sp<CandleExpr>> {
         let mut it = self.items.into_iter();
-        let mut or = it.next().expect("AndExpr should have at least one member").translate(blocks, stmts, depth)?;
+        let mut or = it.next().expect("AndExpr should have at least one member").translate(blocks, stmts, depth, shadow_glob)?;
         for e in it {
-            let e = e.translate(blocks, stmts, depth)?;
+            let e = e.translate(blocks, stmts, depth, shadow_glob)?;
             let span = e.span.join(or.span).expect("Faulty span");
             or = Sp::new(CandleExpr::BinOp {
                 op: candle::expr::BinOp::BitAnd,
@@ -375,9 +394,10 @@ impl TranslateExpr for lus::expr::NotExpr {
         blocks: &mut BlockNames,
         stmts: &mut StmtList,
         depth: usize,
+        shadow_glob: &HashSet<String>,
     ) -> TrResult<Sp<CandleExpr>> {
         let span = self.input_span();
-        let inner = Box::new(self.inner.translate(blocks, stmts, depth)?);
+        let inner = Box::new(self.inner.translate(blocks, stmts, depth, shadow_glob)?);
         Ok(Sp::new(CandleExpr::UnOp {
             op: candle::expr::UnOp::Not,
             inner,
@@ -391,6 +411,7 @@ impl TranslateExpr for lus::expr::CmpExpr {
         blocks: &mut BlockNames,
         stmts: &mut StmtList,
         depth: usize,
+        shadow_glob: &HashSet<String>,
     ) -> TrResult<Sp<CandleExpr>> {
         let span = self.input_span();
         use syn::punctuated::Pair;
@@ -407,7 +428,7 @@ impl TranslateExpr for lus::expr::CmpExpr {
                 let Pair::End(first) = first else {
                     unreachable!()
                 };
-                return first.translate(blocks, stmts, depth);
+                return first.translate(blocks, stmts, depth, shadow_glob);
             }
         };
         // We must not have a third element.
@@ -424,8 +445,8 @@ impl TranslateExpr for lus::expr::CmpExpr {
             unreachable!()
         };
         let op = op.translate()?;
-        let lhs = Box::new(lhs.translate(blocks, stmts, depth)?);
-        let rhs = Box::new(rhs.translate(blocks, stmts, depth)?);
+        let lhs = Box::new(lhs.translate(blocks, stmts, depth, shadow_glob)?);
+        let rhs = Box::new(rhs.translate(blocks, stmts, depth, shadow_glob)?);
         Ok(Sp::new(CandleExpr::CmpOp { op, lhs, rhs }, span))
     }
 }
@@ -449,15 +470,19 @@ impl TranslateExpr for lus::expr::FbyExpr {
         blocks: &mut BlockNames,
         stmts: &mut StmtList,
         depth: usize,
+        shadow_glob: &HashSet<String>,
     ) -> TrResult<Sp<CandleExpr>> {
         let mut it = self.items.into_iter().enumerate().rev();
         let (extra_depth, fby) = it.next().expect("FbyExpr should have at least one member");
-        let mut fby = fby.translate(blocks, stmts, depth + extra_depth)?;
+        let mut fby = fby.translate(blocks, stmts, depth + extra_depth, shadow_glob)?;
         for (d, e) in it {
-            let e = e.translate(blocks, stmts, depth + d)?;
+            let e = e.translate(blocks, stmts, depth + d, shadow_glob)?;
             let span = fby.span.join(e.span).expect("Faulty span");
             fby = Sp::new(CandleExpr::Later {
-                clk: candle::clock::Depth { dt: depth + d },
+                clk: candle::clock::Depth {
+                    dt: depth + d,
+                    span,
+                },
                 before: Box::new(e),
                 after: Box::new(fby),
             }, span);
@@ -472,8 +497,9 @@ impl TranslateExpr for lus::expr::PreExpr {
         blocks: &mut BlockNames,
         stmts: &mut StmtList,
         depth: usize,
+        shadow_glob: &HashSet<String>,
     ) -> TrResult<Sp<CandleExpr>> {
-        self.inner.translate(blocks, stmts, depth + 1)
+        self.inner.translate(blocks, stmts, depth + 1, shadow_glob)
     }
 }
 
@@ -483,15 +509,19 @@ impl TranslateExpr for lus::expr::ThenExpr {
         blocks: &mut BlockNames,
         stmts: &mut StmtList,
         depth: usize,
+        shadow_glob: &HashSet<String>,
     ) -> TrResult<Sp<CandleExpr>> {
         let mut it = self.items.into_iter().enumerate().rev();
         let (_, then) = it.next().expect("ThenExpr should have at least one member");
-        let mut then = then.translate(blocks, stmts, depth)?;
+        let mut then = then.translate(blocks, stmts, depth, shadow_glob)?;
         for (d, e) in it {
-            let e = e.translate(blocks, stmts, depth)?;
+            let e = e.translate(blocks, stmts, depth, shadow_glob)?;
             let span = then.span.join(e.span).expect("Faulty span");
             then = Sp::new(CandleExpr::Later {
-                clk: candle::clock::Depth { dt: depth + d },
+                clk: candle::clock::Depth {
+                    span,
+                    dt: depth + d,
+                },
                 before: Box::new(e),
                 after: Box::new(then),
             }, span);
@@ -506,6 +536,7 @@ impl TranslateExpr for lus::expr::AddExpr {
         blocks: &mut BlockNames,
         stmts: &mut StmtList,
         depth: usize,
+        shadow_glob: &HashSet<String>,
     ) -> TrResult<Sp<CandleExpr>> {
         use syn::punctuated::Pair;
         assert!(!self.items.trailing_punct());
@@ -515,17 +546,17 @@ impl TranslateExpr for lus::expr::AddExpr {
         let mut op;
         match its.next().expect("AddExpr should have at least one member") {
             Pair::Punctuated(e, o) => {
-                lhs = e.translate(blocks, stmts, depth)?;
+                lhs = e.translate(blocks, stmts, depth, shadow_glob)?;
                 op = o.translate()?;
             }
             Pair::End(e) => {
-                return e.translate(blocks, stmts, depth);
+                return e.translate(blocks, stmts, depth, shadow_glob);
             }
         }
         for it in its {
             match it {
                 Pair::Punctuated(e, o) => {
-                    let rhs = e.translate(blocks, stmts, depth)?;
+                    let rhs = e.translate(blocks, stmts, depth, shadow_glob)?;
                     let span = lhs.span.join(rhs.span).expect("Faulty span");
                     lhs = Sp::new(CandleExpr::BinOp {
                         op,
@@ -535,7 +566,7 @@ impl TranslateExpr for lus::expr::AddExpr {
                     op = o.translate()?;
                 }
                 Pair::End(e) => {
-                    let rhs = e.translate(blocks, stmts, depth)?;
+                    let rhs = e.translate(blocks, stmts, depth, shadow_glob)?;
                     let span = lhs.span.join(rhs.span).expect("Faulty span");
                     lhs = Sp::new(CandleExpr::BinOp {
                         op,
@@ -565,6 +596,7 @@ impl TranslateExpr for lus::expr::MulExpr {
         blocks: &mut BlockNames,
         stmts: &mut StmtList,
         depth: usize,
+        shadow_glob: &HashSet<String>,
     ) -> TrResult<Sp<CandleExpr>> {
         use syn::punctuated::Pair;
         assert!(!self.items.trailing_punct());
@@ -574,17 +606,17 @@ impl TranslateExpr for lus::expr::MulExpr {
         let mut op;
         match its.next().expect("MulExpr should have at least one member") {
             Pair::Punctuated(e, o) => {
-                lhs = e.translate(blocks, stmts, depth)?;
+                lhs = e.translate(blocks, stmts, depth, shadow_glob)?;
                 op = o.translate()?;
             }
             Pair::End(e) => {
-                return e.translate(blocks, stmts, depth);
+                return e.translate(blocks, stmts, depth, shadow_glob);
             }
         }
         for it in its {
             match it {
                 Pair::Punctuated(e, o) => {
-                    let rhs = e.translate(blocks, stmts, depth)?;
+                    let rhs = e.translate(blocks, stmts, depth, shadow_glob)?;
                     let span = lhs.span.join(rhs.span).expect("Faulty span");
                     lhs = Sp::new(CandleExpr::BinOp {
                         op,
@@ -594,7 +626,7 @@ impl TranslateExpr for lus::expr::MulExpr {
                     op = o.translate()?;
                 }
                 Pair::End(e) => {
-                    let rhs = e.translate(blocks, stmts, depth)?;
+                    let rhs = e.translate(blocks, stmts, depth, shadow_glob)?;
                     let span = lhs.span.join(rhs.span).expect("Faulty span");
                     lhs = Sp::new(CandleExpr::BinOp {
                         op,
@@ -625,9 +657,10 @@ impl TranslateExpr for lus::expr::NegExpr {
         blocks: &mut BlockNames,
         stmts: &mut StmtList,
         depth: usize,
+        shadow_glob: &HashSet<String>,
     ) -> TrResult<Sp<CandleExpr>> {
         let span = self.input_span();
-        let inner = Box::new(self.inner.translate(blocks, stmts, depth)?);
+        let inner = Box::new(self.inner.translate(blocks, stmts, depth, shadow_glob)?);
         Ok(Sp::new(CandleExpr::UnOp {
             op: candle::expr::UnOp::Neg,
             inner,
@@ -641,11 +674,12 @@ impl TranslateExpr for lus::expr::ParenExpr {
         blocks: &mut BlockNames,
         stmts: &mut StmtList,
         depth: usize,
+        shadow_glob: &HashSet<String>,
     ) -> TrResult<Sp<CandleExpr>> {
         let span = self.input_span();
         let mut es = candle::Tuple::default();
         for e in self.inner.into_iter() {
-            es.elems.push(e.translate(blocks, stmts, depth)?);
+            es.elems.push(e.translate(blocks, stmts, depth, shadow_glob)?);
         }
         match es.elems.len() {
             0 => {
@@ -665,12 +699,13 @@ impl TranslateExpr for lus::expr::CallExpr {
         blocks: &mut BlockNames,
         stmts: &mut StmtList,
         depth: usize,
+        shadow_glob: &HashSet<String>,
     ) -> TrResult<Sp<CandleExpr>> {
         let span = self.input_span();
         let args_span = self._paren.input_span();
         let mut es = candle::Tuple::default();
         for e in self.args.into_iter() {
-            es.elems.push(e.translate(blocks, stmts, depth)?);
+            es.elems.push(e.translate(blocks, stmts, depth, shadow_glob)?);
         }
         let s = self.fun.to_string();
         match s.as_str() {
@@ -689,7 +724,10 @@ impl TranslateExpr for lus::expr::CallExpr {
                 let id = Sp::new(candle::expr::NodeId { id: blocks.len() }, span);
                 blocks.push(Sp::new(candle::decl::NodeName(s), span));
                 let st = Sp::new(candle::stmt::Statement::Substep {
-                    clk: candle::clock::Depth { dt: depth },
+                    clk: candle::clock::Depth {
+                        dt: depth,
+                        span,
+                    },
                     id,
                     args: Sp::new(es, args_span),
                 }, span);
@@ -706,16 +744,32 @@ impl TranslateExpr for lus::expr::VarExpr {
         _blocks: &mut BlockNames,
         _stmts: &mut StmtList,
         depth: usize,
+        shadow_glob: &HashSet<String>,
     ) -> TrResult<Sp<CandleExpr>> {
         let span = self.input_span();
-        Ok(Sp::new(CandleExpr::Reference(Sp::new(candle::expr::Reference::Var(
-            Sp::new(candle::expr::ClockVar {
-                var: candle::expr::Var {
-                    name: self.name.to_string(),
-                },
-                depth: candle::clock::Depth { dt: depth },
-            }, span),
-        ), span)), span))
+        let name = self.name.to_string();
+        if shadow_glob.contains(&name) {
+            Ok(Sp::new(CandleExpr::Reference(Sp::new(candle::expr::Reference::Var(
+                Sp::new(candle::expr::ClockVar {
+                    var: Sp::new(
+                             candle::expr::Var {
+                                name,
+                             }, span),
+                    depth: candle::clock::Depth {
+                        span,
+                        dt: depth,
+                    },
+                }, span),
+            ), span)), span))
+        } else {
+            Ok(Sp::new(CandleExpr::Reference(Sp::new(candle::expr::Reference::Global(
+                    Sp::new(
+                             candle::expr::Var {
+                                name: self.name.to_string(),
+                             }, span),
+            ), span)), span))
+
+        }
     }
 }
 
@@ -725,6 +779,7 @@ impl TranslateExpr for lus::expr::LitExpr {
         _blocks: &mut BlockNames,
         _stmts: &mut StmtList,
         _depth: usize,
+        shadow_glob: &HashSet<String>,
     ) -> TrResult<Sp<CandleExpr>> {
         let span = self.input_span();
         use syn::Lit;

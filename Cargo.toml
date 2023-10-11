@@ -7,3 +7,4 @@ edition = "2021"
 
 [dependencies]
 chandeliers-macros = { path = "chandeliers-macros/" }
+chandeliers-sem = "0.0.5"
