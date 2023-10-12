@@ -12,12 +12,12 @@ use sanitizer::ast::Sp;
 
 #[proc_macro]
 pub fn decl(i: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    let mut prog = parse_macro_input!(i as Sp<syntax::ast::Prog>);
+    let prog = parse_macro_input!(i as Sp<syntax::ast::Prog>);
     let prog = match prog.translate(()) {
         Ok(prog) => prog,
         Err(e) => return e.into(),
     };
-    let prog = match prog.causality() {
+    let mut prog = match prog.causality() {
         Ok(prog) => prog,
         Err(e) => return e.into(),
     };

@@ -1,30 +1,134 @@
-//! Translation from Lustre to Candle
+//! Internal representation of a program in Candle,
+//! before it is first translated to macros defined in `chandeliers-sem`
+//! and then expanded to Rust.
 
+use crate::causality::depends::Depends;
 use proc_macro2::Span;
 use std::fmt;
+use std::hash::{Hash, Hasher};
 
+/// Span wrapper.
+///
+/// This type is ubiquitous across this entire crate and you can expect
+/// an overwhelming majority of the fields of all structs to contain one or
+/// several `Sp<_>`.
+///
+/// `Sp` is mostly used through `map`, `new`, and it also implements
+/// many traits by projecting into its `.t` field.
 #[derive(Debug, Clone, Copy)]
 pub struct Sp<T> {
-    pub span: Span,
+    /// A payload.
     pub t: T,
+    /// The span associated with the payload.
+    pub span: Span,
 }
 
+impl<T> Sp<T> {
+    /// Create a new `Sp` from a payload and a span.
+    pub fn new(t: T, span: Span) -> Self {
+        Self { t, span }
+    }
+
+    /// Convert a `&Sp<T>` into a `Sp<&T>`.
+    /// Mostly useful because `map` consumes Self and
+    /// because `Sp` derives `Copy`.
+    pub fn as_ref(&self) -> Sp<&T> {
+        Sp {
+            t: &self.t,
+            span: self.span,
+        }
+    }
+
+    /// Convert an `&mut Sp<T>` into a `Sp<&mut T>`.
+    /// Mostly useful because `map` consumes Self and
+    /// because `Sp` derives `Copy`.
+    pub fn as_ref_mut(&mut self) -> Sp<&mut T> {
+        Sp {
+            t: &mut self.t,
+            span: self.span,
+        }
+    }
+
+    /// Apply a transformation to the payload while preserving the same span.
+    ///
+    /// This lets us track the same portion of the source code from beginning
+    /// to end through translations into different ASTs.
+    pub fn map<U, F>(self, f: F) -> Sp<U>
+    where
+        F: FnOnce(Span, T) -> U,
+    {
+        Sp {
+            t: f(self.span, self.t),
+            span: self.span,
+        }
+    }
+}
+
+/// Monad combinator to map faillible functions on a `Sp`.
+impl<T, E> Sp<Result<T, E>> {
+    pub fn transpose(self) -> Result<Sp<T>, E> {
+        match self.t {
+            Ok(t) => Ok(Sp { t, span: self.span }),
+            Err(e) => Err(e),
+        }
+    }
+}
+
+/// Equality ignores the span.
+impl<T: PartialEq> PartialEq for Sp<T> {
+    fn eq(&self, other: &Self) -> bool {
+        self.t == other.t
+    }
+}
+impl<T: Eq> Eq for Sp<T> {}
+
+/// Hash ignores the span.
+impl<T: Hash> Hash for Sp<T> {
+    fn hash<H: Hasher>(&self, h: &mut H) {
+        self.t.hash(h);
+    }
+}
+
+/// `SpanEnd` is the way that `Sp` has of computing its own span:
+/// upon parsing it will record the beginning of the span to use as its
+/// own, but ideally it also wants to eventually know the end of the Span,
+/// and for that it asks `T`.
+///
+/// `SpanEnd` should be implemented for all types `T` for which you want to
+/// be able to parse a `Sp<T>`
 pub trait SpanEnd {
+    /// Where this object ends.
+    ///
+    /// This is intentionally defined very loosely:
+    /// - all types may return `None` if they do not want to reveal their
+    ///   size or if they don't know it,
+    /// - in the case of `Some(s)`, `s` may or may not include the entire
+    ///   the only thing that is relevant is the endpoint.
     fn span_end(&self) -> Option<Span>;
 }
 
+/// Straightforward projection.
 impl<T: SpanEnd> SpanEnd for Box<T> {
     fn span_end(&self) -> Option<Span> {
         self.as_ref().span_end()
     }
 }
+
+/// `Punctuated` projects to its last element.
+///
+/// Historical note: `SpanEnd` was created for the most part to handle
+/// the fact that `Punctuated` is sometimes empty and has no span.
+/// Although `Sp` is the main implementor, `Punctuated` is the reason
+/// that it has to exist at all.
+/// `Punctuated` is one of very few implementations that can even return `None`,
+/// since most parsed objects are nonempty.
 impl<T: SpanEnd, P> SpanEnd for syn::punctuated::Punctuated<T, P> {
     fn span_end(&self) -> Option<Span> {
         self.last().and_then(|x| x.span_end())
     }
 }
 
-
+/// Parsing `Sp<T>` invoques `SpanEnd` to know where the parsing ended.
 impl<T> syn::parse::Parse for Sp<T>
 where
     T: syn::parse::Parse + SpanEnd,
@@ -40,50 +144,27 @@ where
     }
 }
 
+/// Don't let the trivial implementation of `SpanEnd` for `Sp<T>` distract
+/// you from its importance, the fact that `Sp<T>` returns a `Some(_)` in
+/// one step is what makes it computationally feasible at all to have
+/// most implementors of `SpanEnd` recurse into one field without blowing up
+/// the stack of Rustc.
 impl<T> SpanEnd for Sp<T> {
     fn span_end(&self) -> Option<Span> {
         Some(self.span)
     }
 }
 
+/// `Sp` is transparently displayable.
 impl<T: fmt::Display> fmt::Display for Sp<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.t)
     }
 }
 
-impl<T> Sp<T> {
-    pub fn new(t: T, span: Span) -> Self {
-        Self { t, span }
-    }
-
-    pub fn as_ref(&self) -> Sp<&T> {
-        Sp {
-            t: &self.t,
-            span: self.span,
-        }
-    }
-
-    pub fn map<U, F>(self, f: F) -> Sp<U>
-    where
-        F: FnOnce(Span, T) -> U,
-    {
-        Sp {
-            t: f(self.span, self.t),
-            span: self.span,
-        }
-    }
-}
-
-impl<T, E> Sp<Result<T, E>> {
-    pub fn transpose(self) -> Result<Sp<T>, E> {
-        match self.t {
-            Ok(t) => Ok(Sp { t, span: self.span }),
-            Err(e) => Err(e),
-        }
-    }
-}
-
+/// Implement `SpanEnd` from `Spanned`.
+/// Only recommended for items whose `span` is trivial, others should
+/// be wrapped in a `Sp<_>` to alleviate the computation.
 macro_rules! span_end_from_spanned {
     ( $($ty:tt)* ) => {
         impl SpanEnd for $($ty)* {
@@ -93,6 +174,8 @@ macro_rules! span_end_from_spanned {
         }
     }
 }
+
+// Some implementation for `syn` types.
 span_end_from_spanned!(syn::Ident);
 span_end_from_spanned!(syn::Lit);
 impl SpanEnd for syn::token::Paren {
@@ -101,13 +184,11 @@ impl SpanEnd for syn::token::Paren {
     }
 }
 
-
-
-
-
+/// Because `Vec` does not implement `Parse` as we want,
+/// `Tuple` is used to for sequences.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Tuple<T> {
-    pub elems: Vec<T>,
+    elems: Vec<T>,
 }
 
 impl<T> Default for Tuple<T> {
@@ -115,6 +196,54 @@ impl<T> Default for Tuple<T> {
         Self {
             elems: Default::default(),
         }
+    }
+}
+
+impl<T> Tuple<T> {
+    pub fn map_ref<F, U>(&self, f: F) -> Tuple<U>
+    where
+        F: Fn(&T) -> U,
+    {
+        Tuple {
+            elems: self.elems.iter().map(f).collect(),
+        }
+    }
+
+    pub fn try_map<F, U, E>(&self, f: F) -> Result<Tuple<U>, E>
+    where
+        F: Fn(&T) -> Result<U, E>,
+    {
+        let mut elems = Vec::new();
+        for e in &self.elems {
+            elems.push(f(e)?);
+        }
+        Ok(Tuple { elems })
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = &T> {
+        self.elems.iter()
+    }
+
+    pub fn into_iter(self) -> impl Iterator<Item = T> {
+        self.elems.into_iter()
+    }
+
+    pub fn len(&self) -> usize {
+        self.elems.len()
+    }
+
+    pub fn push(&mut self, e: T) {
+        self.elems.push(e);
+    }
+}
+
+impl<T: Depends> Depends for Tuple<T> {
+    type Output = T::Output;
+    fn provides(&self, v: &mut Vec<Self::Output>) {
+        self.elems.provides(v);
+    }
+    fn requires(&self, v: &mut Vec<Self::Output>) {
+        self.elems.requires(v);
     }
 }
 
@@ -222,7 +351,7 @@ pub mod expr {
 
     #[derive(Debug, Clone, PartialEq, Eq, Hash)]
     pub struct Var {
-        pub name: String,
+        pub name: Sp<String>,
     }
 
     impl fmt::Display for Var {
@@ -239,7 +368,7 @@ pub mod expr {
 
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
     pub struct NodeId {
-        pub id: usize,
+        pub id: Sp<usize>,
     }
 
     impl fmt::Display for ClockVar {
@@ -430,6 +559,7 @@ pub mod stmt {
             clk: clock::Depth,
             id: Sp<expr::NodeId>,
             args: Sp<Tuple<Sp<expr::Expr>>>,
+            nbret: Sp<Option<usize>>,
         },
         Trace {
             msg: String,
@@ -455,7 +585,7 @@ pub mod decl {
     }
 
     #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-    pub struct NodeName(pub String);
+    pub struct NodeName(pub Sp<String>);
 
     impl fmt::Display for NodeName {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

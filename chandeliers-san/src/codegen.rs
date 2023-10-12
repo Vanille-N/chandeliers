@@ -71,9 +71,9 @@ impl decl::Node {
             stmts,
         } = self;
         let name = name.as_ident();
-        let pos_inputs = inputs.t.elems.iter().filter(|v| v.t.strictly_positive());
-        let pos_outputs = outputs.t.elems.iter().filter(|v| v.t.strictly_positive());
-        let pos_locals = locals.t.elems.iter().filter(|v| v.t.strictly_positive());
+        let pos_inputs = inputs.t.iter().filter(|v| v.t.strictly_positive());
+        let pos_outputs = outputs.t.iter().filter(|v| v.t.strictly_positive());
+        let pos_locals = locals.t.iter().filter(|v| v.t.strictly_positive());
         let blocks = blocks.iter().map(|n| n.as_ident()).collect::<Vec<_>>();
         quote! {
             #[derive(Debug, Default)]
@@ -101,9 +101,9 @@ impl decl::Node {
         let inputs_sep = inputs.comma_separated_decls();
         let outputs_ty = outputs.type_tuple();
         let outputs_vs = outputs.name_tuple();
-        let pos_inputs = inputs.t.elems.iter().filter(|v| v.t.strictly_positive());
-        let pos_outputs = outputs.t.elems.iter().filter(|v| v.t.strictly_positive());
-        let pos_locals = locals.t.elems.iter().filter(|v| v.t.strictly_positive());
+        let pos_inputs = inputs.t.iter().filter(|v| v.t.strictly_positive());
+        let pos_outputs = outputs.t.iter().filter(|v| v.t.strictly_positive());
+        let pos_locals = locals.t.iter().filter(|v| v.t.strictly_positive());
         quote! {
             impl #name {
                 fn update_mut(&mut self, #inputs_sep) -> #outputs_ty {
@@ -121,7 +121,7 @@ impl decl::Node {
 
 impl Sp<decl::NodeName> {
     fn as_ident(&self) -> Ident {
-        Ident::new(&self.t.0, self.span)
+        Ident::new(&self.t.0.t, self.t.0.span)
     }
 }
 
@@ -139,7 +139,7 @@ impl decl::Var {
 
 impl Sp<expr::Var> {
     fn as_ident(&self) -> Ident {
-        Ident::new(&self.t.name, self.span)
+        Ident::new(&self.t.name.t, self.t.name.span)
     }
 }
 
@@ -155,13 +155,6 @@ impl Sp<decl::Node> {
 }
 
 impl Sp<expr::Expr> {
-    fn const_expr(&self) -> TokenStream {
-        let toks = self.t.const_expr();
-        quote_spanned! {self.span=> #toks }
-    }
-}
-
-impl Sp<expr::Builtin> {
     fn const_expr(&self) -> TokenStream {
         let toks = self.t.const_expr();
         quote_spanned! {self.span=> #toks }
@@ -200,13 +193,12 @@ impl expr::Expr {
                 quote!( (#lhs #op #rhs) )
             }
             Self::Tuple(t) => {
-                let ts = t.t.elems.iter().map(|e| e.const_expr()).collect::<Vec<_>>();
+                let ts = t.t.iter().map(|e| e.const_expr()).collect::<Vec<_>>();
                 quote!( #( #ts ),* )
             }
             Self::Later { .. } => unreachable!("Later is not valid in const contexts"),
             Self::Builtin(b) => {
-                let b = b.const_expr();
-                quote!( #b )
+                unreachable!("Builtins cannot be called in const contexts")
             }
             Self::Ifx { cond, yes, no } => {
                 let cond = cond.const_expr();
@@ -215,12 +207,6 @@ impl expr::Expr {
                 quote!( if #cond { #yes } else { #no } )
             }
         }
-    }
-}
-
-impl expr::Builtin {
-    fn const_expr(&self) -> TokenStream {
-        unimplemented!("Builtin in const contexts")
     }
 }
 
@@ -324,7 +310,7 @@ impl ToTokens for expr::ClockVar {
 
 impl ToTokens for Sp<expr::Var> {
     fn to_tokens(&self, toks: &mut TokenStream) {
-        let id = Ident::new(&self.t.name, self.span);
+        let id = Ident::new(&self.t.name.t, self.t.name.span);
         toks.extend(quote! {
             #id
         })
@@ -345,7 +331,7 @@ impl ToTokens for decl::Var {
 impl Tuple<Sp<decl::Var>> {
     fn strictly_positive_comma_sep(&self) -> TokenStream {
         let mut toks = TokenStream::new();
-        for v in &self.elems {
+        for v in self.iter() {
             if v.t.ty.t.depth.dt > 0 {
                 toks.extend(quote! { #v , });
             }
@@ -354,7 +340,7 @@ impl Tuple<Sp<decl::Var>> {
     }
     fn strictly_positive_update(&self) -> TokenStream {
         let mut toks = TokenStream::new();
-        for v in &self.elems {
+        for v in self.iter() {
             if v.t.ty.t.depth.dt > 0 {
                 toks.extend(quote! { update(self, #v); });
             }
@@ -382,8 +368,8 @@ impl Sp<Tuple<Sp<decl::Var>>> {
 
 impl Tuple<Sp<decl::Var>> {
     fn type_tuple(&self) -> TokenStream {
-        if self.elems.len() == 1 {
-            let ty = self.elems[0].t.ty.as_base_ty();
+        if self.len() == 1 {
+            let ty = self.iter().next().unwrap().t.ty.as_base_ty();
             quote! { chandeliers_sem::ty!(#ty) }
         } else {
             let tup = self.comma_separated_types();
@@ -394,8 +380,8 @@ impl Tuple<Sp<decl::Var>> {
     }
 
     fn name_tuple(&self) -> TokenStream {
-        if self.elems.len() == 1 {
-            let name = self.elems[0].t.name.as_ident();
+        if self.len() == 1 {
+            let name = self.iter().next().unwrap().t.name.as_ident();
             quote! { #name }
         } else {
             let tup = self.comma_separated_names();
@@ -407,7 +393,7 @@ impl Tuple<Sp<decl::Var>> {
 
     fn comma_separated_types(&self) -> TokenStream {
         let mut toks = TokenStream::new();
-        for v in &self.elems {
+        for v in self.iter() {
             let ty = v.t.ty.as_base_ty();
             toks.extend(quote! { chandeliers_sem::ty!(#ty) , });
         }
@@ -416,7 +402,7 @@ impl Tuple<Sp<decl::Var>> {
 
     fn comma_separated_names(&self) -> TokenStream {
         let mut toks = TokenStream::new();
-        for v in &self.elems {
+        for v in self.iter() {
             let name = v.t.name.as_ident();
             toks.extend(quote! { #name , });
         }
@@ -425,7 +411,7 @@ impl Tuple<Sp<decl::Var>> {
 
     fn comma_separated_decls(&self) -> TokenStream {
         let mut toks = TokenStream::new();
-        for v in &self.elems {
+        for v in self.iter() {
             toks.extend(quote! { #v , });
         }
         toks
@@ -452,15 +438,24 @@ impl ToTokens for stmt::Statement {
                     let #target = #source
                 });
             }
-            Self::Substep { clk, id, args } => {
+            Self::Substep {
+                clk,
+                id,
+                args,
+                nbret,
+            } => {
                 let id_lit = syn::LitInt::new(&format!("{}", id.t.id), id.span);
-                let args = &args.t.elems;
+                let args = args.t.iter();
+                let mut nbret_stars = Vec::new();
+                for i in 0..nbret.t.expect("Needs to know how many values are returned") {
+                    nbret_stars.push(quote!(*));
+                }
                 toks.extend(quote! {
                     let #id = chandeliers_sem::substep!(
                         self <~ #clk;
                         #id_lit => {
                             #( #args , )*
-                        }
+                        }| #( #nbret_stars )*
                     )
                 });
             }
@@ -468,7 +463,10 @@ impl ToTokens for stmt::Statement {
                 unimplemented!("Trace");
             }
             Self::Assert(e) => {
-                unimplemented!("Assert");
+                let s = format!("Assertion failed: {}", &e);
+                toks.extend(quote! {
+                    chandeliers_sem::truth!(#e, #s);
+                })
             }
         }
     }
@@ -483,8 +481,13 @@ impl ToTokens for stmt::VarTuple {
                     #s
                 });
             }
+            Self::Multiple(m) if m.t.len() == 0 => {
+                toks.extend(quote! {
+                    _
+                });
+            }
             Self::Multiple(m) => {
-                let m = &m.t.elems;
+                let m = m.t.iter();
                 toks.extend(quote! {
                     ( #( #m ),* )
                 });
@@ -504,7 +507,7 @@ impl ToTokens for expr::Expr {
                 quote!( #refer )
             }
             Self::Tuple(t) => {
-                let elems = &t.t.elems;
+                let elems = t.t.iter();
                 quote!( ( #( #elems ),* ) )
             }
             Self::BinOp { op, lhs, rhs } => {
@@ -538,7 +541,11 @@ impl ToTokens for clock::Depth {
 
 impl ToTokens for expr::Builtin {
     fn to_tokens(&self, toks: &mut TokenStream) {
-        unimplemented!("Builtin")
+        match self {
+            Self::Float(arg) => {
+                toks.extend(quote!(chandeliers_sem::float!(#arg)));
+            }
+        }
     }
 }
 

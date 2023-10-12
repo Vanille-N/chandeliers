@@ -72,7 +72,7 @@ impl TyCtx<'_> {
 }
 
 pub trait TypeCheckStmt {
-    fn typecheck(&self, ctx: &TyCtx) -> TcResult<Sp<()>>;
+    fn typecheck(&mut self, ctx: &TyCtx) -> TcResult<Sp<()>>;
 }
 pub trait TypeCheckExpr {
     fn typecheck(&self, ctx: &TyCtx) -> TcResult<Sp<TyTuple>>;
@@ -80,48 +80,61 @@ pub trait TypeCheckExpr {
 }
 
 impl TypeCheckStmt for Sp<ast::stmt::Statement> {
-    fn typecheck(&self, ctx: &TyCtx) -> TcResult<Sp<()>> {
+    fn typecheck(&mut self, ctx: &TyCtx) -> TcResult<Sp<()>> {
         use ast::stmt::Statement;
-        self.as_ref()
-            .map(|_, stmt| match stmt {
-                Statement::Let { target, source } => {
-                    let target_ty = target.typecheck(ctx)?;
-                    let source_ty = source.typecheck(ctx)?;
-                    target_ty.identical(&source_ty)
+        match &mut self.t {
+            Statement::Let { target, source } => {
+                let target_ty = target.typecheck(ctx)?;
+                let source_ty = source.typecheck(ctx)?;
+                Ok(Sp::new(target_ty.identical(&source_ty)?, self.span))
+            }
+            Statement::Trace { .. } => Ok(Sp::new((), self.span)),
+            Statement::Assert(e) => {
+                let t = e.typecheck(ctx)?;
+                let t = t.is_primitive()?;
+                t.is_bool()?;
+                Ok(Sp::new((), self.span))
+            }
+            Statement::Substep {
+                clk: _,
+                id,
+                args,
+                ref mut nbret,
+            } => {
+                let Some(expected_tys) = ctx.nodes_in.get(&id.t) else {
+                    unreachable!("Substep is malformed: {id} is not a block");
+                };
+                // Here we find out the length of the tuple returned by the
+                // node so that we can generate an `else` branch with the
+                // correct size.
+                let out_len = ctx.nodes_out.get(&id.t).unwrap().t.len();
+                nbret.t = Some(out_len);
+                if expected_tys.t.len() != args.t.len() {
+                    let s = format!(
+                        "Block {} expects {} arguments but {} were given",
+                        id,
+                        expected_tys.t.len(),
+                        args.t.len()
+                    );
+                    return Err(quote_spanned! {self.span=>
+                        compile_error!(#s);//FIXME
+                    });
                 }
-                Statement::Trace { .. } => Ok(()),
-                Statement::Assert(e) => {
-                    let t = e.typecheck(ctx)?;
-                    let t = t.is_primitive()?;
-                    t.is_bool()?;
-                    Ok(())
+                for (arg, expected) in args.t.iter().zip(expected_tys.t.iter()) {
+                    let actual_ty = arg.typecheck(ctx)?;
+                    expected
+                        .map(|span, t| TyTuple::Single(Sp::new(t, span)))
+                        .identical(&actual_ty)?;
+                    /* FIXME?
+                    expected_tys
+                        .as_ref()
+                        .map(|_, tys| TyTuple::Single(tys.elems[i]))
+                        .identical(&actual_ty)?;
+                    */
                 }
-                Statement::Substep { clk: _, id, args } => {
-                    let Some(expected_tys) = ctx.nodes_in.get(&id.t) else {
-                        unreachable!("Substep is malformed: {id} is not a block");
-                    };
-                    if expected_tys.t.elems.len() != args.t.elems.len() {
-                        let s = format!(
-                            "Block {} expects {} arguments but {} were given",
-                            id,
-                            expected_tys.t.elems.len(),
-                            args.t.elems.len()
-                        );
-                        return Err(quote_spanned! {self.span=>
-                            compile_error!(#s);//FIXME
-                        });
-                    }
-                    for (i, arg) in args.t.elems.iter().enumerate() {
-                        let actual_ty = arg.typecheck(ctx)?;
-                        expected_tys
-                            .as_ref()
-                            .map(|_, tys| TyTuple::Single(tys.elems[i]))
-                            .identical(&actual_ty)?;
-                    }
-                    Ok(())
-                }
-            })
-            .transpose()
+                Ok(Sp::new((), self.span))
+            }
+        }
     }
 }
 
@@ -135,15 +148,9 @@ impl TypeCheckExpr for Sp<ast::expr::Expr> {
                 Expr::Tuple(es) => {
                     es.as_ref()
                         .map(|span, es| {
-                            let mut ts = Tuple::default();
-                            for e in &es.elems {
-                                ts.elems.push(e.typecheck(ctx)?);
-                            }
-                            if ts.elems.len() > 1 {
-                                Ok(TyTuple::Multiple(Sp::new(ts, span)))
-                            } else {
-                                unimplemented!("Tuple to Single");
-                            }
+                            let ts = es.try_map(|e| e.typecheck(ctx))?;
+                            assert!(ts.len() != 1);
+                            Ok(TyTuple::Multiple(Sp::new(ts, span)))
                         })
                         .t
                 }
@@ -290,15 +297,9 @@ impl TypeCheckExpr for Sp<ast::stmt::VarTuple> {
     fn typecheck(&self, ctx: &TyCtx) -> TcResult<Sp<TyTuple>> {
         use ast::stmt::VarTuple;
         fn aux_multiple(span: Span, vs: &Tuple<Sp<VarTuple>>, ctx: &TyCtx) -> TcResult<TyTuple> {
-            let mut ts = Tuple::default();
-            for v in vs.elems.iter() {
-                ts.elems.push(v.typecheck(ctx)?);
-            }
-            if ts.elems.len() > 1 {
-                Ok(TyTuple::Multiple(Sp::new(ts, span)))
-            } else {
-                unimplemented!("Tuple to Single")
-            }
+            let ts = vs.try_map(|v| v.typecheck(ctx))?;
+            assert!(ts.len() != 1);
+            Ok(TyTuple::Multiple(Sp::new(ts, span)))
         }
         fn aux(_span: Span, vartup: &VarTuple, ctx: &TyCtx) -> TcResult<TyTuple> {
             match vartup {
@@ -422,7 +423,7 @@ impl Sp<TyTuple> {
                 }
             }
             (Multiple(ts), Multiple(us)) => {
-                if ts.t.elems.len() != us.t.elems.len() {
+                if ts.t.len() != us.t.len() {
                     let s = format!(
                         "Expected {self}, got {other} instead that does not have the same length"
                     );
@@ -430,7 +431,7 @@ impl Sp<TyTuple> {
                         compile_error!(#s);//FIXME: must show both spans
                     });
                 }
-                for (t, u) in ts.t.elems.iter().zip(us.t.elems.iter()) {
+                for (t, u) in ts.t.iter().zip(us.t.iter()) {
                     t.identical(u)?;
                 }
                 Ok(())
@@ -469,19 +470,13 @@ impl Sp<TyTuple> {
 impl SpTyBaseTuple {
     fn as_flat_tytuple(&self) -> Sp<TyTuple> {
         self.as_ref().map(|span, tup| {
-            if tup.elems.len() > 1 {
+            if tup.len() != 1 {
                 TyTuple::Multiple(Sp::new(
-                    Tuple {
-                        elems: tup
-                            .elems
-                            .iter()
-                            .map(|t| t.map(|span, t| TyTuple::Single(Sp::new(t, span))))
-                            .collect(),
-                    },
+                    tup.map_ref(|t| t.map(|span, t| TyTuple::Single(Sp::new(t, span)))),
                     span,
                 ))
             } else {
-                TyTuple::Single(Sp::new(tup.elems.last().expect("Length > 1").t, span))
+                TyTuple::Single(Sp::new(tup.iter().last().expect("Length == 1").t, span))
             }
         })
     }
@@ -489,13 +484,13 @@ impl SpTyBaseTuple {
 
 impl Sp<ast::decl::Node> {
     pub fn typecheck(
-        &self,
+        &mut self,
         extfun: &HashMap<ast::decl::NodeName, (SpTyBaseTuple, SpTyBaseTuple)>,
         extvar: &HashMap<ast::expr::Var, Sp<TyBase>>,
     ) -> TcResult<()> {
         let mut ctx = TyCtx::from_ext(extvar);
         for vs in &[&self.t.inputs, &self.t.outputs, &self.t.locals] {
-            for v in &vs.t.elems {
+            for v in vs.t.iter() {
                 if ctx
                     .vars
                     .insert(v.t.name.t.clone(), v.t.ty.as_ref().map(|_, t| t.base.t))
@@ -518,37 +513,29 @@ impl Sp<ast::decl::Node> {
                     compile_error!(#s);//FIXME
                 });
             };
-            let id = ast::expr::NodeId { id };
+            let id = ast::expr::NodeId {
+                id: Sp::new(id, blk.span),
+            };
             ctx.nodes_in.insert(id, i.clone());
             ctx.nodes_out.insert(id, o.clone());
         }
-        for st in &self.t.stmts {
+        for st in &mut self.t.stmts {
             st.typecheck(&ctx)?;
         }
         Ok(())
     }
 
     pub fn signature(&self) -> (SpTyBaseTuple, SpTyBaseTuple) {
-        let inputs = Tuple {
-            elems: self
-                .t
-                .inputs
-                .t
-                .elems
-                .iter()
-                .map(|v| v.t.ty.as_ref().map(|_, t| t.base.t))
-                .collect(),
-        };
-        let outputs = Tuple {
-            elems: self
-                .t
-                .outputs
-                .t
-                .elems
-                .iter()
-                .map(|v| v.t.ty.as_ref().map(|_, t| t.base.t))
-                .collect(),
-        };
+        let inputs = self
+            .t
+            .inputs
+            .t
+            .map_ref(|v| v.t.ty.as_ref().map(|_, t| t.base.t));
+        let outputs = self
+            .t
+            .outputs
+            .t
+            .map_ref(|v| v.t.ty.as_ref().map(|_, t| t.base.t));
         (
             Sp::new(inputs, self.t.inputs.span),
             Sp::new(outputs, self.t.outputs.span),
@@ -558,26 +545,16 @@ impl Sp<ast::decl::Node> {
 
 impl Sp<ast::decl::ExtNode> {
     pub fn signature(&self) -> (SpTyBaseTuple, SpTyBaseTuple) {
-        let inputs = Tuple {
-            elems: self
-                .t
-                .inputs
-                .t
-                .elems
-                .iter()
-                .map(|v| v.t.ty.as_ref().map(|_, t| t.base.t))
-                .collect(),
-        };
-        let outputs = Tuple {
-            elems: self
-                .t
-                .outputs
-                .t
-                .elems
-                .iter()
-                .map(|v| v.t.ty.as_ref().map(|_, t| t.base.t))
-                .collect(),
-        };
+        let inputs = self
+            .t
+            .inputs
+            .t
+            .map_ref(|v| v.t.ty.as_ref().map(|_, t| t.base.t));
+        let outputs = self
+            .t
+            .outputs
+            .t
+            .map_ref(|v| v.t.ty.as_ref().map(|_, t| t.base.t));
         (
             Sp::new(inputs, self.t.inputs.span),
             Sp::new(outputs, self.t.outputs.span),
@@ -608,11 +585,11 @@ impl Sp<ast::decl::ExtConst> {
 }
 
 impl Sp<ast::decl::Prog> {
-    pub fn typecheck(&self) -> TcResult<()> {
+    pub fn typecheck(&mut self) -> TcResult<()> {
         let mut varctx = HashMap::new();
         let mut functx = HashMap::new();
-        for decl in &self.t.decls {
-            match &decl.t {
+        for decl in &mut self.t.decls {
+            match &mut decl.t {
                 ast::decl::Decl::Const(c) => {
                     c.typecheck(&varctx)?;
                     let (name, ty) = c.signature();

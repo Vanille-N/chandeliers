@@ -189,7 +189,9 @@ lustre::decl! {
     const FIB0 : int = 0;
     const FIB1 : int = 1;
     node fib() returns (x : int);
-    let x = FIB0 -> FIB1 -> (pre x + pre pre x); tel;
+    let
+        x = FIB0 -> FIB1 -> FIB1;
+    tel;
 }
 
 #[test]
@@ -200,4 +202,57 @@ fn fib_behavior() {
         vals.push(fib.update_mut().unwrap());
     }
     assert_eq!(&vals, &[0, 1, 1, 2, 3, 5, 8, 13, 21, 34]);
+}
+
+lustre::decl! {
+    node test() returns ();
+    var x : float;
+    let
+        x = float(5);
+        assert x > 0.0;
+    tel
+}
+
+#[test]
+fn test_assertion() {
+    let mut t = test::default();
+    t.update_mut();
+}
+
+lustre::decl! {
+    node failing() returns ();
+    var x : float;
+    let
+        x = float(5);
+        assert x <= 0.0;
+    tel
+}
+
+#[test]
+#[should_panic]
+fn failing_assertion() {
+    let mut t = failing::default();
+    t.update_mut();
+}
+
+lustre::decl! {
+    node noio() returns ();
+    let tel;
+
+    node system() returns (i : int);
+    let
+        i = 1;
+        ((((((())), )),)) = noio();
+    tel
+}
+
+lustre::decl! {
+    node ret2() returns (i, j : int);
+    let i = 1; j = 2; tel;
+
+    node system2() returns ();
+    var i, j : int;
+    let
+        (i, j) = ret2();
+    tel
 }
