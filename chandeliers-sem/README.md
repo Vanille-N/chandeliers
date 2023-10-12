@@ -40,7 +40,6 @@ tel;
 In Candle we would define the equivalent logic as follows:
 
 ```rs
-#![feature(core_intrinsics)]
 use chandeliers_sem::macros::*;
 
 #[allow(non_camel_case_types)]

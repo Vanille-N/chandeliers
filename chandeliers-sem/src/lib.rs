@@ -1,7 +1,5 @@
 //! Tools for defining the semantics of Lustre.
 
-// `std::intrinsics::likely` is used by `candle` for clock comparisons
-#![feature(core_intrinsics)]
 // `candle` may generate comparisons `n >= 0` for `n: u64`
 #![allow(unused_comparisons)]
 

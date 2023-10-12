@@ -39,7 +39,6 @@
 //! In Candle we would define the same node like this:
 //!
 //! ```
-//! #![feature(core_intrinsics)]
 //! use chandeliers_sem::macros::*;
 //!
 //! #[allow(non_camel_case_types)]
@@ -299,7 +298,7 @@ macro_rules! float {
 #[macro_export]
 macro_rules! later {
     ($this:ident <~ $dt:expr ; $lhs:expr, $rhs:expr) => {
-        if std::intrinsics::likely($this.__clock > $dt) {
+        if $this.__clock > $dt {
             $rhs
         } else {
             $lhs
@@ -322,7 +321,7 @@ macro_rules! later {
 #[macro_export]
 macro_rules! substep {
     ($this:ident <~ $dt:expr ; $id:tt => { $( $arg:expr, )* } ) => {
-        if std::intrinsics::likely($this.__clock >= $dt) {
+        if $this.__clock >= $dt {
             $this.__nodes.$id
                 .update_mut(
                     $( $arg ),*
