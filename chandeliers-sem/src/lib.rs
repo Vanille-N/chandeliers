@@ -20,12 +20,14 @@ pub mod traits {
 
 /// The macros that define the semantics of Candle by translating it to Rust.
 pub mod macros {
+    /// Assertion:
+    pub use crate::truth;
     /// Type:
     pub use crate::ty;
     /// Debugging:
     pub use crate::{assert_is, node_trace};
     /// Expression combinator:
-    pub use crate::{binop, cmp, float, ifx, substep, later, unop};
+    pub use crate::{binop, cmp, float, ifx, later, substep, unop};
     /// Expression:
     pub use crate::{lit, nil, var};
     /// Statement:

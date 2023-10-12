@@ -429,3 +429,19 @@ macro_rules! cmp {
         $crate::nillable_cmp_ord!(Less, false, $lhs, $rhs)
     };
 }
+
+/// Assert that a boolean holds. [statement]
+///
+/// Usage: `truth!(v, "Assertion v failed")`.
+/// This fails on both `false` and `nil`.
+#[macro_export]
+macro_rules! truth {
+    ($b:expr, $msg:expr) => {
+        let b: $crate::nillable::Nillable<bool> = $b;
+        match b {
+            $crate::nillable::Defined(true) => {}
+            $crate::nillable::Defined(false) => panic!("Assertion failed: {}", $msg),
+            $crate::nillable::Nil => panic!("Value is nil: {}", $msg),
+        }
+    };
+}

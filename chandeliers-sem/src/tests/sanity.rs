@@ -25,6 +25,23 @@ fn exist_all_ops() {
     let _ = cmp!(!=; i, i);
 }
 
+#[test]
+fn assert_ok() {
+    truth!(lit!(true), "Ok");
+}
+
+#[test]
+#[should_panic]
+fn assert_ko() {
+    truth!(lit!(false), "Truth on false");
+}
+
+#[test]
+#[should_panic]
+fn assert_nil() {
+    truth!(nil!(), "Truth on Nil");
+}
+
 const BNIL: ty!(bool) = nil!();
 
 #[test]
