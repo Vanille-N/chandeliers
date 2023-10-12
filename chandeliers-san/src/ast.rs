@@ -9,6 +9,43 @@ pub struct Sp<T> {
     pub t: T,
 }
 
+pub trait SpanEnd {
+    fn span_end(&self) -> Option<Span>;
+}
+
+impl<T: SpanEnd> SpanEnd for Box<T> {
+    fn span_end(&self) -> Option<Span> {
+        self.as_ref().span_end()
+    }
+}
+impl<T: SpanEnd, P> SpanEnd for syn::punctuated::Punctuated<T, P> {
+    fn span_end(&self) -> Option<Span> {
+        self.last().and_then(|x| x.span_end())
+    }
+}
+
+
+impl<T> syn::parse::Parse for Sp<T>
+where
+    T: syn::parse::Parse + SpanEnd,
+{
+    fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
+        let begin = input.span();
+        let t: T = input.parse()?;
+        let end = t.span_end().unwrap_or(begin);
+        Ok(Self {
+            t,
+            span: begin.join(end).unwrap(),
+        })
+    }
+}
+
+impl<T> SpanEnd for Sp<T> {
+    fn span_end(&self) -> Option<Span> {
+        Some(self.span)
+    }
+}
+
 impl<T: fmt::Display> fmt::Display for Sp<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.t)
@@ -47,6 +84,27 @@ impl<T, E> Sp<Result<T, E>> {
     }
 }
 
+macro_rules! span_end_from_spanned {
+    ( $($ty:tt)* ) => {
+        impl SpanEnd for $($ty)* {
+            fn span_end(&self) -> Option<Span> {
+                Some(self.span())
+            }
+        }
+    }
+}
+span_end_from_spanned!(syn::Ident);
+span_end_from_spanned!(syn::Lit);
+impl SpanEnd for syn::token::Paren {
+    fn span_end(&self) -> Option<Span> {
+        Some(self.span.join())
+    }
+}
+
+
+
+
+
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Tuple<T> {
     pub elems: Vec<T>,
@@ -61,8 +119,8 @@ impl<T> Default for Tuple<T> {
 }
 
 pub mod clock {
-    use std::fmt;
     use super::Span;
+    use std::fmt;
 
     #[derive(Debug, Clone, Copy)]
     pub struct Depth {
@@ -385,9 +443,9 @@ pub mod decl {
     use super::expr;
     use super::stmt;
     use super::ty;
+    use super::ty::TyBase;
     use super::Sp;
     use super::Tuple;
-    use super::ty::TyBase;
     use std::fmt;
 
     #[derive(Debug, Clone)]

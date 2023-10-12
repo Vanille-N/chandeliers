@@ -6,14 +6,14 @@ use quote::ToTokens;
 use chandeliers_syn as syntax;
 use chandeliers_san as sanitizer;
 
-use syntax::ast::InputSpan;
+use syntax::translate::SpanTranslate;
 use sanitizer::causality::Causality;
+use sanitizer::ast::Sp;
 
 #[proc_macro]
 pub fn decl(i: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    let mut prog: syntax::ast::Prog = parse_macro_input!(i as syntax::ast::Prog);
-    prog.span_everything();
-    let prog = match prog.translate() {
+    let mut prog = parse_macro_input!(i as Sp<syntax::ast::Prog>);
+    let prog = match prog.translate(()) {
         Ok(prog) => prog,
         Err(e) => return e.into(),
     };

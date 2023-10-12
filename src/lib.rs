@@ -171,7 +171,6 @@ lustre::decl! {
 }
 */
 
-
 lustre::decl! {
     node add(a, b : int) returns (sum : int);
     let

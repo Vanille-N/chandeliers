@@ -1,5 +1,5 @@
-use proc_macro2::{TokenStream, Ident};
-use quote::{ToTokens, quote_spanned, quote};
+use proc_macro2::{Ident, TokenStream};
+use quote::{quote, quote_spanned, ToTokens};
 
 use super::ast::*;
 use super::candle;
@@ -28,13 +28,13 @@ impl ToTokens for decl::Prog {
 impl ToTokens for decl::Decl {
     fn to_tokens(&self, toks: &mut TokenStream) {
         match self {
-            Self::ExtConst(_) => {},
-            Self::ExtNode(_) => {},
+            Self::ExtConst(_) => {}
+            Self::ExtNode(_) => {}
             Self::Const(c) => {
                 toks.extend(quote! {
                     const #c ;
                 });
-            },
+            }
             Self::Node(n) => {
                 let declare = n.declare_node();
                 let implement = n.implement_node();
@@ -62,7 +62,14 @@ impl ToTokens for decl::Const {
 
 impl decl::Node {
     fn declare_node(&self) -> TokenStream {
-        let Self { name, inputs, outputs, locals, blocks, stmts } = self;
+        let Self {
+            name,
+            inputs,
+            outputs,
+            locals,
+            blocks,
+            stmts,
+        } = self;
         let name = name.as_ident();
         let pos_inputs = inputs.t.elems.iter().filter(|v| v.t.strictly_positive());
         let pos_outputs = outputs.t.elems.iter().filter(|v| v.t.strictly_positive());
@@ -82,7 +89,14 @@ impl decl::Node {
     }
 
     fn implement_node(&self) -> TokenStream {
-        let Self { name, inputs, outputs, locals, blocks, stmts } = self;
+        let Self {
+            name,
+            inputs,
+            outputs,
+            locals,
+            blocks,
+            stmts,
+        } = self;
         let name = name.as_ident();
         let inputs_sep = inputs.comma_separated_decls();
         let outputs_ty = outputs.type_tuple();
@@ -167,16 +181,16 @@ impl expr::Expr {
             Self::Lit(l) => {
                 let l = l.const_lit();
                 quote!( #l )
-            },
+            }
             Self::Reference(refer) => {
                 let refer = refer.const_expr();
                 quote!( #refer )
-            },
+            }
             Self::BinOp { op, lhs, rhs } => {
                 let lhs = lhs.const_expr();
                 let rhs = rhs.const_expr();
                 quote!( (#lhs #op #rhs) )
-            },
+            }
             Self::UnOp { op, inner } => {
                 quote!( (#op #inner) )
             }
@@ -228,7 +242,7 @@ impl ToTokens for expr::BinOp {
 impl ToTokens for expr::UnOp {
     fn to_tokens(&self, toks: &mut TokenStream) {
         toks.extend(match self {
-            Self::Not => quote!( ! ),
+            Self::Not => quote!(!),
             Self::Neg => quote!( - ),
         });
     }
@@ -251,7 +265,9 @@ impl Sp<expr::Lit> {
     fn const_lit(&self) -> syn::Lit {
         let mut lit = match self.t {
             expr::Lit::Int(i) => syn::Lit::Int(syn::LitInt::new(&format!("{}i64", i), self.span)),
-            expr::Lit::Float(f) => syn::Lit::Float(syn::LitFloat::new(&format!("{}f64", f), self.span)),
+            expr::Lit::Float(f) => {
+                syn::Lit::Float(syn::LitFloat::new(&format!("{}f64", f), self.span))
+            }
             expr::Lit::Bool(b) => syn::Lit::Bool(syn::LitBool::new(b, self.span)),
         };
         lit.set_span(self.span);
@@ -331,7 +347,7 @@ impl Tuple<Sp<decl::Var>> {
         let mut toks = TokenStream::new();
         for v in &self.elems {
             if v.t.ty.t.depth.dt > 0 {
-                toks.extend(quote!{ #v , });
+                toks.extend(quote! { #v , });
             }
         }
         toks
@@ -340,7 +356,7 @@ impl Tuple<Sp<decl::Var>> {
         let mut toks = TokenStream::new();
         for v in &self.elems {
             if v.t.ty.t.depth.dt > 0 {
-                toks.extend(quote!{ update(self, #v); });
+                toks.extend(quote! { update(self, #v); });
             }
         }
         toks
@@ -368,10 +384,10 @@ impl Tuple<Sp<decl::Var>> {
     fn type_tuple(&self) -> TokenStream {
         if self.elems.len() == 1 {
             let ty = self.elems[0].t.ty.as_base_ty();
-            quote!{ chandeliers_sem::ty!(#ty) }
+            quote! { chandeliers_sem::ty!(#ty) }
         } else {
             let tup = self.comma_separated_types();
-            quote!{
+            quote! {
                 ( #tup )
             }
         }
@@ -380,10 +396,10 @@ impl Tuple<Sp<decl::Var>> {
     fn name_tuple(&self) -> TokenStream {
         if self.elems.len() == 1 {
             let name = self.elems[0].t.name.as_ident();
-            quote!{ #name }
+            quote! { #name }
         } else {
             let tup = self.comma_separated_names();
-            quote!{
+            quote! {
                 ( #tup )
             }
         }
@@ -393,7 +409,7 @@ impl Tuple<Sp<decl::Var>> {
         let mut toks = TokenStream::new();
         for v in &self.elems {
             let ty = v.t.ty.as_base_ty();
-            toks.extend(quote!{ chandeliers_sem::ty!(#ty) , });
+            toks.extend(quote! { chandeliers_sem::ty!(#ty) , });
         }
         toks
     }
@@ -402,7 +418,7 @@ impl Tuple<Sp<decl::Var>> {
         let mut toks = TokenStream::new();
         for v in &self.elems {
             let name = v.t.name.as_ident();
-            toks.extend(quote!{ #name , });
+            toks.extend(quote! { #name , });
         }
         toks
     }
@@ -410,7 +426,7 @@ impl Tuple<Sp<decl::Var>> {
     fn comma_separated_decls(&self) -> TokenStream {
         let mut toks = TokenStream::new();
         for v in &self.elems {
-            toks.extend(quote!{ #v , });
+            toks.extend(quote! { #v , });
         }
         toks
     }
@@ -435,7 +451,7 @@ impl ToTokens for stmt::Statement {
                 toks.extend(quote! {
                     let #target = #source
                 });
-            },
+            }
             Self::Substep { clk, id, args } => {
                 let id_lit = syn::LitInt::new(&format!("{}", id.t.id), id.span);
                 let args = &args.t.elems;
@@ -447,13 +463,13 @@ impl ToTokens for stmt::Statement {
                         }
                     )
                 });
-            },
+            }
             Self::Trace { msg, fmt } => {
                 unimplemented!("Trace");
-            },
+            }
             Self::Assert(e) => {
                 unimplemented!("Assert");
-            },
+            }
         }
     }
 }
@@ -472,44 +488,44 @@ impl ToTokens for stmt::VarTuple {
                 toks.extend(quote! {
                     ( #( #m ),* )
                 });
-            },
+            }
         }
     }
 }
 
 impl ToTokens for expr::Expr {
     fn to_tokens(&self, toks: &mut TokenStream) {
-        toks.extend(
-            match self {
-                Self::Lit(l) => {
-                    let l = l.const_lit();
-                    quote!( chandeliers_sem::lit!(#l) )
-                }
-                Self::Reference(refer) => {
-                    quote!( #refer )
-                }
-                Self::Tuple(t) => {
-                    let elems = &t.t.elems;
-                    quote!( ( #( #elems ),* ) )
-                }
-                Self::BinOp { op, lhs, rhs } => {
-                    quote!( chandeliers_sem::binop!(#op; #lhs, #rhs) )
-                }
-                Self::UnOp { op, inner } => {
-                    quote!( chandeliers_sem::unop!(#op; #inner) )
-                }
-                Self::CmpOp { op, lhs, rhs } => {
-                    quote!( chandeliers_sem::cmp!(#op; #lhs, #rhs) )
-                }
-                Self::Later { clk, before, after } => {
-                    quote!( chandeliers_sem::later!(self <~ #clk; #before, #after) )
-               }
-                Self::Builtin(b) => { quote!( #b ) },
-                Self::Ifx { cond, yes, no } => {
-                    quote!( chandeliers_sem::ifx!((#cond) then { #yes } else { #no }) )
-                }
+        toks.extend(match self {
+            Self::Lit(l) => {
+                let l = l.const_lit();
+                quote!(chandeliers_sem::lit!(#l))
             }
-        )
+            Self::Reference(refer) => {
+                quote!( #refer )
+            }
+            Self::Tuple(t) => {
+                let elems = &t.t.elems;
+                quote!( ( #( #elems ),* ) )
+            }
+            Self::BinOp { op, lhs, rhs } => {
+                quote!(chandeliers_sem::binop!(#op; #lhs, #rhs))
+            }
+            Self::UnOp { op, inner } => {
+                quote!(chandeliers_sem::unop!(#op; #inner))
+            }
+            Self::CmpOp { op, lhs, rhs } => {
+                quote!(chandeliers_sem::cmp!(#op; #lhs, #rhs))
+            }
+            Self::Later { clk, before, after } => {
+                quote!(chandeliers_sem::later!(self <~ #clk; #before, #after))
+            }
+            Self::Builtin(b) => {
+                quote!( #b )
+            }
+            Self::Ifx { cond, yes, no } => {
+                quote!(chandeliers_sem::ifx!((#cond) then { #yes } else { #no }))
+            }
+        })
     }
 }
 

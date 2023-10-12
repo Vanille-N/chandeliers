@@ -2,10 +2,9 @@ use std::collections::HashSet;
 
 use super::ast as lus;
 use super::translate::candle::Sp;
-use lus::InputSpan;
 
 use chandeliers_san::ast as candle;
-use proc_macro2::{TokenStream, Span};
+use proc_macro2::{Span, TokenStream};
 use quote::quote_spanned;
 
 pub type TrResult<T> = Result<T, TokenStream>;
@@ -13,160 +12,273 @@ pub type TrResult<T> = Result<T, TokenStream>;
 type BlockNames = Vec<Sp<candle::decl::NodeName>>;
 type StmtList = Vec<Sp<candle::stmt::Statement>>;
 type CandleExpr = candle::expr::Expr;
-pub trait TranslateExpr {
-    fn translate(
-        self,
-        blocks: &mut BlockNames,
-        stmts: &mut StmtList,
-        depth: usize,
-        shadow_glob: &HashSet<String>,
-    ) -> TrResult<Sp<CandleExpr>>;
+
+pub trait Translate {
+    type Output;
+    type Ctx<'i>;
+    fn translate<'i>(self, span: Span, ctx: Self::Ctx<'i>) -> TrResult<Self::Output>;
 }
 
-impl lus::AttrDecl {
-    pub fn translate(self) -> TrResult<Sp<candle::decl::Decl>> {
+pub trait SpanTranslate {
+    type Ctx<'i>;
+    type Output;
+    fn translate<'i>(self, ctx: Self::Ctx<'i>) -> TrResult<Sp<Self::Output>>;
+    fn flat_translate<'i>(self, ctx: Self::Ctx<'i>) -> TrResult<Self::Output>;
+}
+impl<T> SpanTranslate for Sp<T>
+where
+    T: Translate,
+{
+    type Ctx<'i> = T::Ctx<'i>;
+    type Output = T::Output;
+    fn translate<'i>(self, ctx: Self::Ctx<'i>) -> TrResult<Sp<Self::Output>> {
+        let res = self.t.translate(self.span, ctx)?;
+        Ok(Sp {
+            t: res,
+            span: self.span,
+        })
+    }
+    fn flat_translate<'i>(self, ctx: Self::Ctx<'i>) -> TrResult<Self::Output> {
+        self.t.translate(self.span, ctx)
+    }
+}
+
+impl<T> Translate for Box<T>
+where
+    T: Translate,
+{
+    type Ctx<'i> = T::Ctx<'i>;
+    type Output = T::Output;
+    fn translate<'i>(self, span: Span, ctx: Self::Ctx<'i>) -> TrResult<Self::Output> {
+        (*self).translate(span, ctx)
+    }
+}
+
+impl Translate for lus::Prog {
+    type Ctx<'i> = ();
+    type Output = candle::decl::Prog;
+    fn translate(self, span: Span, _: ()) -> TrResult<candle::decl::Prog> {
+        let mut decls = Vec::new();
+        for decl in self.decls.into_iter() {
+            decls.push(decl.translate(())?);
+        }
+        Ok(candle::decl::Prog { decls })
+    }
+}
+
+impl Translate for lus::AttrDecl {
+    type Ctx<'i> = ();
+    type Output = candle::decl::Decl;
+    fn translate(self, span: Span, _: ()) -> TrResult<candle::decl::Decl> {
         match self {
-            Self::Tagged(_, n) => n.translate(),
-            Self::Node(n) => n.translate(),
+            Self::Tagged(_, n) => n.flat_translate(()),
+            Self::Node(n) => n.flat_translate(()),
         }
     }
 }
 
-impl lus::Decl {
-    pub fn translate(self) -> TrResult<Sp<candle::decl::Decl>> {
-        let span = self.input_span();
-        match self {
-            Self::Const(c) => Ok(Sp::new(candle::decl::Decl::Const(c.translate()?), span)),
-            Self::Node(n) => Ok(Sp::new(candle::decl::Decl::Node(n.translate()?), span)),
-            Self::Extern(lus::Extern::Const(c)) => Ok(Sp::new(candle::decl::Decl::ExtConst(c.translate()?), span)),
-            Self::Extern(lus::Extern::Node(n)) => Ok(Sp::new(candle::decl::Decl::ExtNode(n.translate()?), span)),
-        }
+impl Translate for lus::Decl {
+    type Ctx<'i> = ();
+    type Output = candle::decl::Decl;
+    fn translate(self, span: Span, _: ()) -> TrResult<candle::decl::Decl> {
+        Ok(match self {
+            Self::Const(c) => candle::decl::Decl::Const(c.translate(())?),
+            Self::Node(n) => candle::decl::Decl::Node(n.translate(())?),
+            Self::Extern(e) => e.flat_translate(())?,
+        })
     }
 }
 
-impl lus::Node {
-    pub fn translate(self) -> TrResult<Sp<candle::decl::Node>> {
-        let span = self.input_span();
+impl Translate for lus::Extern {
+    type Ctx<'i> = ();
+    type Output = candle::decl::Decl;
+    fn translate(self, span: Span, _: ()) -> TrResult<candle::decl::Decl> {
+        Ok(match self {
+            Self::Const(c) => candle::decl::Decl::ExtConst(c.translate(())?),
+            Self::Node(n) => candle::decl::Decl::ExtNode(n.translate(())?),
+        })
+    }
+}
+
+impl Translate for lus::ExtConst {
+    type Ctx<'i> = ();
+    type Output = candle::decl::ExtConst;
+    fn translate(self, span: Span, _: ()) -> TrResult<Self::Output> {
+        let name = self.name.map(|_, name| candle::expr::Var {
+            name: name.to_string(),
+        });
+        let ty = self.ty.translate(())?;
+        Ok(candle::decl::ExtConst { name, ty })
+    }
+}
+
+impl Translate for lus::ExtNode {
+    type Ctx<'i> = ();
+    type Output = candle::decl::ExtNode;
+    fn translate(self, span: Span, _: ()) -> TrResult<candle::decl::ExtNode> {
         let name = self
             .name
-            .map_ref_with_span(|_, name| candle::decl::NodeName(name.to_string()));
-        let inputs = self.inputs.translate(self._inputs_paren.span.join())?;
-        let outputs = self.outputs.translate(self._outputs_paren.span.join())?;
-        let locals = self.locals.translate()?;
-        let mut blocks = Vec::new();
-        let mut stmts = Vec::new();
-        let mut shadow_glob = HashSet::new();
+            .map(|_, name| candle::decl::NodeName(name.to_string()));
+        let inputs = self.inputs.translate(())?;
+        let outputs = self.outputs.translate(())?;
+        Ok(candle::decl::ExtNode {
+            name,
+            inputs,
+            outputs,
+        })
+    }
+}
+
+#[derive(Default)]
+struct ExprCtx {
+    blocks: Vec<Sp<candle::decl::NodeName>>,
+    stmts: Vec<Sp<candle::stmt::Statement>>,
+    shadow_glob: HashSet<String>,
+}
+
+pub struct ExprCtxView<'i> {
+    blocks: &'i mut Vec<Sp<candle::decl::NodeName>>,
+    stmts: &'i mut Vec<Sp<candle::stmt::Statement>>,
+    shadow_glob: &'i HashSet<String>,
+    depth: usize,
+}
+
+impl ExprCtx {
+    fn view(&mut self) -> ExprCtxView<'_> {
+        ExprCtxView {
+            blocks: &mut self.blocks,
+            stmts: &mut self.stmts,
+            shadow_glob: &self.shadow_glob,
+            depth: 0,
+        }
+    }
+}
+
+impl ExprCtxView<'_> {
+    fn bump(self, n: usize) -> Self {
+        Self {
+            depth: self.depth + n,
+            ..self
+        }
+    }
+
+    fn incr(self) -> Self {
+        self.bump(1)
+    }
+}
+
+macro_rules! fork {
+    ($this:ident) => {
+        ExprCtxView {
+            blocks: &mut *$this.blocks,
+            stmts: &mut *$this.stmts,
+            shadow_glob: &$this.shadow_glob,
+            depth: $this.depth,
+        }
+    };
+}
+
+impl<'i> ExprCtxView<'i> {
+    fn fork(&'i mut self) -> ExprCtxView<'i> {
+        Self {
+            blocks: &mut *self.blocks,
+            stmts: &mut *self.stmts,
+            shadow_glob: &self.shadow_glob,
+            depth: self.depth,
+        }
+    }
+}
+
+impl Translate for lus::Node {
+    type Ctx<'i> = ();
+    type Output = candle::decl::Node;
+    fn translate(self, _span: Span, _: ()) -> TrResult<Self::Output> {
+        let name = self
+            .name
+            .map(|_, name| candle::decl::NodeName(name.to_string()));
+        let inputs = self.inputs.translate(())?;
+        let outputs = self.outputs.translate(())?;
+        let locals = self.locals.translate(())?;
+        let mut ectx = ExprCtx::default();
         for shadows in &[&inputs, &outputs, &locals] {
             for s in &shadows.t.elems {
-                shadow_glob.insert(s.t.name.t.name.clone());
+                ectx.shadow_glob.insert(s.t.name.t.name.clone());
             }
         }
 
         for def in self.defs.into_iter() {
-            def.translate(&mut blocks, &mut stmts, &shadow_glob)?;
+            def.translate(ectx.view())?;
         }
-        Ok(Sp::new(
-            candle::decl::Node {
-                name,
-                inputs,
-                outputs,
-                locals,
-                blocks,
-                stmts,
-            },
-            span,
-        ))
+        let ExprCtx { blocks, stmts, .. } = ectx;
+        Ok(candle::decl::Node {
+            name,
+            inputs,
+            outputs,
+            locals,
+            blocks,
+            stmts,
+        })
     }
 }
 
-impl lus::Const {
-    pub fn translate(self) -> TrResult<Sp<candle::decl::Const>> {
-        let span = self.input_span();
-        let name = self.name.map_ref_with_span(|_, name| candle::expr::Var { name: name.to_string() });
-        let ty = self.ty.translate()?;
-        let mut v1 = Vec::new();
-        let mut v2 = Vec::new();
-        let value = self.value.translate(&mut v1, &mut v2, 0, &HashSet::new())?;
-        if !v1.is_empty() || !v2.is_empty() {
+impl Translate for lus::Const {
+    type Ctx<'i> = ();
+    type Output = candle::decl::Const;
+    fn translate(self, span: Span, _: ()) -> TrResult<candle::decl::Const> {
+        let name = self.name.map(|_, name| candle::expr::Var {
+            name: name.to_string(),
+        });
+        let ty = self.ty.translate(())?;
+        let mut ectx = ExprCtx::default();
+        let value = self.value.translate(ectx.view())?;
+        if !ectx.stmts.is_empty() || !ectx.blocks.is_empty() {
             let s = format!("Expression {value} is not const: const expressions must not contain any function calls");
             return Err(quote_spanned! {span=>
                 compile_error!(#s);
             });
         }
-        Ok(Sp::new(candle::decl::Const { name, ty, value }, span))
+        Ok(candle::decl::Const { name, ty, value })
     }
 }
 
-impl lus::ExtNode {
-    pub fn translate(self) -> TrResult<Sp<candle::decl::ExtNode>> {
-        let span = self.input_span();
-        let name = self
-            .name
-            .map_ref_with_span(|_, name| candle::decl::NodeName(name.to_string()));
-        let inputs = self.inputs.translate(self._inputs_paren.span.join())?;
-        let outputs = self.outputs.translate(self._outputs_paren.span.join())?;
-        Ok(Sp::new(
-            candle::decl::ExtNode {
-                name,
-                inputs,
-                outputs,
-            },
-            span,
-        ))
-    }
-}
-
-impl lus::ExtConst {
-    pub fn translate(self) -> TrResult<Sp<candle::decl::ExtConst>> {
-        let span = self.input_span();
-        let name = self.name.map_ref_with_span(|_, name| candle::expr::Var { name: name.to_string() });
-        let ty = self.ty.translate()?;
-        Ok(Sp::new(candle::decl::ExtConst { name, ty }, span))
-    }
-}
-
-
-impl lus::Prog {
-    pub fn translate(self) -> TrResult<Sp<candle::decl::Prog>> {
-        let span = self.input_span();
-        let mut decls = Vec::new();
-        for decl in self.decls.into_iter() {
-            decls.push(decl.translate()?);
-        }
-        Ok(Sp::new(candle::decl::Prog { decls }, span))
-    }
-}
-
-impl lus::ArgsTys {
-    pub fn translate(self, span: Span) -> TrResult<Sp<candle::Tuple<Sp<candle::decl::Var>>>> {
+impl Translate for lus::ArgsTys {
+    type Ctx<'i> = ();
+    type Output = candle::Tuple<Sp<candle::decl::Var>>;
+    fn translate(self, _span: Span, _: ()) -> TrResult<candle::Tuple<Sp<candle::decl::Var>>> {
         let mut vs = candle::Tuple::default();
         for item in self.items {
             item.translate(&mut vs)?;
         }
-        Ok(Sp::new(vs, span))
+        Ok(vs)
     }
 }
 
-impl lus::ArgsTy {
-    pub fn translate(self, vars: &mut candle::Tuple<Sp<candle::decl::Var>>) -> TrResult<()> {
-        let ty = self.ty.translate()?;
-        self.args.translate(vars, ty)?;
+impl Translate for lus::ArgsTy {
+    type Ctx<'i> = &'i mut candle::Tuple<Sp<candle::decl::Var>>;
+    type Output = ();
+    fn translate<'i>(self, _span: Span, ctx: Self::Ctx<'i>) -> TrResult<()> {
+        let ty = self.ty.translate(())?;
+        self.args.translate((ctx, ty))?;
         Ok(())
     }
 }
 
-impl lus::Decls {
-    pub fn translate(
-        self,
-        vars: &mut candle::Tuple<Sp<candle::decl::Var>>,
-        ty: Sp<candle::ty::TyBase>,
-    ) -> TrResult<()> {
+impl Translate for lus::Decls {
+    type Ctx<'i> = (
+        &'i mut candle::Tuple<Sp<candle::decl::Var>>,
+        Sp<candle::ty::TyBase>,
+    );
+    type Output = ();
+    fn translate<'i>(self, _span: Span, (vars, ty): Self::Ctx<'i>) -> TrResult<()> {
         for id in self.ids {
-            vars.elems.push(id.map_with_span(|_, id| {
+            vars.elems.push(id.map(|span, id| {
                 candle::decl::Var {
-                    name: id.map_with_span(|_, name| candle::expr::Var {
-                        name: name.to_string(),
-                    }),
+                    name: Sp::new(
+                        candle::expr::Var {
+                            name: id.to_string(),
+                        },
+                        span,
+                    ),
                     ty: ty.map(|span, ty| {
                         candle::ty::Stream {
                             base: Sp::new(ty, span),
@@ -184,77 +296,74 @@ impl lus::Decls {
     }
 }
 
-impl lus::Type {
-    pub fn translate(self) -> TrResult<Sp<candle::ty::TyBase>> {
-        self.base.translate()
+impl Translate for lus::Type {
+    type Ctx<'i> = ();
+    type Output = candle::ty::TyBase;
+    fn translate(self, _span: Span, _: ()) -> TrResult<Self::Output> {
+        self.base.flat_translate(())
     }
 }
 
-impl lus::BaseType {
-    pub fn translate(self) -> TrResult<Sp<candle::ty::TyBase>> {
-        Ok(self.map_with_span(|_, t| match t {
+impl Translate for lus::BaseType {
+    type Ctx<'i> = ();
+    type Output = candle::ty::TyBase;
+    fn translate(self, _span: Span, _: ()) -> TrResult<Self::Output> {
+        Ok(match self {
             Self::Int(_) => candle::ty::TyBase::Int,
             Self::Float(_) => candle::ty::TyBase::Float,
             Self::Bool(_) => candle::ty::TyBase::Bool,
-        }))
+        })
     }
 }
 
-impl lus::OptionalVarsDecl {
-    pub fn translate(self) -> TrResult<Sp<candle::Tuple<Sp<candle::decl::Var>>>> {
+impl Translate for lus::OptionalVarsDecl {
+    type Ctx<'i> = ();
+    type Output = candle::Tuple<Sp<candle::decl::Var>>;
+    fn translate(self, _span: Span, _: ()) -> TrResult<Self::Output> {
         match self {
-            Self::Decls(d) => d.translate(),
-            Self::None(m) => Ok(m.map_with_span(|_, _| candle::Tuple::default())),
+            Self::Decls(d) => d.flat_translate(()),
+            Self::None => Ok(candle::Tuple::default()),
         }
     }
 }
 
-impl lus::VarsDecl {
-    pub fn translate(self) -> TrResult<Sp<candle::Tuple<Sp<candle::decl::Var>>>> {
-        let span = self.input_span();
-        self.decls.translate(span)
+impl Translate for lus::VarsDecl {
+    type Ctx<'i> = ();
+    type Output = candle::Tuple<Sp<candle::decl::Var>>;
+    fn translate(self, _span: Span, _: ()) -> TrResult<Self::Output> {
+        self.decls.flat_translate(())
     }
 }
 
-impl lus::Statement {
-    pub fn translate(
-        self,
-        blocks: &mut Vec<Sp<candle::decl::NodeName>>,
-        stmts: &mut Vec<Sp<candle::stmt::Statement>>,
-        shadow_glob: &HashSet<String>,
-    ) -> TrResult<()> {
+impl Translate for lus::Statement {
+    type Ctx<'i> = ExprCtxView<'i>;
+    type Output = ();
+    fn translate<'i>(self, _span: Span, ctx: Self::Ctx<'i>) -> TrResult<()> {
         match self {
-            Self::Assert(ass) => ass.translate(blocks, stmts, shadow_glob),
-            Self::Def(def) => def.translate(blocks, stmts, shadow_glob),
+            Self::Assert(ass) => ass.flat_translate(ctx),
+            Self::Def(def) => def.flat_translate(ctx),
         }
     }
 }
 
-impl lus::Assertion {
-    pub fn translate(
-        self,
-        blocks: &mut Vec<Sp<candle::decl::NodeName>>,
-        stmts: &mut Vec<Sp<candle::stmt::Statement>>,
-        shadow_glob: &HashSet<String>,
-    ) -> TrResult<()> {
-        let span = self.input_span();
-        let e = self.expr.translate(blocks, stmts, 0, shadow_glob)?;
-        stmts.push(Sp::new(candle::stmt::Statement::Assert(e), span));
+impl Translate for lus::Assertion {
+    type Ctx<'i> = ExprCtxView<'i>;
+    type Output = ();
+    fn translate<'i>(self, span: Span, ctx: Self::Ctx<'i>) -> TrResult<()> {
+        let e = self.expr.translate(fork!(ctx))?;
+        ctx.stmts
+            .push(Sp::new(candle::stmt::Statement::Assert(e), span));
         Ok(())
     }
 }
 
-impl lus::Def {
-    pub fn translate(
-        self,
-        blocks: &mut Vec<Sp<candle::decl::NodeName>>,
-        stmts: &mut Vec<Sp<candle::stmt::Statement>>,
-        shadow_glob: &HashSet<String>,
-    ) -> TrResult<()> {
-        let span = self.input_span();
-        let target = self.target.translate()?;
-        let source = self.source.translate(blocks, stmts, 0, shadow_glob)?;
-        stmts.push(Sp::new(
+impl Translate for lus::Def {
+    type Ctx<'i> = ExprCtxView<'i>;
+    type Output = ();
+    fn translate<'i>(self, span: Span, ctx: Self::Ctx<'i>) -> TrResult<()> {
+        let target = self.target.translate(())?;
+        let source = self.source.translate(fork!(ctx))?;
+        ctx.stmts.push(Sp::new(
             candle::stmt::Statement::Let { target, source },
             span,
         ));
@@ -262,158 +371,138 @@ impl lus::Def {
     }
 }
 
-impl lus::TargetExpr {
-    pub fn translate(self) -> TrResult<Sp<candle::stmt::VarTuple>> {
-        let span = self.input_span();
+impl Translate for lus::TargetExpr {
+    type Ctx<'i> = ();
+    type Output = candle::stmt::VarTuple;
+    fn translate(self, span: Span, _: ()) -> TrResult<Self::Output> {
         match self {
-            Self::Var(i) => Ok(Sp::new(
-                candle::stmt::VarTuple::Single(Sp::new(
-                    candle::expr::Var {
-                        name: i.to_string(),
-                    },
-                    span,
-                )),
+            Self::Var(i) => Ok(candle::stmt::VarTuple::Single(Sp::new(
+                candle::expr::Var {
+                    name: i.to_string(),
+                },
                 span,
-            )),
-            Self::Tuple(ts) => ts.translate(),
+            ))),
+            Self::Tuple(ts) => ts.flat_translate(()),
         }
     }
 }
 
-impl lus::TargetExprTuple {
-    pub fn translate(self) -> TrResult<Sp<candle::stmt::VarTuple>> {
-        let span = self.input_span();
+impl Translate for lus::TargetExprTuple {
+    type Ctx<'i> = ();
+    type Output = candle::stmt::VarTuple;
+    fn translate(self, span: Span, _: ()) -> TrResult<Self::Output> {
         let mut vs = candle::Tuple::default();
         for t in self.fields {
-            vs.elems.push(t.translate()?);
+            vs.elems.push(t.translate(())?);
         }
         if vs.elems.len() > 1 {
-            Ok(Sp::new(candle::stmt::VarTuple::Multiple(Sp::new(vs, span)), span))
+            Ok(candle::stmt::VarTuple::Multiple(Sp::new(vs, span)))
         } else {
             unimplemented!("Tuple to Single")
         }
     }
 }
 
-impl<X, Y> TranslateExpr for lus::expr::ExprHierarchy<X, Y>
+impl<X, Y> Translate for lus::expr::ExprHierarchy<X, Y>
 where
-    X: TranslateExpr,
-    Y: TranslateExpr,
+    X: Translate,
+    for<'i> Y: Translate<Ctx<'i> = X::Ctx<'i>, Output = X::Output>,
 {
-    fn translate(
-        self,
-        blocks: &mut BlockNames,
-        stmts: &mut StmtList,
-        depth: usize,
-        shadow_glob: &HashSet<String>,
-    ) -> TrResult<Sp<CandleExpr>> {
+    type Ctx<'i> = X::Ctx<'i>;
+    type Output = X::Output;
+    fn translate<'i>(self, span: Span, ctx: Self::Ctx<'i>) -> TrResult<Self::Output> {
         match self {
-            Self::Here(x) => x.translate(blocks, stmts, depth, shadow_glob),
-            Self::Below(y) => y.translate(blocks, stmts, depth, shadow_glob),
+            Self::Here(x) => x.translate(span, ctx),
+            Self::Below(y) => y.translate(span, ctx),
         }
     }
 }
 
-impl TranslateExpr for lus::Expr {
-    fn translate(
-        self,
-        blocks: &mut BlockNames,
-        stmts: &mut StmtList,
-        depth: usize,
-        shadow_glob: &HashSet<String>,
-    ) -> TrResult<Sp<CandleExpr>> {
-        self.inner.translate(blocks, stmts, depth, shadow_glob)
+impl Translate for lus::Expr {
+    type Ctx<'i> = ExprCtxView<'i>;
+    type Output = CandleExpr;
+    fn translate<'i>(self, _span: Span, ctx: Self::Ctx<'i>) -> TrResult<CandleExpr> {
+        self.inner.flat_translate(ctx)
     }
 }
 
-impl TranslateExpr for lus::expr::IfExpr {
-    fn translate(
-        self,
-        blocks: &mut BlockNames,
-        stmts: &mut StmtList,
-        depth: usize,
-        shadow_glob: &HashSet<String>,
-    ) -> TrResult<Sp<CandleExpr>> {
-        let span = self.input_span();
-        let cond = Box::new(self.cond.translate(blocks, stmts, depth, shadow_glob)?);
-        let yes = Box::new(self.yes.translate(blocks, stmts, depth, shadow_glob)?);
-        let no = Box::new(self.no.translate(blocks, stmts, depth, shadow_glob)?);
-        Ok(Sp::new(CandleExpr::Ifx { cond, yes, no }, span))
+impl Translate for lus::expr::IfExpr {
+    type Ctx<'i> = ExprCtxView<'i>;
+    type Output = CandleExpr;
+    fn translate<'i>(self, _span: Span, ctx: Self::Ctx<'i>) -> TrResult<CandleExpr> {
+        let cond = Box::new(self.cond.translate(fork!(ctx))?);
+        let yes = Box::new(self.yes.translate(fork!(ctx))?);
+        let no = Box::new(self.no.translate(ctx)?);
+        Ok(CandleExpr::Ifx { cond, yes, no })
     }
 }
 
-impl TranslateExpr for lus::expr::OrExpr {
-    fn translate(
-        self,
-        blocks: &mut BlockNames,
-        stmts: &mut StmtList,
-        depth: usize,
-        shadow_glob: &HashSet<String>,
-    ) -> TrResult<Sp<CandleExpr>> {
+impl Translate for lus::expr::OrExpr {
+    type Ctx<'i> = ExprCtxView<'i>;
+    type Output = CandleExpr;
+    fn translate<'i>(self, _span: Span, ctx: Self::Ctx<'i>) -> TrResult<CandleExpr> {
         let mut it = self.items.into_iter();
-        let mut or = it.next().expect("OrExpr should have at least one member").translate(blocks, stmts, depth, shadow_glob)?;
+        let mut or = it
+            .next()
+            .expect("OrExpr should have at least one member")
+            .translate(fork!(ctx))?;
         for e in it {
-            let e = e.translate(blocks, stmts, depth, shadow_glob)?;
+            let e = e.translate(fork!(ctx))?;
             let span = e.span.join(or.span).expect("Faulty span");
-            or = Sp::new(CandleExpr::BinOp {
-                op: candle::expr::BinOp::BitOr,
-                lhs: Box::new(or),
-                rhs: Box::new(e),
-            }, span);
+            or = Sp::new(
+                CandleExpr::BinOp {
+                    op: candle::expr::BinOp::BitOr,
+                    lhs: Box::new(or),
+                    rhs: Box::new(e),
+                },
+                span,
+            );
         }
-        Ok(or)
+        Ok(or.t)
     }
 }
 
-impl TranslateExpr for lus::expr::AndExpr {
-    fn translate(
-        self,
-        blocks: &mut BlockNames,
-        stmts: &mut StmtList,
-        depth: usize,
-        shadow_glob: &HashSet<String>,
-    ) -> TrResult<Sp<CandleExpr>> {
+impl Translate for lus::expr::AndExpr {
+    type Ctx<'i> = ExprCtxView<'i>;
+    type Output = CandleExpr;
+    fn translate<'i>(self, _span: Span, ctx: Self::Ctx<'i>) -> TrResult<CandleExpr> {
         let mut it = self.items.into_iter();
-        let mut or = it.next().expect("AndExpr should have at least one member").translate(blocks, stmts, depth, shadow_glob)?;
+        let mut and = it
+            .next()
+            .expect("AndExpr should have at least one member")
+            .translate(fork!(ctx))?;
         for e in it {
-            let e = e.translate(blocks, stmts, depth, shadow_glob)?;
-            let span = e.span.join(or.span).expect("Faulty span");
-            or = Sp::new(CandleExpr::BinOp {
-                op: candle::expr::BinOp::BitAnd,
-                lhs: Box::new(or),
-                rhs: Box::new(e),
-            }, span);
+            let e = e.translate(fork!(ctx))?;
+            let span = e.span.join(and.span).expect("Faulty span");
+            and = Sp::new(
+                CandleExpr::BinOp {
+                    op: candle::expr::BinOp::BitAnd,
+                    lhs: Box::new(and),
+                    rhs: Box::new(e),
+                },
+                span,
+            );
         }
-        Ok(or)
+        Ok(and.t)
     }
 }
 
-impl TranslateExpr for lus::expr::NotExpr {
-    fn translate(
-        self,
-        blocks: &mut BlockNames,
-        stmts: &mut StmtList,
-        depth: usize,
-        shadow_glob: &HashSet<String>,
-    ) -> TrResult<Sp<CandleExpr>> {
-        let span = self.input_span();
-        let inner = Box::new(self.inner.translate(blocks, stmts, depth, shadow_glob)?);
-        Ok(Sp::new(CandleExpr::UnOp {
+impl Translate for lus::expr::NotExpr {
+    type Ctx<'i> = ExprCtxView<'i>;
+    type Output = CandleExpr;
+    fn translate<'i>(self, _span: Span, ctx: Self::Ctx<'i>) -> TrResult<CandleExpr> {
+        let inner = Box::new(self.inner.translate(ctx)?);
+        Ok(CandleExpr::UnOp {
             op: candle::expr::UnOp::Not,
             inner,
-        }, span))
+        })
     }
 }
 
-impl TranslateExpr for lus::expr::CmpExpr {
-    fn translate(
-        self,
-        blocks: &mut BlockNames,
-        stmts: &mut StmtList,
-        depth: usize,
-        shadow_glob: &HashSet<String>,
-    ) -> TrResult<Sp<CandleExpr>> {
-        let span = self.input_span();
+impl Translate for lus::expr::CmpExpr {
+    type Ctx<'i> = ExprCtxView<'i>;
+    type Output = CandleExpr;
+    fn translate<'i>(self, span: Span, ctx: Self::Ctx<'i>) -> TrResult<CandleExpr> {
         use syn::punctuated::Pair;
         assert!(!self.items.trailing_punct());
         let mut it = self.items.into_pairs();
@@ -428,7 +517,7 @@ impl TranslateExpr for lus::expr::CmpExpr {
                 let Pair::End(first) = first else {
                     unreachable!()
                 };
-                return first.translate(blocks, stmts, depth, shadow_glob);
+                return first.flat_translate(ctx);
             }
         };
         // We must not have a third element.
@@ -444,15 +533,17 @@ impl TranslateExpr for lus::expr::CmpExpr {
         let Pair::End(rhs) = second else {
             unreachable!()
         };
-        let op = op.translate()?;
-        let lhs = Box::new(lhs.translate(blocks, stmts, depth, shadow_glob)?);
-        let rhs = Box::new(rhs.translate(blocks, stmts, depth, shadow_glob)?);
-        Ok(Sp::new(CandleExpr::CmpOp { op, lhs, rhs }, span))
+        let op = op.translate(span, ())?;
+        let lhs = Box::new(lhs.translate(fork!(ctx))?);
+        let rhs = Box::new(rhs.translate(ctx)?);
+        Ok(CandleExpr::CmpOp { op, lhs, rhs })
     }
 }
 
-impl lus::expr::CmpOp {
-    fn translate(self) -> TrResult<candle::expr::CmpOp> {
+impl Translate for lus::expr::CmpOp {
+    type Ctx<'i> = ();
+    type Output = candle::expr::CmpOp;
+    fn translate(self, _span: Span, _: ()) -> TrResult<Self::Output> {
         Ok(match self {
             Self::Le(_) => candle::expr::CmpOp::Le,
             Self::Lt(_) => candle::expr::CmpOp::Lt,
@@ -464,80 +555,70 @@ impl lus::expr::CmpOp {
     }
 }
 
-impl TranslateExpr for lus::expr::FbyExpr {
-    fn translate(
-        self,
-        blocks: &mut BlockNames,
-        stmts: &mut StmtList,
-        depth: usize,
-        shadow_glob: &HashSet<String>,
-    ) -> TrResult<Sp<CandleExpr>> {
+impl Translate for lus::expr::FbyExpr {
+    type Ctx<'i> = ExprCtxView<'i>;
+    type Output = CandleExpr;
+    fn translate<'i>(self, _span: Span, ctx: Self::Ctx<'i>) -> TrResult<CandleExpr> {
         let mut it = self.items.into_iter().enumerate().rev();
         let (extra_depth, fby) = it.next().expect("FbyExpr should have at least one member");
-        let mut fby = fby.translate(blocks, stmts, depth + extra_depth, shadow_glob)?;
+        let mut fby = fby.translate(fork!(ctx).bump(extra_depth))?;
         for (d, e) in it {
-            let e = e.translate(blocks, stmts, depth + d, shadow_glob)?;
+            let e = e.translate(fork!(ctx).bump(d))?;
             let span = fby.span.join(e.span).expect("Faulty span");
-            fby = Sp::new(CandleExpr::Later {
-                clk: candle::clock::Depth {
-                    dt: depth + d,
-                    span,
+            fby = Sp::new(
+                CandleExpr::Later {
+                    clk: candle::clock::Depth {
+                        dt: ctx.depth + d,
+                        span,
+                    },
+                    before: Box::new(e),
+                    after: Box::new(fby),
                 },
-                before: Box::new(e),
-                after: Box::new(fby),
-            }, span);
+                span,
+            );
         }
-        Ok(fby)
+        Ok(fby.t)
     }
 }
 
-impl TranslateExpr for lus::expr::PreExpr {
-    fn translate(
-        self,
-        blocks: &mut BlockNames,
-        stmts: &mut StmtList,
-        depth: usize,
-        shadow_glob: &HashSet<String>,
-    ) -> TrResult<Sp<CandleExpr>> {
-        self.inner.translate(blocks, stmts, depth + 1, shadow_glob)
+impl Translate for lus::expr::PreExpr {
+    type Ctx<'i> = ExprCtxView<'i>;
+    type Output = CandleExpr;
+    fn translate<'i>(self, _span: Span, ctx: Self::Ctx<'i>) -> TrResult<CandleExpr> {
+        self.inner.flat_translate(ctx.incr())
     }
 }
 
-impl TranslateExpr for lus::expr::ThenExpr {
-    fn translate(
-        self,
-        blocks: &mut BlockNames,
-        stmts: &mut StmtList,
-        depth: usize,
-        shadow_glob: &HashSet<String>,
-    ) -> TrResult<Sp<CandleExpr>> {
+impl Translate for lus::expr::ThenExpr {
+    type Ctx<'i> = ExprCtxView<'i>;
+    type Output = CandleExpr;
+    fn translate<'i>(self, _span: Span, ctx: Self::Ctx<'i>) -> TrResult<CandleExpr> {
         let mut it = self.items.into_iter().enumerate().rev();
         let (_, then) = it.next().expect("ThenExpr should have at least one member");
-        let mut then = then.translate(blocks, stmts, depth, shadow_glob)?;
+        let mut then = then.translate(fork!(ctx))?;
         for (d, e) in it {
-            let e = e.translate(blocks, stmts, depth, shadow_glob)?;
+            let e = e.translate(fork!(ctx))?;
             let span = then.span.join(e.span).expect("Faulty span");
-            then = Sp::new(CandleExpr::Later {
-                clk: candle::clock::Depth {
-                    span,
-                    dt: depth + d,
+            then = Sp::new(
+                CandleExpr::Later {
+                    clk: candle::clock::Depth {
+                        span,
+                        dt: ctx.depth + d,
+                    },
+                    before: Box::new(e),
+                    after: Box::new(then),
                 },
-                before: Box::new(e),
-                after: Box::new(then),
-            }, span);
+                span,
+            );
         }
-        Ok(then)
+        Ok(then.t)
     }
 }
 
-impl TranslateExpr for lus::expr::AddExpr {
-    fn translate(
-        self,
-        blocks: &mut BlockNames,
-        stmts: &mut StmtList,
-        depth: usize,
-        shadow_glob: &HashSet<String>,
-    ) -> TrResult<Sp<CandleExpr>> {
+impl Translate for lus::expr::AddExpr {
+    type Ctx<'i> = ExprCtxView<'i>;
+    type Output = CandleExpr;
+    fn translate<'i>(self, _span: Span, ctx: Self::Ctx<'i>) -> TrResult<CandleExpr> {
         use syn::punctuated::Pair;
         assert!(!self.items.trailing_punct());
 
@@ -546,38 +627,44 @@ impl TranslateExpr for lus::expr::AddExpr {
         let mut op;
         match its.next().expect("AddExpr should have at least one member") {
             Pair::Punctuated(e, o) => {
-                lhs = e.translate(blocks, stmts, depth, shadow_glob)?;
+                lhs = e.translate(fork!(ctx))?;
                 op = o.translate()?;
             }
             Pair::End(e) => {
-                return e.translate(blocks, stmts, depth, shadow_glob);
+                return e.flat_translate(ctx);
             }
         }
         for it in its {
             match it {
                 Pair::Punctuated(e, o) => {
-                    let rhs = e.translate(blocks, stmts, depth, shadow_glob)?;
+                    let rhs = e.translate(fork!(ctx))?;
                     let span = lhs.span.join(rhs.span).expect("Faulty span");
-                    lhs = Sp::new(CandleExpr::BinOp {
-                        op,
-                        lhs: Box::new(lhs),
-                        rhs: Box::new(rhs),
-                    }, span);
+                    lhs = Sp::new(
+                        CandleExpr::BinOp {
+                            op,
+                            lhs: Box::new(lhs),
+                            rhs: Box::new(rhs),
+                        },
+                        span,
+                    );
                     op = o.translate()?;
                 }
                 Pair::End(e) => {
-                    let rhs = e.translate(blocks, stmts, depth, shadow_glob)?;
+                    let rhs = e.translate(fork!(ctx))?;
                     let span = lhs.span.join(rhs.span).expect("Faulty span");
-                    lhs = Sp::new(CandleExpr::BinOp {
-                        op,
-                        lhs: Box::new(lhs),
-                        rhs: Box::new(rhs),
-                    }, span);
+                    lhs = Sp::new(
+                        CandleExpr::BinOp {
+                            op,
+                            lhs: Box::new(lhs),
+                            rhs: Box::new(rhs),
+                        },
+                        span,
+                    );
                     break;
                 }
             }
         }
-        Ok(lhs)
+        Ok(lhs.t)
     }
 }
 
@@ -590,14 +677,10 @@ impl lus::expr::AddOp {
     }
 }
 
-impl TranslateExpr for lus::expr::MulExpr {
-    fn translate(
-        self,
-        blocks: &mut BlockNames,
-        stmts: &mut StmtList,
-        depth: usize,
-        shadow_glob: &HashSet<String>,
-    ) -> TrResult<Sp<CandleExpr>> {
+impl Translate for lus::expr::MulExpr {
+    type Ctx<'i> = ExprCtxView<'i>;
+    type Output = CandleExpr;
+    fn translate<'i>(self, _span: Span, ctx: Self::Ctx<'i>) -> TrResult<CandleExpr> {
         use syn::punctuated::Pair;
         assert!(!self.items.trailing_punct());
 
@@ -606,38 +689,44 @@ impl TranslateExpr for lus::expr::MulExpr {
         let mut op;
         match its.next().expect("MulExpr should have at least one member") {
             Pair::Punctuated(e, o) => {
-                lhs = e.translate(blocks, stmts, depth, shadow_glob)?;
+                lhs = e.translate(fork!(ctx))?;
                 op = o.translate()?;
             }
             Pair::End(e) => {
-                return e.translate(blocks, stmts, depth, shadow_glob);
+                return e.flat_translate(fork!(ctx));
             }
         }
         for it in its {
             match it {
                 Pair::Punctuated(e, o) => {
-                    let rhs = e.translate(blocks, stmts, depth, shadow_glob)?;
+                    let rhs = e.translate(fork!(ctx))?;
                     let span = lhs.span.join(rhs.span).expect("Faulty span");
-                    lhs = Sp::new(CandleExpr::BinOp {
-                        op,
-                        lhs: Box::new(lhs),
-                        rhs: Box::new(rhs),
-                    }, span);
+                    lhs = Sp::new(
+                        CandleExpr::BinOp {
+                            op,
+                            lhs: Box::new(lhs),
+                            rhs: Box::new(rhs),
+                        },
+                        span,
+                    );
                     op = o.translate()?;
                 }
                 Pair::End(e) => {
-                    let rhs = e.translate(blocks, stmts, depth, shadow_glob)?;
+                    let rhs = e.translate(fork!(ctx))?;
                     let span = lhs.span.join(rhs.span).expect("Faulty span");
-                    lhs = Sp::new(CandleExpr::BinOp {
-                        op,
-                        lhs: Box::new(lhs),
-                        rhs: Box::new(rhs),
-                    }, span);
+                    lhs = Sp::new(
+                        CandleExpr::BinOp {
+                            op,
+                            lhs: Box::new(lhs),
+                            rhs: Box::new(rhs),
+                        },
+                        span,
+                    );
                     break;
                 }
             }
         }
-        Ok(lhs)
+        Ok(lhs.t)
     }
 }
 
@@ -651,61 +740,44 @@ impl lus::expr::MulOp {
     }
 }
 
-impl TranslateExpr for lus::expr::NegExpr {
-    fn translate(
-        self,
-        blocks: &mut BlockNames,
-        stmts: &mut StmtList,
-        depth: usize,
-        shadow_glob: &HashSet<String>,
-    ) -> TrResult<Sp<CandleExpr>> {
-        let span = self.input_span();
-        let inner = Box::new(self.inner.translate(blocks, stmts, depth, shadow_glob)?);
-        Ok(Sp::new(CandleExpr::UnOp {
+impl Translate for lus::expr::NegExpr {
+    type Ctx<'i> = ExprCtxView<'i>;
+    type Output = CandleExpr;
+    fn translate<'i>(self, _span: Span, ctx: Self::Ctx<'i>) -> TrResult<CandleExpr> {
+        let inner = Box::new(self.inner.translate(ctx)?);
+        Ok(CandleExpr::UnOp {
             op: candle::expr::UnOp::Neg,
             inner,
-        }, span))
+        })
     }
 }
 
-impl TranslateExpr for lus::expr::ParenExpr {
-    fn translate(
-        self,
-        blocks: &mut BlockNames,
-        stmts: &mut StmtList,
-        depth: usize,
-        shadow_glob: &HashSet<String>,
-    ) -> TrResult<Sp<CandleExpr>> {
-        let span = self.input_span();
+impl Translate for lus::expr::ParenExpr {
+    type Ctx<'i> = ExprCtxView<'i>;
+    type Output = CandleExpr;
+    fn translate<'i>(self, span: Span, ctx: Self::Ctx<'i>) -> TrResult<CandleExpr> {
         let mut es = candle::Tuple::default();
         for e in self.inner.into_iter() {
-            es.elems.push(e.translate(blocks, stmts, depth, shadow_glob)?);
+            es.elems.push(e.translate(fork!(ctx))?);
         }
         match es.elems.len() {
-            0 => {
-                Err(quote_spanned! {span=>
-                    compile_error!("Tuple should have at least one element");
-                })
-            }
-            1 => Ok(es.elems.pop().expect("ParenExpr cannot be empty")),
-            _ => Ok(Sp::new(CandleExpr::Tuple(Sp::new(es, span)), span)),
+            0 => Err(quote_spanned! {span=>
+                compile_error!("Tuple should have at least one element");
+            }),
+            1 => Ok(es.elems.pop().expect("ParenExpr cannot be empty").t),
+            _ => Ok(CandleExpr::Tuple(Sp::new(es, span))),
         }
     }
 }
 
-impl TranslateExpr for lus::expr::CallExpr {
-    fn translate(
-        self,
-        blocks: &mut BlockNames,
-        stmts: &mut StmtList,
-        depth: usize,
-        shadow_glob: &HashSet<String>,
-    ) -> TrResult<Sp<CandleExpr>> {
-        let span = self.input_span();
-        let args_span = self._paren.input_span();
+impl Translate for lus::expr::CallExpr {
+    type Ctx<'i> = ExprCtxView<'i>;
+    type Output = CandleExpr;
+    fn translate<'i>(self, span: Span, ctx: Self::Ctx<'i>) -> TrResult<CandleExpr> {
+        let args_span = self._paren.span.join();
         let mut es = candle::Tuple::default();
         for e in self.args.into_iter() {
-            es.elems.push(e.translate(blocks, stmts, depth, shadow_glob)?);
+            es.elems.push(e.translate(fork!(ctx))?);
         }
         let s = self.fun.to_string();
         match s.as_str() {
@@ -715,84 +787,93 @@ impl TranslateExpr for lus::expr::CallExpr {
                         compile_error!("Builtin function `float` expects exactly one argument");
                     })
                 } else {
-                    Ok(Sp::new(CandleExpr::Builtin(Sp::new(candle::expr::Builtin::Float(Box::new(
-                        es.elems.pop().expect("Float argument count failure"),
-                    )), span)), span))
+                    Ok(CandleExpr::Builtin(Sp::new(
+                        candle::expr::Builtin::Float(Box::new(
+                            es.elems.pop().expect("Float argument count failure"),
+                        )),
+                        span,
+                    )))
                 }
             }
             &_ => {
-                let id = Sp::new(candle::expr::NodeId { id: blocks.len() }, span);
-                blocks.push(Sp::new(candle::decl::NodeName(s), span));
-                let st = Sp::new(candle::stmt::Statement::Substep {
-                    clk: candle::clock::Depth {
-                        dt: depth,
-                        span,
+                let id = Sp::new(
+                    candle::expr::NodeId {
+                        id: ctx.blocks.len(),
                     },
-                    id,
-                    args: Sp::new(es, args_span),
-                }, span);
-                stmts.push(st);
-                Ok(Sp::new(CandleExpr::Reference(Sp::new(candle::expr::Reference::Node(id), span)), span))
+                    span,
+                );
+                ctx.blocks.push(Sp::new(candle::decl::NodeName(s), span));
+                let st = Sp::new(
+                    candle::stmt::Statement::Substep {
+                        clk: candle::clock::Depth {
+                            dt: ctx.depth,
+                            span,
+                        },
+                        id,
+                        args: Sp::new(es, args_span),
+                    },
+                    span,
+                );
+                ctx.stmts.push(st);
+                Ok(CandleExpr::Reference(Sp::new(
+                    candle::expr::Reference::Node(id),
+                    span,
+                )))
             }
         }
     }
 }
 
-impl TranslateExpr for lus::expr::VarExpr {
-    fn translate(
-        self,
-        _blocks: &mut BlockNames,
-        _stmts: &mut StmtList,
-        depth: usize,
-        shadow_glob: &HashSet<String>,
-    ) -> TrResult<Sp<CandleExpr>> {
-        let span = self.input_span();
+impl Translate for lus::expr::VarExpr {
+    type Ctx<'i> = ExprCtxView<'i>;
+    type Output = CandleExpr;
+    fn translate<'i>(self, span: Span, ctx: Self::Ctx<'i>) -> TrResult<CandleExpr> {
         let name = self.name.to_string();
-        if shadow_glob.contains(&name) {
-            Ok(Sp::new(CandleExpr::Reference(Sp::new(candle::expr::Reference::Var(
-                Sp::new(candle::expr::ClockVar {
-                    var: Sp::new(
-                             candle::expr::Var {
-                                name,
-                             }, span),
-                    depth: candle::clock::Depth {
-                        span,
-                        dt: depth,
+        if ctx.shadow_glob.contains(&name) {
+            Ok(CandleExpr::Reference(Sp::new(
+                candle::expr::Reference::Var(Sp::new(
+                    candle::expr::ClockVar {
+                        var: Sp::new(candle::expr::Var { name }, span),
+                        depth: candle::clock::Depth {
+                            span,
+                            dt: ctx.depth,
+                        },
                     },
-                }, span),
-            ), span)), span))
+                    span,
+                )),
+                span,
+            )))
         } else {
-            Ok(Sp::new(CandleExpr::Reference(Sp::new(candle::expr::Reference::Global(
-                    Sp::new(
-                             candle::expr::Var {
-                                name: self.name.to_string(),
-                             }, span),
-            ), span)), span))
-
+            Ok(CandleExpr::Reference(Sp::new(
+                candle::expr::Reference::Global(Sp::new(
+                    candle::expr::Var {
+                        name: self.name.to_string(),
+                    },
+                    span,
+                )),
+                span,
+            )))
         }
     }
 }
 
-impl TranslateExpr for lus::expr::LitExpr {
-    fn translate(
-        self,
-        _blocks: &mut BlockNames,
-        _stmts: &mut StmtList,
-        _depth: usize,
-        shadow_glob: &HashSet<String>,
-    ) -> TrResult<Sp<CandleExpr>> {
-        let span = self.input_span();
+impl Translate for lus::expr::LitExpr {
+    type Ctx<'i> = ExprCtxView<'i>;
+    type Output = CandleExpr;
+    fn translate<'i>(self, span: Span, _ctx: Self::Ctx<'i>) -> TrResult<CandleExpr> {
         use syn::Lit;
-        let lit = match self.lit {
+        let lit = match self.lit.t {
             Lit::Bool(b) => candle::expr::Lit::Bool(b.value()),
             Lit::Int(i) => candle::expr::Lit::Int(i.base10_parse().expect("Failed to parse Int")),
-            Lit::Float(f) => candle::expr::Lit::Float(f.base10_parse().expect("Failed to parse Float")),
+            Lit::Float(f) => {
+                candle::expr::Lit::Float(f.base10_parse().expect("Failed to parse Float"))
+            }
             _ => {
-                return Err(quote_spanned! {self.input_span()=>
+                return Err(quote_spanned! {span=>
                     compile_error!("Lustre only accepts bool/int/float literals");
                 })
             }
         };
-        Ok(Sp::new(CandleExpr::Lit(Sp::new(lit, span)), span))
+        Ok(CandleExpr::Lit(Sp::new(lit, span)))
     }
 }

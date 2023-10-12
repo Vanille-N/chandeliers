@@ -44,7 +44,14 @@ impl Causality for ast::decl::Decl {
 impl Causality for ast::decl::Node {
     fn causality(self) -> CycResult<Self> {
         use impl_depends::Reference;
-        let Self { name, inputs, outputs, locals, blocks, stmts } = self;
+        let Self {
+            name,
+            inputs,
+            outputs,
+            locals,
+            blocks,
+            stmts,
+        } = self;
         let mut g = Graph::default(|stmt: &ast::Sp<ast::stmt::Statement>| stmt.span);
         for i in &inputs.t.elems {
             g.already_provided(Reference::VarName(i.t.name.t.name.clone()));
@@ -59,10 +66,16 @@ impl Causality for ast::decl::Node {
             g.must_provide(o.span, Reference::VarName(o.t.name.t.name.clone()))?;
         }
         let stmts = g.scheduling()?;
-        Ok(Self { name, inputs, outputs, locals, blocks, stmts })
+        Ok(Self {
+            name,
+            inputs,
+            outputs,
+            locals,
+            blocks,
+            stmts,
+        })
     }
 }
-
 
 #[derive(Debug, Clone)]
 struct Graph<Obj, Unit, ObjSpan> {
@@ -160,7 +173,10 @@ where
             for (id, provs) in self.provide.iter().enumerate() {
                 for &p in provs {
                     if self.provided_by_ext.contains(&p) {
-                        let s = format!("Cannot redefine {} (already provided by the context)", self.atomics.0[p]);
+                        let s = format!(
+                            "Cannot redefine {} (already provided by the context)",
+                            self.atomics.0[p]
+                        );
                         return Err(quote_spanned! {(self.span)(&self.elements[id])=>
                             compile_error!(#s);
                         });
@@ -256,9 +272,11 @@ where
                 let cprov = provider[looping].expect("Element of SCC must have a provider");
                 let s = format!("{} is part of a dependency cycle", self.atomics.0[looping]);
                 // FIXME: print the entire cycle
-                return Err(quote_spanned! {(self.span)(&unused[cprov].as_ref().expect("Not already taken"))=>
-                    compile_error!(#s);
-                });
+                return Err(
+                    quote_spanned! {(self.span)(&unused[cprov].as_ref().expect("Not already taken"))=>
+                        compile_error!(#s);
+                    },
+                );
             } else {
                 let id = *c.last().expect("Length == 1");
                 if let Some(Some(prov)) = provider.get(id) {
@@ -273,9 +291,9 @@ where
 }
 
 mod impl_depends {
-    use std::fmt;
     use super::Depends;
     use crate::ast::*;
+    use std::fmt;
 
     #[derive(Debug, Clone, PartialEq, Eq, Hash)]
     pub(super) enum Reference {
@@ -333,13 +351,13 @@ mod impl_depends {
     macro_rules! provide_nothing {
         () => {
             fn provides(&self, _v: &mut Vec<Self::Output>) {}
-        }
+        };
     }
 
     macro_rules! require_nothing {
         () => {
             fn requires(&self, _v: &mut Vec<Self::Output>) {}
-        }
+        };
     }
 
     macro_rules! provide_this {
@@ -347,7 +365,7 @@ mod impl_depends {
             fn provides(&self, v: &mut Vec<Self::Output>) {
                 v.push(($fun)(self));
             }
-        }
+        };
     }
 
     macro_rules! require_this {
@@ -355,7 +373,7 @@ mod impl_depends {
             fn requires(&self, v: &mut Vec<Self::Output>) {
                 v.push(($fun)(self));
             }
-        }
+        };
     }
 
     impl<T: Depends> Depends for Sp<T> {

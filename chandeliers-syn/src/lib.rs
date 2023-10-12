@@ -2,4 +2,4 @@ pub mod ast;
 
 mod test;
 
-mod translate;
+pub mod translate;
