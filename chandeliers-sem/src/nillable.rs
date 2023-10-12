@@ -191,3 +191,9 @@ where
         }
     }
 }
+
+
+pub trait AutoSizedNil {
+    type Output;
+    fn auto_size() -> Self::Output;
+}

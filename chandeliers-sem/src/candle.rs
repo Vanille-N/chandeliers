@@ -257,7 +257,7 @@ macro_rules! lit {
 /// The value `Nil`.
 #[macro_export]
 macro_rules! nil {
-    () => {
+    ($($t:tt)*) => {
         $crate::nillable::Nil
     };
 }
@@ -320,13 +320,15 @@ macro_rules! later {
 /// allowing delayed execution of subnodes.
 #[macro_export]
 macro_rules! substep {
-    ($this:ident <~ $dt:expr ; $id:tt => { $( $arg:expr, )* } ) => {
+    ($this:ident <~ $dt:expr ; $id:tt => { $( $arg:expr, )* } | $($sz:tt)* ) => {
         if $this.__clock >= $dt {
             $this.__nodes.$id
                 .update_mut(
                     $( $arg ),*
                 )
-        } else { $crate::nil!() }
+        } else {
+            ( $( $crate::nil!( $sz ) ),* )
+        }
     }
 }
 
@@ -445,3 +447,4 @@ macro_rules! truth {
         }
     };
 }
+
