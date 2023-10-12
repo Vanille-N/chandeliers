@@ -1,0 +1,12 @@
+error: unexpected end of input, expected identifier
+ --> tests/fail/ui/syn/unclosed.rs:1:1
+  |
+1 | / chandeliers_lus::decl! {
+2 | |     node foo() returns ();
+3 | |     let
+4 | |         x = 9;
+5 | |         y = 2;
+6 | | }
+  | |_^
+  |
+  = note: this error originates in the macro `chandeliers_lus::decl` (in Nightly builds, run with -Z macro-backtrace for more info)
