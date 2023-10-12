@@ -14,9 +14,9 @@ dependencies = [
 
 [[package]]
 name = "chandeliers-sem"
-version = "0.0.4"
+version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3bbdb5fa6ea6dc8bc2fc2fbef2273270aa7bcc0d84d398f4e0e5703537b528fe"
+checksum = "62eeca02e8ce8cf4d841257e09cb764c877da1c010621f9b93c1af0d06c8699c"
 dependencies = [
  "replace_with",
 ]
