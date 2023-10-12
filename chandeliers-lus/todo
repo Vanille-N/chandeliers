@@ -5,6 +5,7 @@ Tests that we want
         inserted punctuation
         unclosed delimiters
     - typechecking
+        invalid in const context
         tuples incompatible size
         tuples incompatible type
         tuples incompatible size, but hidden by function call

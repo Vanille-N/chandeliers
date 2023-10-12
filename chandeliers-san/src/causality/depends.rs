@@ -1,4 +1,14 @@
 //! Defines the dependencies between elements of the program.
+//!
+//! An important feature of Lustre is that it resolves dependency conflicts
+//! not by the order in which the variables are declared, but by doing
+//! an analysis of the dependency graph.
+//! This file defines the notion of dependency so that `causality.rs` and
+//! `graph.rs` may perform analysis on the dependency graph.
+//!
+//! The entry point to this file is through `causality.rs` by means of
+//! an implementor of `Depends` that will output a list of constraints
+//! to resolve.
 
 #![allow(clippy::redundant_closure_call)]
 

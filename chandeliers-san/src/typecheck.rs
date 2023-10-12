@@ -11,16 +11,28 @@ pub type TcResult<T> = Result<T, TokenStream>;
 use ast::ty::{TyBase, TyTuple};
 use ast::Tuple;
 
+/// This is the type of all interfaces (node inputs and outputs),
+/// lets' give it a less confusing alias.
 type SpTyBaseTuple = Sp<Tuple<Sp<TyBase>>>;
 
+/// Context that the typechecking is done in.
 #[derive(Debug)]
 pub struct TyCtx<'i> {
+    /// Global variables with their types (all scalar).
     global: &'i HashMap<ast::expr::Var, Sp<TyBase>>,
+    /// Local variables (both inputs/outputs and hidden locals).
     vars: HashMap<ast::expr::Var, Sp<TyBase>>,
+    /// Known input and output types of nodes.
+    /// Notice how these maps use `NodeId`s, not `NodeName`s:
+    /// at the level at which typechecking on expressions is done, we have
+    /// forgotten the name that blocks bind to and we only know their unique
+    /// identifier.
     nodes_in: HashMap<ast::expr::NodeId, SpTyBaseTuple>,
     nodes_out: HashMap<ast::expr::NodeId, SpTyBaseTuple>,
 }
 
+/// Construct a fresh context with known global variables but no
+/// locals or blocks.
 impl<'i> TyCtx<'i> {
     fn from_ext(global: &'i HashMap<ast::expr::Var, Sp<TyBase>>) -> TyCtx<'i> {
         Self {
@@ -33,6 +45,7 @@ impl<'i> TyCtx<'i> {
 }
 
 impl TyCtx<'_> {
+    /// Interpret a variable as a local variable and get its type if it exists.
     fn get_var(&self, var: Sp<&ast::expr::Var>) -> TcResult<Sp<TyTuple>> {
         match self.vars.get(var.t) {
             Some(ty) => Ok(ty.map(|span, ty| TyTuple::Single(Sp::new(ty, span)))),
@@ -47,6 +60,7 @@ impl TyCtx<'_> {
         }
     }
 
+    /// Interpret a variable as a global variable and get its type if it exists.
     fn get_global(&self, var: Sp<&ast::expr::Var>) -> TcResult<Sp<TyTuple>> {
         match self.global.get(var.t) {
             Some(ty) => Ok(ty.map(|span, ty| TyTuple::Single(Sp::new(ty, span)))),
@@ -61,6 +75,7 @@ impl TyCtx<'_> {
         }
     }
 
+    /// Get the output tuple of a nade.
     fn get_node_out(&self, node: Sp<&ast::expr::NodeId>) -> TcResult<Sp<TyTuple>> {
         match self.nodes_out.get(node.t) {
             Some(tup) => Ok(tup.as_flat_tytuple()),
@@ -71,25 +86,43 @@ impl TyCtx<'_> {
     }
 }
 
+// FIXME: we probably want the same pattern where Sp has its own trait that
+// doesn't require a span, and normal types get a span for free in their argument.
+
+/// Typechecking a statement is only a yes-or-no problem, as statements
+/// do not introduce type constraints.
 pub trait TypeCheckStmt {
     fn typecheck(&mut self, ctx: &TyCtx) -> TcResult<Sp<()>>;
 }
+
+/// Typechecking expressions is slightly more tricky, because we need to check
+/// not only if the expression is internally consistent, but also we need to
+/// compute its type to check it against the immediate context.
 pub trait TypeCheckExpr {
     fn typecheck(&self, ctx: &TyCtx) -> TcResult<Sp<TyTuple>>;
+    /// Also we want to detect as early as possible consrtucts that are
+    /// not valid in const contexts.
     fn is_const(&self) -> TcResult<()>;
 }
 
+/// Typecheck a statement.
+///
+/// Warning: as indicated by the `&mut`, this is not pure,
+/// the method may modify the statement in-place to update it with information
+/// that was not available at translation time such as output types.
 impl TypeCheckStmt for Sp<ast::stmt::Statement> {
     fn typecheck(&mut self, ctx: &TyCtx) -> TcResult<Sp<()>> {
         use ast::stmt::Statement;
         match &mut self.t {
             Statement::Let { target, source } => {
+                // Let needs the target to have the same type as the source.
                 let target_ty = target.typecheck(ctx)?;
                 let source_ty = source.typecheck(ctx)?;
                 Ok(Sp::new(target_ty.identical(&source_ty)?, self.span))
             }
             Statement::Trace { .. } => Ok(Sp::new((), self.span)),
             Statement::Assert(e) => {
+                // Assert requires exactly one bool.
                 let t = e.typecheck(ctx)?;
                 let t = t.is_primitive()?;
                 t.is_bool()?;
@@ -117,9 +150,11 @@ impl TypeCheckStmt for Sp<ast::stmt::Statement> {
                         args.t.len()
                     );
                     return Err(quote_spanned! {self.span=>
-                        compile_error!(#s);//FIXME
+                        compile_error!(#s);
                     });
                 }
+                // Then we check that the arguments actually have the correct
+                // type at all positions.
                 for (arg, expected) in args.t.iter().zip(expected_tys.t.iter()) {
                     let actual_ty = arg.typecheck(ctx)?;
                     expected
@@ -132,6 +167,8 @@ impl TypeCheckStmt for Sp<ast::stmt::Statement> {
     }
 }
 
+/// Most Expr cases are exactly recursing into all Expr fields
+/// and checking that they are identical or in some other way compatible.
 impl TypeCheckExpr for Sp<ast::expr::Expr> {
     fn typecheck(&self, ctx: &TyCtx) -> TcResult<Sp<TyTuple>> {
         use ast::expr::Expr;
@@ -143,7 +180,7 @@ impl TypeCheckExpr for Sp<ast::expr::Expr> {
                     es.as_ref()
                         .map(|span, es| {
                             let ts = es.try_map(|e| e.typecheck(ctx))?;
-                            assert!(ts.len() != 1);
+                            assert!(ts.len() != 1, "Should be a var, not a Tuple");
                             Ok(TyTuple::Multiple(Sp::new(ts, span)))
                         })
                         .t
@@ -226,6 +263,8 @@ impl TypeCheckExpr for Sp<ast::expr::Expr> {
     }
 }
 
+/// Builtins have known number and types of arguments,
+/// and their types can be more flexible (e.g. `float` is input polymorphic).
 impl TypeCheckExpr for Sp<ast::expr::Builtin> {
     fn typecheck(&self, ctx: &TyCtx) -> TcResult<Sp<TyTuple>> {
         use ast::expr::Builtin;
@@ -254,6 +293,7 @@ impl TypeCheckExpr for Sp<ast::expr::Builtin> {
     }
 }
 
+/// No surprises here: an Int has type int, a Bool has type bool, and a Float has type float.
 impl TypeCheckExpr for Sp<ast::expr::Lit> {
     fn typecheck(&self, _ctx: &TyCtx) -> TcResult<Sp<TyTuple>> {
         use ast::expr::Lit;
@@ -268,6 +308,10 @@ impl TypeCheckExpr for Sp<ast::expr::Lit> {
     }
 }
 
+/// Typechecking references involves translation-time heuristics on whether
+/// this should be assumed to be a local or a global variable.
+/// This is not modifiable after generation and this function will only check
+/// for one of the two.
 impl TypeCheckExpr for Sp<ast::expr::Reference> {
     fn typecheck(&self, ctx: &TyCtx) -> TcResult<Sp<TyTuple>> {
         use ast::expr::Reference;
@@ -292,7 +336,7 @@ impl TypeCheckExpr for Sp<ast::stmt::VarTuple> {
         use ast::stmt::VarTuple;
         fn aux_multiple(span: Span, vs: &Tuple<Sp<VarTuple>>, ctx: &TyCtx) -> TcResult<TyTuple> {
             let ts = vs.try_map(|v| v.typecheck(ctx))?;
-            assert!(ts.len() != 1);
+            assert!(ts.len() != 1, "This should be a Single, not a Multiple");
             Ok(TyTuple::Multiple(Sp::new(ts, span)))
         }
         fn aux(_span: Span, vartup: &VarTuple, ctx: &TyCtx) -> TcResult<TyTuple> {
@@ -313,6 +357,7 @@ impl TypeCheckExpr for Sp<ast::stmt::VarTuple> {
 }
 
 impl ast::expr::BinOp {
+    /// Determines if the binary operator can be applied to these arguments.
     fn accepts(&self, left: Sp<TyBase>, right: Sp<TyBase>) -> TcResult<()> {
         use ast::expr::BinOp::*;
         use TyBase::*;
@@ -350,6 +395,7 @@ impl ast::expr::BinOp {
 }
 
 impl ast::expr::UnOp {
+    /// Determines if the unary operator can be applied to this argument.
     fn accepts(&self, inner: Sp<TyBase>) -> TcResult<()> {
         use ast::expr::UnOp::*;
         use TyBase::*;
@@ -366,6 +412,7 @@ impl ast::expr::UnOp {
 }
 
 impl ast::expr::CmpOp {
+    /// Determines if the comparison operator can be applied to these arguments.
     fn accepts(&self, left: Sp<TyBase>, right: Sp<TyBase>) -> TcResult<()> {
         use ast::expr::CmpOp::*;
         use TyBase::*;
@@ -403,6 +450,13 @@ impl Sp<TyBase> {
 }
 
 impl Sp<TyTuple> {
+    /// Check that two tuple types are identical:
+    /// both tuples of the same length, or both scalars.
+    ///
+    /// This function *does not* identify `(T,)` with `T`: one is a
+    /// size-1 `Multiple` while the other is a `Single`. If your language
+    /// is such that `(T,)` and `T` are known to be isomorphic, you should
+    /// compress `Multiple`s of size 1 earlier in the AST generation.
     fn identical(&self, other: &Self) -> TcResult<()> {
         use TyTuple::*;
         match (&self.t, &other.t) {
@@ -445,6 +499,10 @@ impl Sp<TyTuple> {
         }
     }
 
+    /// Whether this type is a `Single`.
+    /// This function *does not* identify `(T,)` with `T`, the first will raise
+    /// an error. If your language is such that `(T,)` is a valid scalar,
+    /// you should compress `Multiple`s of size 1 earlier in the AST generation.
     fn is_primitive(&self) -> TcResult<Sp<TyBase>> {
         use TyTuple::*;
         self.as_ref()
@@ -476,6 +534,8 @@ impl SpTyBaseTuple {
     }
 }
 
+/// Typechecking a node involves first building the context that it makes available
+/// to its statements, and then checking those.
 impl Sp<ast::decl::Node> {
     pub fn typecheck(
         &mut self,
@@ -483,6 +543,8 @@ impl Sp<ast::decl::Node> {
         extvar: &HashMap<ast::expr::Var, Sp<TyBase>>,
     ) -> TcResult<()> {
         let mut ctx = TyCtx::from_ext(extvar);
+        // These are all the extra variables that we provide in addition
+        // to `extvar`.
         for vs in &[&self.t.inputs, &self.t.outputs, &self.t.locals] {
             for v in vs.t.iter() {
                 if ctx
@@ -500,6 +562,7 @@ impl Sp<ast::decl::Node> {
                 }
             }
         }
+        // Then also register the per-NodeId types of the blocks.
         for (id, blk) in self.t.blocks.iter().enumerate() {
             let Some((i, o)) = extfun.get(&blk.t) else {
                 let s = format!("Block {blk} is not defined");
@@ -519,6 +582,7 @@ impl Sp<ast::decl::Node> {
         Ok(())
     }
 
+    /// Fetch the input and output tuple types of this node.
     pub fn signature(&self) -> (SpTyBaseTuple, SpTyBaseTuple) {
         let inputs = self
             .t
@@ -537,6 +601,7 @@ impl Sp<ast::decl::Node> {
     }
 }
 
+/// Same signature as Node but we trust its type as there are no contents to check.
 impl Sp<ast::decl::ExtNode> {
     pub fn signature(&self) -> (SpTyBaseTuple, SpTyBaseTuple) {
         let inputs = self
@@ -567,17 +632,24 @@ impl Sp<ast::decl::Const> {
         Ok(())
     }
 
+    /// The (name, type) pair that we need to add to the context.
     pub fn signature(&self) -> (Sp<ast::expr::Var>, Sp<TyBase>) {
         (self.t.name.clone(), self.t.ty)
     }
 }
 
 impl Sp<ast::decl::ExtConst> {
+    /// The (name, type) pair that we need to add to the context.
     pub fn signature(&self) -> (Sp<ast::expr::Var>, Sp<TyBase>) {
         (self.t.name.clone(), self.t.ty)
     }
 }
 
+/// Iterate through declarations and iteratively build the context
+/// to check subsequent declarations against.
+///
+/// Will also report duplicate definitions, although most redefinitions
+/// should already be caught by the causality check.
 impl Sp<ast::decl::Prog> {
     pub fn typecheck(&mut self) -> TcResult<()> {
         let mut varctx = HashMap::new();

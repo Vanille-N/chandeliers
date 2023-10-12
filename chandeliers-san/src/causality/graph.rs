@@ -26,6 +26,11 @@
 //!   `Obj` provides `u`.
 //!   (typical use-case: `u` is a global value that must not be overriden)
 //!
+//! If you require the absence of unused variables or missing definitions,
+//! it is crucial that you use the methods above, as by default the scheduling
+//! algorithm will assume that unused variables are useless and that missing
+//! dependencies are provided by other means.
+//!
 //! Once all constraints have been specified, if you invoque `scheduling`
 //! on the `Graph`, it will return either
 //! - a scheduling of all `insert`ed `Obj`s such that all `Unit`s are

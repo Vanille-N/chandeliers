@@ -1,12 +1,11 @@
+//! Generate actual Candle statements from an AST.
+
 use proc_macro2::{Ident, TokenStream};
 use quote::{quote, quote_spanned, ToTokens};
 
 use super::ast::*;
 
-pub trait Codegen {
-    fn codegen(self) -> TokenStream;
-}
-
+/// `Sp` is transparently printable, but gives its own span to the output.
 impl<T: ToTokens> ToTokens for Sp<T> {
     fn to_tokens(&self, toks: &mut TokenStream) {
         let Self { span, t } = &self;
@@ -16,6 +15,7 @@ impl<T: ToTokens> ToTokens for Sp<T> {
     }
 }
 
+/// Generate a program simply by generating all declarations.
 impl ToTokens for decl::Prog {
     fn to_tokens(&self, toks: &mut TokenStream) {
         for decl in &self.decls {
@@ -24,6 +24,11 @@ impl ToTokens for decl::Prog {
     }
 }
 
+/// Declaration of a toplevel object is one of
+/// - extern const: skipped, must be provided elsewhere,
+/// - extern node: skipped, must be provided elsewhere,
+/// - const: generate name and value,
+/// - node: generate declaration and implementation of `update_mut`.
 impl ToTokens for decl::Decl {
     fn to_tokens(&self, toks: &mut TokenStream) {
         match self {
@@ -47,6 +52,11 @@ impl ToTokens for decl::Decl {
     }
 }
 
+/// Global constant.
+///
+/// This is straightforward generation of the components, apart from the
+/// need to eliminate all non-const expression constructors (functions, nodes
+/// later operator).
 impl ToTokens for decl::Const {
     fn to_tokens(&self, toks: &mut TokenStream) {
         let Self { name, ty, value } = self;
@@ -59,6 +69,43 @@ impl ToTokens for decl::Const {
     }
 }
 
+/// Generate a node declaration and implementation as
+/// specified by the interface of Candle.
+///
+/// ```skip
+/// struct MyNode {
+///     __clock: usize,
+///     // Inputs
+///     i1: ty!(int+),
+///     i2: ty!(int++),
+///     // Outputs
+///     o1: ty!(float+),
+///     o1: ty!(float++++),
+///     // Locals
+///     l1: ty!(int+),
+///     __nodes: (block1, block2, ...),
+/// }
+///
+/// impl MyNode {
+///     fn update_mut(&mut self, i1: ty!(int), i2: ty!(int)) -> (ty!(float), ty!(float)) {
+///         let ... = ...;
+///         // other statements go here
+///         // including stepsof subnodes
+///         let _1 = substep!(self <~ 1; 0 => { ... }|*);
+///         // then tick the clock,
+///         tick!(self);
+///         // update all internal values for the next step,
+///         update!(self, i1);
+///         update!(self, o1);
+///         update!(self, l1);
+///         // and return
+///         (o1, o2)
+///     }
+/// }
+/// ```
+///
+/// See the actual definitions of the language in crate `chandeliers-sem`
+/// if you find the above example confusing.
 impl decl::Node {
     fn declare_node(&self) -> TokenStream {
         let Self {
@@ -161,6 +208,15 @@ impl Sp<expr::Reference> {
     }
 }
 
+/// Expr is one of the few nontrivial implementations in this file,
+/// but at its core it's mostly just projecting to fields.
+///
+/// We do however need separate implementations for const and non-const
+/// contexts because the basic types are different (`i64` vs `Nillable<i64>`).
+///
+/// In this method we are heavily taking advantage of the fact that rust has
+/// rich const definitions and all binari/unary/comparisons/conditionals
+/// that we are going to use here are valid in Rust const contexts.
 impl expr::Expr {
     fn const_expr(&self) -> TokenStream {
         match self {
@@ -178,6 +234,7 @@ impl expr::Expr {
                 quote!( (#lhs #op #rhs) )
             }
             Self::UnOp { op, inner } => {
+                let inner = inner.const_expr();
                 quote!( (#op #inner) )
             }
             Self::CmpOp { op, lhs, rhs } => {
@@ -240,6 +297,10 @@ impl ToTokens for expr::CmpOp {
     }
 }
 
+/// It feels wrong to go back-and-forth between `i64`/`f64`/`bool` and
+/// the same as `LitInt`/`LitFloat`/`LitBool`.
+/// Maybe future implementations will change the internals of `expr::Lit`
+/// to not perform parsing to base10.
 impl Sp<expr::Lit> {
     fn const_lit(&self) -> syn::Lit {
         let mut lit = match self.t {
@@ -254,17 +315,22 @@ impl Sp<expr::Lit> {
     }
 }
 
+/// Part by convention and part by necessity,
+/// we display local variables as
+///     v
+/// subnodes as
+///    _1
+/// and globals as
+///    lit!(X)
+///
+/// This minimizes name collisions and provides the correct typing.
 impl ToTokens for expr::Reference {
     fn to_tokens(&self, toks: &mut TokenStream) {
         match self {
-            Self::Var(v) => {
-                toks.extend(quote! {
-                    #v
-                });
-            }
+            Self::Var(v) => toks.extend(quote!( #v )),
             Self::Node(n) => {
                 let ident = Ident::new(&format!("_{}", n.t.id), n.span);
-                toks.extend(quote! { #ident });
+                toks.extend(quote!( #ident ));
             }
             Self::Global(v) => {
                 toks.extend(quote! {
@@ -278,20 +344,15 @@ impl ToTokens for expr::Reference {
 impl expr::Reference {
     fn const_expr(&self) -> TokenStream {
         match self {
-            Self::Var(_) => unreachable!("Invalid in const contexts"),
-            Self::Node(n) => {
-                let ident = Ident::new(&format!("_{}", n.t.id), n.span);
-                quote! { #ident }
-            }
-            Self::Global(v) => {
-                quote! {
-                    #v
-                }
-            }
+            Self::Var(_) => unreachable!("Var is invalid in const contexts"),
+            Self::Node(_) => unreachable!("Node is invalid in const contexts"),
+            Self::Global(v) => quote!( #v ),
         }
     }
 }
 
+/// Candle specifies that variables in the past can be invoqued through the
+/// notation `var!(self <~ dt; v)`.
 impl ToTokens for expr::ClockVar {
     fn to_tokens(&self, toks: &mut TokenStream) {
         let Self { var, depth } = self;
@@ -304,9 +365,7 @@ impl ToTokens for expr::ClockVar {
 impl ToTokens for Sp<expr::Var> {
     fn to_tokens(&self, toks: &mut TokenStream) {
         let id = Ident::new(&self.t.name.t, self.t.name.span);
-        toks.extend(quote! {
-            #id
-        })
+        toks.extend(quote!( #id ));
     }
 }
 
@@ -322,16 +381,22 @@ impl ToTokens for decl::Var {
 }
 
 impl Sp<Tuple<Sp<decl::Var>>> {
+    /// A `Var` contains both names and types.
+    /// This method prints the comma-separated types.
     fn type_tuple(&self) -> TokenStream {
         let toks = self.t.type_tuple();
         quote_spanned! {self.span=> #toks }
     }
 
+    /// A `Var` contains both names and types.
+    /// This method prints the comma-separated names.
     fn name_tuple(&self) -> TokenStream {
         let toks = self.t.name_tuple();
         quote_spanned! {self.span=> #toks }
     }
 
+    /// A `Var` contains both names and types.
+    /// This method prints the comma-separated `name: type`s
     fn comma_separated_decls(&self) -> TokenStream {
         let toks = self.t.comma_separated_decls();
         quote_spanned! {self.span=> #toks }
@@ -390,9 +455,11 @@ impl Tuple<Sp<decl::Var>> {
     }
 }
 
+/// Print the type of a stream without the temporal information.
+/// This is the type that it has in function arguments and return values.
 impl Sp<ty::Stream> {
     fn as_base_ty(&self) -> Ident {
-        Ident::new(&format!("{}", self.t.base), self.span)
+        self.t.base.as_base_ty()
     }
 }
 
@@ -402,6 +469,15 @@ impl Sp<ty::TyBase> {
     }
 }
 
+/// Statement has a nontrivial implementation mostly due to the
+/// `Substep` variant that needs a lot of things.
+///
+/// As a reminder, the structure of a substep is
+/// ```skip
+/// substep!(self <~ dt; 0 => { arg1, arg2, ...}|***);
+/// ```
+/// where "***" tells candle the number of arguments that we
+/// expect in the return value.
 impl ToTokens for stmt::Statement {
     fn to_tokens(&self, toks: &mut TokenStream) {
         match self {
@@ -444,19 +520,20 @@ impl ToTokens for stmt::Statement {
     }
 }
 
+/// An assignment tuple.
+///
+/// We need a case analysis on the size of the tuple, where
+/// `_` is needed to bind an empty return `()`, and otherwise we need
+/// exactly one or several variable names to bind one scalar per variable.
 impl ToTokens for stmt::VarTuple {
     fn to_tokens(&self, toks: &mut TokenStream) {
         match self {
             Self::Single(s) => {
                 let s = s.as_ident();
-                toks.extend(quote! {
-                    #s
-                });
+                toks.extend(quote!( #s ));
             }
             Self::Multiple(m) if m.t.is_empty() => {
-                toks.extend(quote! {
-                    _
-                });
+                toks.extend(quote!( _ ));
             }
             Self::Multiple(m) => {
                 let m = m.t.iter();
@@ -468,6 +545,9 @@ impl ToTokens for stmt::VarTuple {
     }
 }
 
+/// An expr in its normal (non-const) context is mostly straightforward,
+/// apart from Candle's quirky syntaxes for later `later!(self <~ dt; a, b)`
+/// and if `ifx!((b) then { y } else { n })`.
 impl ToTokens for expr::Expr {
     fn to_tokens(&self, toks: &mut TokenStream) {
         toks.extend(match self {
@@ -511,11 +591,16 @@ impl ToTokens for clock::Depth {
     }
 }
 
+/// Builtins should all have their own definition in Candle, there is no reason
+/// to have this function do anything more complicated than a single macro
+/// invocation.
 impl ToTokens for expr::Builtin {
     fn to_tokens(&self, toks: &mut TokenStream) {
         match self {
             Self::Float(arg) => {
-                toks.extend(quote!(chandeliers_sem::float!(#arg)));
+                toks.extend(quote!(
+                    chandeliers_sem::float!(#arg)
+                ));
             }
         }
     }

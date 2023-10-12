@@ -1,6 +1,11 @@
 //! Internal representation of a program in Candle,
 //! before it is first translated to macros defined in `chandeliers-sem`
 //! and then expanded to Rust.
+//!
+//! You should construct elements defined in this file by going through
+//! the `translate` feature on the parent crate `chandeliers-syn`,
+//! and you can use them after performing the proper verifications by
+//! converting them into interpretable code using the methods from `codegen.rs`.
 
 use crate::causality::depends::Depends;
 use proc_macro2::Span;
@@ -200,6 +205,7 @@ impl<T> Default for Tuple<T> {
 }
 
 impl<T> Tuple<T> {
+    /// Map a function by reference to a tuple.
     pub fn map_ref<F, U>(&self, f: F) -> Tuple<U>
     where
         F: Fn(&T) -> U,
@@ -209,6 +215,7 @@ impl<T> Tuple<T> {
         }
     }
 
+    /// Map a faillible funciton by reference to a tuple.
     pub fn try_map<F, U, E>(&self, f: F) -> Result<Tuple<U>, E>
     where
         F: Fn(&T) -> Result<U, E>,
@@ -220,11 +227,12 @@ impl<T> Tuple<T> {
         Ok(Tuple { elems })
     }
 
+    /// Iterate over elements of the tuple.
     pub fn iter(&self) -> impl Iterator<Item = &T> {
         self.elems.iter()
     }
 
-        pub fn len(&self) -> usize {
+    pub fn len(&self) -> usize {
         self.elems.len()
     }
 
@@ -232,6 +240,7 @@ impl<T> Tuple<T> {
         self.elems.is_empty()
     }
 
+    /// Append to the tuple.
     pub fn push(&mut self, e: T) {
         self.elems.push(e);
     }
@@ -245,7 +254,7 @@ impl<T> IntoIterator for Tuple<T> {
     }
 }
 
-
+/// `Tuple` is a transparent wrapper, `Depends` recurses into all fieds.
 impl<T: Depends> Depends for Tuple<T> {
     type Output = T::Output;
     fn provides(&self, v: &mut Vec<Self::Output>) {
@@ -256,10 +265,12 @@ impl<T: Depends> Depends for Tuple<T> {
     }
 }
 
+/// Timing primitives.
 pub mod clock {
     use super::Span;
     use std::fmt;
 
+    /// The depth of a variable (how many `pre`/`fby` are in front)
     #[derive(Debug, Clone, Copy)]
     pub struct Depth {
         pub span: Span,
@@ -290,12 +301,14 @@ where
     }
 }
 
+/// Types of expressions.
 pub mod ty {
     use super::clock;
     use super::Sp;
     use super::Tuple;
     use std::fmt;
 
+    /// A basic scalar type.
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
     pub enum TyBase {
         Int,
@@ -313,12 +326,15 @@ pub mod ty {
         }
     }
 
+    /// A scalar type with a clock becomes a fixed-size rotating stream
+    /// of values.
     #[derive(Debug, Clone)]
     pub struct Stream {
         pub base: Sp<TyBase>,
         pub depth: clock::Depth,
     }
 
+    /// A composite type of several values arbitrarily deeply nested.
     #[derive(Debug, Clone)]
     pub enum TyTuple {
         Single(Sp<TyBase>),
@@ -335,12 +351,14 @@ pub mod ty {
     }
 }
 
+/// Definitions of expressions.
 pub mod expr {
     use super::clock;
     use super::Sp;
     use super::Tuple;
     use std::fmt;
 
+    /// A literal.
     #[derive(Debug, Clone, Copy)]
     pub enum Lit {
         Int(i64),
@@ -358,6 +376,7 @@ pub mod expr {
         }
     }
 
+    /// A variable.
     #[derive(Debug, Clone, PartialEq, Eq, Hash)]
     pub struct Var {
         pub name: Sp<String>,
@@ -369,12 +388,14 @@ pub mod expr {
         }
     }
 
+    /// A past value of a variable.
     #[derive(Debug, Clone)]
     pub struct ClockVar {
         pub var: Sp<Var>,
         pub depth: clock::Depth,
     }
 
+    /// A subnode.
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
     pub struct NodeId {
         pub id: Sp<usize>,
@@ -392,10 +413,15 @@ pub mod expr {
         }
     }
 
+    /// An extern value, i.e. not composed of primitive literals
+    /// and operators.
     #[derive(Debug, Clone)]
     pub enum Reference {
+        /// A global variable.
         Global(Sp<Var>),
+        /// A local variable, possibly in the past.
         Var(Sp<ClockVar>),
+        /// A subnode, possibly in the past.
         Node(Sp<NodeId>),
     }
 
@@ -409,6 +435,7 @@ pub mod expr {
         }
     }
 
+    /// A binary operator.
     #[derive(Debug, Clone, Copy)]
     pub enum BinOp {
         Add,
@@ -436,6 +463,7 @@ pub mod expr {
         }
     }
 
+    /// A unary operator.
     #[derive(Debug, Clone, Copy)]
     pub enum UnOp {
         Neg,
@@ -451,6 +479,7 @@ pub mod expr {
         }
     }
 
+    /// A comparison operator.
     #[derive(Debug, Clone, Copy)]
     pub enum CmpOp {
         Le,
@@ -474,6 +503,7 @@ pub mod expr {
         }
     }
 
+    /// A primitive builtin function.
     #[derive(Debug, Clone)]
     pub enum Builtin {
         Float(Box<Sp<Expr>>),
@@ -487,31 +517,39 @@ pub mod expr {
         }
     }
 
+    /// An expression.
     #[derive(Debug, Clone)]
     pub enum Expr {
+        /// Literals `1.0`, `42`, `true`, ...
         Lit(Sp<Lit>),
+        /// External values `x`, `_0`, ...
         Reference(Sp<Reference>),
+        /// Tuples `(1, 2.0, x)`.
         Tuple(Sp<Tuple<Sp<Expr>>>),
+        /// Application of a binary operator `a + b`
         BinOp {
             op: BinOp,
             lhs: Box<Sp<Expr>>,
             rhs: Box<Sp<Expr>>,
         },
-        UnOp {
-            op: UnOp,
-            inner: Box<Sp<Expr>>,
-        },
+        /// Application of a unary operator `!b`
+        UnOp { op: UnOp, inner: Box<Sp<Expr>> },
+        /// Application of a comparison function `a != b`
         CmpOp {
             op: CmpOp,
             lhs: Box<Sp<Expr>>,
             rhs: Box<Sp<Expr>>,
         },
+        /// The special operator "later" in (Lustre `->`)
+        /// to perform case analysis on the current value of the clock.
         Later {
             clk: clock::Depth,
             before: Box<Sp<Expr>>,
             after: Box<Sp<Expr>>,
         },
+        /// A builtin (`float`)
         Builtin(Sp<Builtin>),
+        /// A conditional expression `if b then x else y`
         Ifx {
             cond: Box<Sp<Expr>>,
             yes: Box<Sp<Expr>>,
@@ -536,6 +574,7 @@ pub mod expr {
     }
 }
 
+/// Statements and operations with side-effects.
 pub mod stmt {
     use super::clock;
     use super::expr;
@@ -543,6 +582,7 @@ pub mod stmt {
     use super::Tuple;
     use std::fmt;
 
+    /// The target of an assignment `(x, y, z) = ...`
     #[derive(Debug, Clone)]
     pub enum VarTuple {
         Single(Sp<expr::Var>),
@@ -558,26 +598,29 @@ pub mod stmt {
         }
     }
 
+    /// A statement.
     #[derive(Debug, Clone)]
     pub enum Statement {
+        /// Variable binding `let x = ...`
         Let {
             target: Sp<VarTuple>,
             source: Sp<expr::Expr>,
         },
+        /// Advance a block.
         Substep {
             clk: clock::Depth,
             id: Sp<expr::NodeId>,
             args: Sp<Tuple<Sp<expr::Expr>>>,
             nbret: Sp<Option<usize>>,
         },
-        Trace {
-            msg: String,
-            fmt: Tuple<expr::Var>,
-        },
+        /// Print debug information.
+        Trace { msg: String, fmt: Tuple<expr::Var> },
+        /// Perform an assertion.
         Assert(Sp<expr::Expr>),
     }
 }
 
+/// Toplevel declarations.
 pub mod decl {
     use super::expr;
     use super::stmt;
@@ -587,12 +630,14 @@ pub mod decl {
     use super::Tuple;
     use std::fmt;
 
+    /// A typed variable.
     #[derive(Debug, Clone)]
     pub struct Var {
         pub name: Sp<expr::Var>,
         pub ty: Sp<ty::Stream>,
     }
 
+    /// A node name (either for a declaration or for an invocation)
     #[derive(Debug, Clone, PartialEq, Eq, Hash)]
     pub struct NodeName(pub Sp<String>);
 
@@ -602,16 +647,21 @@ pub mod decl {
         }
     }
 
+    /// A node declaration.
     #[derive(Debug, Clone)]
     pub struct Node {
         pub name: Sp<NodeName>,
+        /// Input and output variables.
         pub inputs: Sp<Tuple<Sp<Var>>>,
         pub outputs: Sp<Tuple<Sp<Var>>>,
         pub locals: Sp<Tuple<Sp<Var>>>,
+        /// Other nodes that are used by this one.
         pub blocks: Vec<Sp<NodeName>>,
+        /// Body of the node declaration.
         pub stmts: Vec<Sp<stmt::Statement>>,
     }
 
+    /// A global constant.
     #[derive(Debug, Clone)]
     pub struct Const {
         pub name: Sp<expr::Var>,
@@ -619,6 +669,9 @@ pub mod decl {
         pub value: Sp<expr::Expr>,
     }
 
+    /// A trusted node declaration.
+    /// It does not have a body, and the rest of the program will
+    /// assume that it is well-defined.
     #[derive(Debug, Clone)]
     pub struct ExtNode {
         pub name: Sp<NodeName>,
@@ -626,12 +679,16 @@ pub mod decl {
         pub outputs: Sp<Tuple<Sp<Var>>>,
     }
 
+    /// A trusted constant declaration.
+    /// It does not have a value, and the rest of the program will
+    /// asusme that it is well-defined.
     #[derive(Debug, Clone)]
     pub struct ExtConst {
         pub name: Sp<expr::Var>,
         pub ty: Sp<TyBase>,
     }
 
+    /// A toplevel declaration.
     #[derive(Debug, Clone)]
     pub enum Decl {
         Const(Sp<Const>),
@@ -640,6 +697,7 @@ pub mod decl {
         ExtNode(Sp<ExtNode>),
     }
 
+    /// A Lustre program is a sequence of declarations.
     #[derive(Debug, Clone)]
     pub struct Prog {
         pub decls: Vec<Sp<Decl>>,

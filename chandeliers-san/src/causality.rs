@@ -2,6 +2,9 @@
 //!
 //! Most of the hard work is delegated to `graph` for cycle detection
 //! and `depends` for constraint definition.
+//! Here we only need to recurse into the program AST deep enough for
+//! the structures that need to have their dependencies analyzed,
+//! which is done by the `Causality` trait.
 
 use proc_macro2::TokenStream;
 use quote::quote_spanned;
