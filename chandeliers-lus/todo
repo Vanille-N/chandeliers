@@ -1,0 +1,44 @@
+Tests that we want
+    - syntax
+        assignments to all sorts of tuple sizes
+        empty inputs, empty outputs, empty locals
+        missing punctuations and other missing symbols
+        inserted punctuation
+        unclosed delimiters
+    - typechecking
+        tuples incompatible size
+        tuples incompatible type
+        tuple + scalar
+        tuple = scalar
+        tuple == tuple
+        tuple == scalar
+        scalar + tuple
+        scalar = tuple
+        bool = float
+        bool + float
+        bool == float
+        call with bad arguments
+        builtin with bad arguments
+        no such node
+        no such variable
+        no such global
+        assignment to global
+        assignment from global
+    - causality
+        cycle
+        big cycle
+        autodep
+        missing spec
+        redefinition
+            - node twice
+            - global twice
+            - variable twice (in several positions of input/output/local)
+            - variable shadows global
+            - variable compat global
+            - variable compat node
+            - node compat global
+    - positivity
+        pre at the root
+        pre too shallow
+        pre in fby
+            (but also check that we can do "fib = 0 fby 1 fby fib + pre fib"
