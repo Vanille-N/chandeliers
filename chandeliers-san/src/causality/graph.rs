@@ -322,12 +322,10 @@ where
                 }
             }
         }
-        for o in unused {
-            if let Some(o) = o {
-                // These are statements that provide nothing, but they could require things.
-                // e.g. assertions. Let's put them last.
-                schedule.push(o);
-            }
+        for o in unused.into_iter().flatten() {
+            // These are statements that provide nothing, but they could require things.
+            // e.g. assertions. Let's put them last.
+            schedule.push(o);
         }
         Ok(schedule)
     }

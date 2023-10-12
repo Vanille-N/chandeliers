@@ -135,7 +135,7 @@ impl ArgsTys {
 impl ArgsTys {
     fn parse_separated_trailing_until_let(input: ParseStream) -> Result<Sp<Self>> {
         let mut span = input.span();
-        let mut items =
+        let items =
             punctuated_parse_separated_trailing_until::<Sp<ArgsTy>, Token![;], Token![let]>(input)?;
         span = span.join(input.span()).unwrap();
         Ok(Sp {
@@ -667,7 +667,7 @@ span_end_on_field!(AttrDef.values);
 
 #[derive(syn_derive::Parse)]
 pub struct Attribute {
-    marker: Token![#],
+    _marker: Token![#],
     #[syn(bracketed)]
     _brack: Bracket,
     #[syn(in = _brack)]

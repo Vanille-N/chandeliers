@@ -1,6 +1,5 @@
 Tests that we want
     - syntax
-        assignments to all sorts of tuple sizes
         empty inputs, empty outputs, empty locals
         missing punctuations and other missing symbols
         inserted punctuation
@@ -8,6 +7,8 @@ Tests that we want
     - typechecking
         tuples incompatible size
         tuples incompatible type
+        tuples incompatible size, but hidden by function call
+        tuples incompatible type, but hidden by function call
         tuple + scalar
         tuple = scalar
         tuple == tuple

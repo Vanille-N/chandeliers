@@ -33,6 +33,7 @@ pub fn decl(i: proc_macro::TokenStream) -> proc_macro::TokenStream {
 #[test]
 fn ui() {
     let t = trybuild::TestCases::new();
-    t.compile_fail("tests/fail/ui/*.rs");
+    t.compile_fail("tests/fail/ui/**/*.rs");
+    t.pass("tests/pass/ui/**/*.rs");
 }
 

@@ -9,21 +9,19 @@ use quote::quote_spanned;
 
 pub type TrResult<T> = Result<T, TokenStream>;
 
-type BlockNames = Vec<Sp<candle::decl::NodeName>>;
-type StmtList = Vec<Sp<candle::stmt::Statement>>;
 type CandleExpr = candle::expr::Expr;
 
 pub trait Translate {
     type Output;
     type Ctx<'i>;
-    fn translate<'i>(self, span: Span, ctx: Self::Ctx<'i>) -> TrResult<Self::Output>;
+    fn translate(self, span: Span, ctx: Self::Ctx<'_>) -> TrResult<Self::Output>;
 }
 
 pub trait SpanTranslate {
     type Ctx<'i>;
     type Output;
-    fn translate<'i>(self, ctx: Self::Ctx<'i>) -> TrResult<Sp<Self::Output>>;
-    fn flat_translate<'i>(self, ctx: Self::Ctx<'i>) -> TrResult<Self::Output>;
+    fn translate(self, ctx: Self::Ctx<'_>) -> TrResult<Sp<Self::Output>>;
+    fn flat_translate(self, ctx: Self::Ctx<'_>) -> TrResult<Self::Output>;
 }
 impl<T> SpanTranslate for Sp<T>
 where
@@ -31,14 +29,14 @@ where
 {
     type Ctx<'i> = T::Ctx<'i>;
     type Output = T::Output;
-    fn translate<'i>(self, ctx: Self::Ctx<'i>) -> TrResult<Sp<Self::Output>> {
+    fn translate(self, ctx: Self::Ctx<'_>) -> TrResult<Sp<Self::Output>> {
         let res = self.t.translate(self.span, ctx)?;
         Ok(Sp {
             t: res,
             span: self.span,
         })
     }
-    fn flat_translate<'i>(self, ctx: Self::Ctx<'i>) -> TrResult<Self::Output> {
+    fn flat_translate(self, ctx: Self::Ctx<'_>) -> TrResult<Self::Output> {
         self.t.translate(self.span, ctx)
     }
 }
@@ -49,7 +47,7 @@ where
 {
     type Ctx<'i> = T::Ctx<'i>;
     type Output = T::Output;
-    fn translate<'i>(self, span: Span, ctx: Self::Ctx<'i>) -> TrResult<Self::Output> {
+    fn translate(self, span: Span, ctx: Self::Ctx<'_>) -> TrResult<Self::Output> {
         (*self).translate(span, ctx)
     }
 }
@@ -57,7 +55,7 @@ where
 impl Translate for lus::Prog {
     type Ctx<'i> = ();
     type Output = candle::decl::Prog;
-    fn translate(self, span: Span, _: ()) -> TrResult<candle::decl::Prog> {
+    fn translate(self, _span: Span, _: ()) -> TrResult<candle::decl::Prog> {
         let mut decls = Vec::new();
         for decl in self.decls.into_iter() {
             decls.push(decl.translate(())?);
@@ -69,7 +67,7 @@ impl Translate for lus::Prog {
 impl Translate for lus::AttrDecl {
     type Ctx<'i> = ();
     type Output = candle::decl::Decl;
-    fn translate(self, span: Span, _: ()) -> TrResult<candle::decl::Decl> {
+    fn translate(self, _span: Span, _: ()) -> TrResult<candle::decl::Decl> {
         match self {
             Self::Tagged(_, n) => n.flat_translate(()),
             Self::Node(n) => n.flat_translate(()),
@@ -80,7 +78,7 @@ impl Translate for lus::AttrDecl {
 impl Translate for lus::Decl {
     type Ctx<'i> = ();
     type Output = candle::decl::Decl;
-    fn translate(self, span: Span, _: ()) -> TrResult<candle::decl::Decl> {
+    fn translate(self, _span: Span, _: ()) -> TrResult<candle::decl::Decl> {
         Ok(match self {
             Self::Const(c) => candle::decl::Decl::Const(c.translate(())?),
             Self::Node(n) => candle::decl::Decl::Node(n.translate(())?),
@@ -92,7 +90,7 @@ impl Translate for lus::Decl {
 impl Translate for lus::Extern {
     type Ctx<'i> = ();
     type Output = candle::decl::Decl;
-    fn translate(self, span: Span, _: ()) -> TrResult<candle::decl::Decl> {
+    fn translate(self, _span: Span, _: ()) -> TrResult<candle::decl::Decl> {
         Ok(match self {
             Self::Const(c) => candle::decl::Decl::ExtConst(c.translate(())?),
             Self::Node(n) => candle::decl::Decl::ExtNode(n.translate(())?),
@@ -103,7 +101,7 @@ impl Translate for lus::Extern {
 impl Translate for lus::ExtConst {
     type Ctx<'i> = ();
     type Output = candle::decl::ExtConst;
-    fn translate(self, span: Span, _: ()) -> TrResult<Self::Output> {
+    fn translate(self, _span: Span, _: ()) -> TrResult<Self::Output> {
         let name = self.name.map(|span, name| candle::expr::Var {
             name: Sp::new(name.to_string(), span),
         });
@@ -115,7 +113,7 @@ impl Translate for lus::ExtConst {
 impl Translate for lus::ExtNode {
     type Ctx<'i> = ();
     type Output = candle::decl::ExtNode;
-    fn translate(self, span: Span, _: ()) -> TrResult<candle::decl::ExtNode> {
+    fn translate(self, _span: Span, _: ()) -> TrResult<candle::decl::ExtNode> {
         let name = self
             .name
             .map(|span, name| candle::decl::NodeName(Sp::new(name.to_string(), span)));
@@ -176,17 +174,6 @@ macro_rules! fork {
             depth: $this.depth,
         }
     };
-}
-
-impl<'i> ExprCtxView<'i> {
-    fn fork(&'i mut self) -> ExprCtxView<'i> {
-        Self {
-            blocks: &mut *self.blocks,
-            stmts: &mut *self.stmts,
-            shadow_glob: &self.shadow_glob,
-            depth: self.depth,
-        }
-    }
 }
 
 impl Translate for lus::Node {
@@ -256,7 +243,7 @@ impl Translate for lus::ArgsTys {
 impl Translate for lus::ArgsTy {
     type Ctx<'i> = &'i mut candle::Tuple<Sp<candle::decl::Var>>;
     type Output = ();
-    fn translate<'i>(self, _span: Span, ctx: Self::Ctx<'i>) -> TrResult<()> {
+    fn translate(self, _span: Span, ctx: Self::Ctx<'_>) -> TrResult<()> {
         let ty = self.ty.translate(())?;
         self.args.translate((ctx, ty))?;
         Ok(())
@@ -269,7 +256,7 @@ impl Translate for lus::Decls {
         Sp<candle::ty::TyBase>,
     );
     type Output = ();
-    fn translate<'i>(self, _span: Span, (vars, ty): Self::Ctx<'i>) -> TrResult<()> {
+    fn translate(self, _span: Span, (vars, ty): Self::Ctx<'_>) -> TrResult<()> {
         for id in self.ids {
             vars.push(id.map(|span, id| {
                 candle::decl::Var {
@@ -338,7 +325,7 @@ impl Translate for lus::VarsDecl {
 impl Translate for lus::Statement {
     type Ctx<'i> = ExprCtxView<'i>;
     type Output = ();
-    fn translate<'i>(self, _span: Span, ctx: Self::Ctx<'i>) -> TrResult<()> {
+    fn translate(self, _span: Span, ctx: Self::Ctx<'_>) -> TrResult<()> {
         match self {
             Self::Assert(ass) => ass.flat_translate(ctx),
             Self::Def(def) => def.flat_translate(ctx),
@@ -349,7 +336,7 @@ impl Translate for lus::Statement {
 impl Translate for lus::Assertion {
     type Ctx<'i> = ExprCtxView<'i>;
     type Output = ();
-    fn translate<'i>(self, span: Span, ctx: Self::Ctx<'i>) -> TrResult<()> {
+    fn translate(self, span: Span, ctx: Self::Ctx<'_>) -> TrResult<()> {
         let e = self.expr.translate(fork!(ctx))?;
         ctx.stmts
             .push(Sp::new(candle::stmt::Statement::Assert(e), span));
@@ -360,7 +347,7 @@ impl Translate for lus::Assertion {
 impl Translate for lus::Def {
     type Ctx<'i> = ExprCtxView<'i>;
     type Output = ();
-    fn translate<'i>(self, span: Span, ctx: Self::Ctx<'i>) -> TrResult<()> {
+    fn translate(self, span: Span, ctx: Self::Ctx<'_>) -> TrResult<()> {
         let target = self.target.translate(())?;
         let source = self.source.translate(fork!(ctx))?;
         ctx.stmts.push(Sp::new(
@@ -410,7 +397,7 @@ where
 {
     type Ctx<'i> = X::Ctx<'i>;
     type Output = X::Output;
-    fn translate<'i>(self, span: Span, ctx: Self::Ctx<'i>) -> TrResult<Self::Output> {
+    fn translate(self, span: Span, ctx: Self::Ctx<'_>) -> TrResult<Self::Output> {
         match self {
             Self::Here(x) => x.translate(span, ctx),
             Self::Below(y) => y.translate(span, ctx),
@@ -421,7 +408,7 @@ where
 impl Translate for lus::Expr {
     type Ctx<'i> = ExprCtxView<'i>;
     type Output = CandleExpr;
-    fn translate<'i>(self, _span: Span, ctx: Self::Ctx<'i>) -> TrResult<CandleExpr> {
+    fn translate(self, _span: Span, ctx: Self::Ctx<'_>) -> TrResult<CandleExpr> {
         self.inner.flat_translate(ctx)
     }
 }
@@ -429,7 +416,7 @@ impl Translate for lus::Expr {
 impl Translate for lus::expr::IfExpr {
     type Ctx<'i> = ExprCtxView<'i>;
     type Output = CandleExpr;
-    fn translate<'i>(self, _span: Span, ctx: Self::Ctx<'i>) -> TrResult<CandleExpr> {
+    fn translate(self, _span: Span, ctx: Self::Ctx<'_>) -> TrResult<CandleExpr> {
         let cond = Box::new(self.cond.translate(fork!(ctx))?);
         let yes = Box::new(self.yes.translate(fork!(ctx))?);
         let no = Box::new(self.no.translate(ctx)?);
@@ -440,7 +427,7 @@ impl Translate for lus::expr::IfExpr {
 impl Translate for lus::expr::OrExpr {
     type Ctx<'i> = ExprCtxView<'i>;
     type Output = CandleExpr;
-    fn translate<'i>(self, _span: Span, ctx: Self::Ctx<'i>) -> TrResult<CandleExpr> {
+    fn translate(self, _span: Span, ctx: Self::Ctx<'_>) -> TrResult<CandleExpr> {
         let mut it = self.items.into_iter();
         let mut or = it
             .next()
@@ -465,7 +452,7 @@ impl Translate for lus::expr::OrExpr {
 impl Translate for lus::expr::AndExpr {
     type Ctx<'i> = ExprCtxView<'i>;
     type Output = CandleExpr;
-    fn translate<'i>(self, _span: Span, ctx: Self::Ctx<'i>) -> TrResult<CandleExpr> {
+    fn translate(self, _span: Span, ctx: Self::Ctx<'_>) -> TrResult<CandleExpr> {
         let mut it = self.items.into_iter();
         let mut and = it
             .next()
@@ -490,7 +477,7 @@ impl Translate for lus::expr::AndExpr {
 impl Translate for lus::expr::NotExpr {
     type Ctx<'i> = ExprCtxView<'i>;
     type Output = CandleExpr;
-    fn translate<'i>(self, _span: Span, ctx: Self::Ctx<'i>) -> TrResult<CandleExpr> {
+    fn translate(self, _span: Span, ctx: Self::Ctx<'_>) -> TrResult<CandleExpr> {
         let inner = Box::new(self.inner.translate(ctx)?);
         Ok(CandleExpr::UnOp {
             op: candle::expr::UnOp::Not,
@@ -502,7 +489,7 @@ impl Translate for lus::expr::NotExpr {
 impl Translate for lus::expr::CmpExpr {
     type Ctx<'i> = ExprCtxView<'i>;
     type Output = CandleExpr;
-    fn translate<'i>(self, span: Span, ctx: Self::Ctx<'i>) -> TrResult<CandleExpr> {
+    fn translate(self, span: Span, ctx: Self::Ctx<'_>) -> TrResult<CandleExpr> {
         use syn::punctuated::Pair;
         assert!(!self.items.trailing_punct());
         let mut it = self.items.into_pairs();
@@ -558,7 +545,7 @@ impl Translate for lus::expr::CmpOp {
 impl Translate for lus::expr::FbyExpr {
     type Ctx<'i> = ExprCtxView<'i>;
     type Output = CandleExpr;
-    fn translate<'i>(self, _span: Span, ctx: Self::Ctx<'i>) -> TrResult<CandleExpr> {
+    fn translate(self, _span: Span, ctx: Self::Ctx<'_>) -> TrResult<CandleExpr> {
         let mut it = self.items.into_iter().enumerate().rev();
         let (extra_depth, fby) = it.next().expect("FbyExpr should have at least one member");
         let mut fby = fby.translate(fork!(ctx).bump(extra_depth))?;
@@ -584,7 +571,7 @@ impl Translate for lus::expr::FbyExpr {
 impl Translate for lus::expr::PreExpr {
     type Ctx<'i> = ExprCtxView<'i>;
     type Output = CandleExpr;
-    fn translate<'i>(self, _span: Span, ctx: Self::Ctx<'i>) -> TrResult<CandleExpr> {
+    fn translate(self, _span: Span, ctx: Self::Ctx<'_>) -> TrResult<CandleExpr> {
         self.inner.flat_translate(ctx.incr())
     }
 }
@@ -592,7 +579,7 @@ impl Translate for lus::expr::PreExpr {
 impl Translate for lus::expr::ThenExpr {
     type Ctx<'i> = ExprCtxView<'i>;
     type Output = CandleExpr;
-    fn translate<'i>(self, _span: Span, ctx: Self::Ctx<'i>) -> TrResult<CandleExpr> {
+    fn translate(self, _span: Span, ctx: Self::Ctx<'_>) -> TrResult<CandleExpr> {
         let mut it = self.items.into_iter().enumerate().rev();
         let (_, then) = it.next().expect("ThenExpr should have at least one member");
         let mut then = then.translate(fork!(ctx))?;
@@ -618,7 +605,7 @@ impl Translate for lus::expr::ThenExpr {
 impl Translate for lus::expr::AddExpr {
     type Ctx<'i> = ExprCtxView<'i>;
     type Output = CandleExpr;
-    fn translate<'i>(self, _span: Span, ctx: Self::Ctx<'i>) -> TrResult<CandleExpr> {
+    fn translate(self, _span: Span, ctx: Self::Ctx<'_>) -> TrResult<CandleExpr> {
         use syn::punctuated::Pair;
         assert!(!self.items.trailing_punct());
 
@@ -680,7 +667,7 @@ impl lus::expr::AddOp {
 impl Translate for lus::expr::MulExpr {
     type Ctx<'i> = ExprCtxView<'i>;
     type Output = CandleExpr;
-    fn translate<'i>(self, _span: Span, ctx: Self::Ctx<'i>) -> TrResult<CandleExpr> {
+    fn translate(self, _span: Span, ctx: Self::Ctx<'_>) -> TrResult<CandleExpr> {
         use syn::punctuated::Pair;
         assert!(!self.items.trailing_punct());
 
@@ -743,7 +730,7 @@ impl lus::expr::MulOp {
 impl Translate for lus::expr::NegExpr {
     type Ctx<'i> = ExprCtxView<'i>;
     type Output = CandleExpr;
-    fn translate<'i>(self, _span: Span, ctx: Self::Ctx<'i>) -> TrResult<CandleExpr> {
+    fn translate(self, _span: Span, ctx: Self::Ctx<'_>) -> TrResult<CandleExpr> {
         let inner = Box::new(self.inner.translate(ctx)?);
         Ok(CandleExpr::UnOp {
             op: candle::expr::UnOp::Neg,
@@ -755,7 +742,7 @@ impl Translate for lus::expr::NegExpr {
 impl Translate for lus::expr::ParenExpr {
     type Ctx<'i> = ExprCtxView<'i>;
     type Output = CandleExpr;
-    fn translate<'i>(self, span: Span, ctx: Self::Ctx<'i>) -> TrResult<CandleExpr> {
+    fn translate(self, span: Span, ctx: Self::Ctx<'_>) -> TrResult<CandleExpr> {
         let mut es = candle::Tuple::default();
         for e in self.inner.into_iter() {
             es.push(e.translate(fork!(ctx))?);
@@ -773,7 +760,7 @@ impl Translate for lus::expr::ParenExpr {
 impl Translate for lus::expr::CallExpr {
     type Ctx<'i> = ExprCtxView<'i>;
     type Output = CandleExpr;
-    fn translate<'i>(self, span: Span, ctx: Self::Ctx<'i>) -> TrResult<CandleExpr> {
+    fn translate(self, span: Span, ctx: Self::Ctx<'_>) -> TrResult<CandleExpr> {
         let args_span = self._paren.span.join();
         let mut es = candle::Tuple::default();
         for e in self.args.into_iter() {
@@ -828,7 +815,7 @@ impl Translate for lus::expr::CallExpr {
 impl Translate for lus::expr::VarExpr {
     type Ctx<'i> = ExprCtxView<'i>;
     type Output = CandleExpr;
-    fn translate<'i>(self, span: Span, ctx: Self::Ctx<'i>) -> TrResult<CandleExpr> {
+    fn translate(self, span: Span, ctx: Self::Ctx<'_>) -> TrResult<CandleExpr> {
         let name = self.name.map(|_, t| t.to_string());
         if ctx.shadow_glob.contains(&name.t) {
             Ok(CandleExpr::Reference(Sp::new(
@@ -861,7 +848,7 @@ impl Translate for lus::expr::VarExpr {
 impl Translate for lus::expr::LitExpr {
     type Ctx<'i> = ExprCtxView<'i>;
     type Output = CandleExpr;
-    fn translate<'i>(self, span: Span, _ctx: Self::Ctx<'i>) -> TrResult<CandleExpr> {
+    fn translate(self, span: Span, _ctx: Self::Ctx<'_>) -> TrResult<CandleExpr> {
         use syn::Lit;
         let lit = match self.lit.t {
             Lit::Bool(b) => candle::expr::Lit::Bool(b.value()),

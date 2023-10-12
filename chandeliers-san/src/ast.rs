@@ -224,18 +224,27 @@ impl<T> Tuple<T> {
         self.elems.iter()
     }
 
-    pub fn into_iter(self) -> impl Iterator<Item = T> {
-        self.elems.into_iter()
+        pub fn len(&self) -> usize {
+        self.elems.len()
     }
 
-    pub fn len(&self) -> usize {
-        self.elems.len()
+    pub fn is_empty(&self) -> bool {
+        self.elems.is_empty()
     }
 
     pub fn push(&mut self, e: T) {
         self.elems.push(e);
     }
 }
+
+impl<T> IntoIterator for Tuple<T> {
+    type Item = T;
+    type IntoIter = <Vec<T> as IntoIterator>::IntoIter;
+    fn into_iter(self) -> Self::IntoIter {
+        self.elems.into_iter()
+    }
+}
+
 
 impl<T: Depends> Depends for Tuple<T> {
     type Output = T::Output;

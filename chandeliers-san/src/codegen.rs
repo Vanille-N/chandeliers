@@ -2,7 +2,6 @@ use proc_macro2::{Ident, TokenStream};
 use quote::{quote, quote_spanned, ToTokens};
 
 use super::ast::*;
-use super::candle;
 
 pub trait Codegen {
     fn codegen(self) -> TokenStream;
@@ -68,7 +67,7 @@ impl decl::Node {
             outputs,
             locals,
             blocks,
-            stmts,
+            stmts: _, // statements only relevant for impl
         } = self;
         let name = name.as_ident();
         let pos_inputs = inputs.t.iter().filter(|v| v.t.strictly_positive());
@@ -94,7 +93,7 @@ impl decl::Node {
             inputs,
             outputs,
             locals,
-            blocks,
+            blocks: _, // blocks only relevant for decl
             stmts,
         } = self;
         let name = name.as_ident();
@@ -122,12 +121,6 @@ impl decl::Node {
 impl Sp<decl::NodeName> {
     fn as_ident(&self) -> Ident {
         Ident::new(&self.t.0.t, self.t.0.span)
-    }
-}
-
-impl Sp<decl::Var> {
-    fn as_ident(&self) -> Ident {
-        self.t.name.as_ident()
     }
 }
 
@@ -197,7 +190,7 @@ impl expr::Expr {
                 quote!( #( #ts ),* )
             }
             Self::Later { .. } => unreachable!("Later is not valid in const contexts"),
-            Self::Builtin(b) => {
+            Self::Builtin(_) => {
                 unreachable!("Builtins cannot be called in const contexts")
             }
             Self::Ifx { cond, yes, no } => {
@@ -285,7 +278,7 @@ impl ToTokens for expr::Reference {
 impl expr::Reference {
     fn const_expr(&self) -> TokenStream {
         match self {
-            Self::Var(v) => unreachable!("Invalid in const contexts"),
+            Self::Var(_) => unreachable!("Invalid in const contexts"),
             Self::Node(n) => {
                 let ident = Ident::new(&format!("_{}", n.t.id), n.span);
                 quote! { #ident }
@@ -325,27 +318,6 @@ impl ToTokens for decl::Var {
         toks.extend(quote! {
             #name : chandeliers_sem::ty!(#ty)
         });
-    }
-}
-
-impl Tuple<Sp<decl::Var>> {
-    fn strictly_positive_comma_sep(&self) -> TokenStream {
-        let mut toks = TokenStream::new();
-        for v in self.iter() {
-            if v.t.ty.t.depth.dt > 0 {
-                toks.extend(quote! { #v , });
-            }
-        }
-        toks
-    }
-    fn strictly_positive_update(&self) -> TokenStream {
-        let mut toks = TokenStream::new();
-        for v in self.iter() {
-            if v.t.ty.t.depth.dt > 0 {
-                toks.extend(quote! { update(self, #v); });
-            }
-        }
-        toks
     }
 }
 
@@ -447,7 +419,7 @@ impl ToTokens for stmt::Statement {
                 let id_lit = syn::LitInt::new(&format!("{}", id.t.id), id.span);
                 let args = args.t.iter();
                 let mut nbret_stars = Vec::new();
-                for i in 0..nbret.t.expect("Needs to know how many values are returned") {
+                for _ in 0..nbret.t.expect("Needs to know how many values are returned") {
                     nbret_stars.push(quote!(*));
                 }
                 toks.extend(quote! {
@@ -459,7 +431,7 @@ impl ToTokens for stmt::Statement {
                     )
                 });
             }
-            Self::Trace { msg, fmt } => {
+            Self::Trace { .. } => {
                 unimplemented!("Trace");
             }
             Self::Assert(e) => {
@@ -481,7 +453,7 @@ impl ToTokens for stmt::VarTuple {
                     #s
                 });
             }
-            Self::Multiple(m) if m.t.len() == 0 => {
+            Self::Multiple(m) if m.t.is_empty() => {
                 toks.extend(quote! {
                     _
                 });

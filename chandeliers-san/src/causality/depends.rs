@@ -1,8 +1,10 @@
 //! Defines the dependencies between elements of the program.
 
+#![allow(clippy::redundant_closure_call)]
+
 use std::fmt;
 
-use proc_macro2::{Span, TokenStream};
+use proc_macro2::TokenStream;
 
 use crate::ast::*;
 use crate::causality::GraphError;

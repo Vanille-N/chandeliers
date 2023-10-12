@@ -12,7 +12,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "chandeliers-macros"
+name = "chandeliers-lus"
 version = "0.1.0"
 dependencies = [
  "chandeliers-san",
