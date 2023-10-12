@@ -125,12 +125,6 @@ impl TypeCheckStmt for Sp<ast::stmt::Statement> {
                     expected
                         .map(|span, t| TyTuple::Single(Sp::new(t, span)))
                         .identical(&actual_ty)?;
-                    /* FIXME?
-                    expected_tys
-                        .as_ref()
-                        .map(|_, tys| TyTuple::Single(tys.elems[i]))
-                        .identical(&actual_ty)?;
-                    */
                 }
                 Ok(Sp::new((), self.span))
             }
