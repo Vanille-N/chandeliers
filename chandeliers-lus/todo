@@ -5,8 +5,6 @@ Tests that we want
         unclosed delimiters
         forgot typedecl
     - typechecking
-        valid in const context
-            - binops, ifs, comparisons
         tuples incompatible size
         tuples incompatible type
         tuples incompatible size, but hidden by function call
@@ -27,13 +25,12 @@ Tests that we want
         assignment to global
         assignment from global
     - causality
+        all of the following in both global and local contexts
         cycle
         big cycle
         autodep
         missing spec
         redefinition
-            - node twice
-            - global twice
             - variable twice (in several positions of input/output/local)
             - variable shadows global
             - variable compat global
@@ -48,3 +45,4 @@ Tests that we want
         - where are the spans displayed when we return the wrong type ?
         - what is the error message if the Default of a node is missing ?
         - what is the error message if an extern const has the wrong type ?
+    - assertion failed error message

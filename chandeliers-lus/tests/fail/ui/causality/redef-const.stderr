@@ -1,0 +1,5 @@
+error: Variable `X` is declared twice
+ --> tests/fail/ui/causality/redef-const.rs:3:5
+  |
+3 |     const X : float = 0.0;
+  |     ^^^^^^^^^^^^^^^^^^^^^

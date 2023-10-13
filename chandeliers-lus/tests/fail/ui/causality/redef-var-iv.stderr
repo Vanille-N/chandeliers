@@ -1,0 +1,5 @@
+error: Cannot redefine Variable `a` (already provided by the context)
+ --> tests/fail/ui/causality/redef-var-iv.rs:4:9
+  |
+4 |     let a = 0.0; tel
+  |         ^^^^^^^
