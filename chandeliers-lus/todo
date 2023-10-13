@@ -1,11 +1,12 @@
 Tests that we want
     - syntax
-        empty inputs, empty outputs, empty locals
         missing punctuations and other missing symbols
         inserted punctuation
         unclosed delimiters
+        forgot typedecl
     - typechecking
-        invalid in const context
+        valid in const context
+            - binops, ifs, comparisons
         tuples incompatible size
         tuples incompatible type
         tuples incompatible size, but hidden by function call
@@ -20,7 +21,6 @@ Tests that we want
         bool + float
         bool == float
         call with bad arguments
-        builtin with bad arguments
         no such node
         no such variable
         no such global
@@ -44,3 +44,7 @@ Tests that we want
         pre too shallow
         pre in fby
             (but also check that we can do "fib = 0 fby 1 fby fib + pre fib"
+    - also test errors calling from and into foreign code
+        - where are the spans displayed when we return the wrong type ?
+        - what is the error message if the Default of a node is missing ?
+        - what is the error message if an extern const has the wrong type ?

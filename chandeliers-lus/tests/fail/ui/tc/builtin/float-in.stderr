@@ -1,0 +1,5 @@
+error: Builtin function `float` expects exactly one argument
+ --> tests/fail/ui/tc/builtin/float-in.rs:5:13
+  |
+5 |         x = float(1, 2);
+  |             ^^^^^^^^^^^

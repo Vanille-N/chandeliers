@@ -1,0 +1,5 @@
+error: Function calls are not valid in const contexts
+ --> tests/fail/ui/tc/const/call.rs:2:23
+  |
+2 |     const X : float = float(5);
+  |                       ^^^^^^^^

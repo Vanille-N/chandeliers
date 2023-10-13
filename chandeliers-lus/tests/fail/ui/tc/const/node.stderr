@@ -1,0 +1,5 @@
+error: Expression #0 is not const: const expressions must not contain any function calls
+ --> tests/fail/ui/tc/const/node.rs:2:5
+  |
+2 |     const X : float = test(5);
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^

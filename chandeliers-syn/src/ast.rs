@@ -656,7 +656,8 @@ span_end_by_match! {
 
 #[derive(syn_derive::Parse)]
 pub struct AttrDef {
-    action: Sp<Ident>,
+    // FIXME
+    _action: Sp<Ident>,
     #[syn(parenthesized)]
     _paren: Paren,
     #[syn(in = _paren)]
