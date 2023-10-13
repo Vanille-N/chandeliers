@@ -1,0 +1,5 @@
+error: Expected bool, got int
+ --> tests/fail/ui/tc/shadow.rs:4:13
+  |
+4 |     let X = 0; tel
+  |             ^

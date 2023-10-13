@@ -124,6 +124,7 @@ impl decl::Node {
         quote! {
             #[derive(Debug, Default)]
             #[allow(non_camel_case_types)]
+            #[allow(non_snake_case)]
             struct #name {
                 __clock: usize,
                 #( #pos_inputs , )*
@@ -146,11 +147,12 @@ impl decl::Node {
         let name = name.as_ident();
         let inputs_sep = inputs.comma_separated_decls();
         let outputs_ty = outputs.type_tuple();
-        let outputs_vs = outputs.name_tuple();
+        let outputs_vs = outputs.local_name_tuple();
         let pos_inputs = inputs.t.iter().filter(|v| v.t.strictly_positive());
         let pos_outputs = outputs.t.iter().filter(|v| v.t.strictly_positive());
         let pos_locals = locals.t.iter().filter(|v| v.t.strictly_positive());
         quote! {
+            #[allow(non_snake_case)]
             impl #name {
                 fn update_mut(&mut self, #inputs_sep) -> #outputs_ty {
                     #( #stmts ; )*
@@ -178,8 +180,17 @@ impl decl::Var {
 }
 
 impl Sp<expr::Var> {
+    /// Format the variable name verbatim.
     fn as_ident(&self) -> Ident {
         Ident::new(&self.t.name.t, self.t.name.span)
+    }
+
+    /// Format the variable name for a local variable.
+    ///
+    /// Rust does not allow const shadowing, so we need to make local
+    /// identifiers unique.
+    fn as_local_ident(&self) -> Ident {
+        Ident::new(&format!("_local_{}", &self.t.name.t), self.t.name.span)
     }
 }
 
@@ -317,7 +328,7 @@ impl Sp<expr::Lit> {
 
 /// Part by convention and part by necessity,
 /// we display local variables as
-///     v
+///     _local_v
 /// subnodes as
 ///    _1
 /// and globals as
@@ -327,12 +338,15 @@ impl Sp<expr::Lit> {
 impl ToTokens for expr::Reference {
     fn to_tokens(&self, toks: &mut TokenStream) {
         match self {
-            Self::Var(v) => toks.extend(quote!( #v )),
+            Self::Var(v) => {
+                toks.extend(quote!( #v ));
+            }
             Self::Node(n) => {
                 let ident = Ident::new(&format!("_{}", n.t.id), n.span);
                 toks.extend(quote!( #ident ));
             }
             Self::Global(v) => {
+                let v = v.as_ident();
                 toks.extend(quote! {
                     chandeliers_sem::lit!(#v)
                 });
@@ -346,7 +360,10 @@ impl expr::Reference {
         match self {
             Self::Var(_) => unreachable!("Var is invalid in const contexts"),
             Self::Node(_) => unreachable!("Node is invalid in const contexts"),
-            Self::Global(v) => quote!( #v ),
+            Self::Global(v) => {
+                let v = v.as_ident();
+                quote!( #v )
+            }
         }
     }
 }
@@ -356,23 +373,26 @@ impl expr::Reference {
 impl ToTokens for expr::ClockVar {
     fn to_tokens(&self, toks: &mut TokenStream) {
         let Self { var, depth } = self;
+        let var = var.as_local_ident();
         toks.extend(quote! {
             chandeliers_sem::var!(self <~ #depth; #var)
         });
     }
 }
 
+/*
 impl ToTokens for Sp<expr::Var> {
     fn to_tokens(&self, toks: &mut TokenStream) {
-        let id = Ident::new(&self.t.name.t, self.t.name.span);
+        let id = Ident::new(&format!("_local_{}", &self.t.name.t), self.t.name.span);
         toks.extend(quote!( #id ));
     }
 }
+*/
 
 impl ToTokens for decl::Var {
     fn to_tokens(&self, toks: &mut TokenStream) {
         let Self { name, ty } = self;
-        let name = name.as_ident();
+        let name = name.as_local_ident();
         let ty = ty.as_base_ty();
         toks.extend(quote! {
             #name : chandeliers_sem::ty!(#ty)
@@ -390,8 +410,8 @@ impl Sp<Tuple<Sp<decl::Var>>> {
 
     /// A `Var` contains both names and types.
     /// This method prints the comma-separated names.
-    fn name_tuple(&self) -> TokenStream {
-        let toks = self.t.name_tuple();
+    fn local_name_tuple(&self) -> TokenStream {
+        let toks = self.t.local_name_tuple();
         quote_spanned! {self.span=> #toks }
     }
 
@@ -416,12 +436,12 @@ impl Tuple<Sp<decl::Var>> {
         }
     }
 
-    fn name_tuple(&self) -> TokenStream {
+    fn local_name_tuple(&self) -> TokenStream {
         if self.len() == 1 {
-            let name = self.iter().next().unwrap().t.name.as_ident();
+            let name = self.iter().next().unwrap().t.name.as_local_ident();
             quote! { #name }
         } else {
-            let tup = self.comma_separated_names();
+            let tup = self.comma_separated_local_names();
             quote! {
                 ( #tup )
             }
@@ -437,10 +457,10 @@ impl Tuple<Sp<decl::Var>> {
         toks
     }
 
-    fn comma_separated_names(&self) -> TokenStream {
+    fn comma_separated_local_names(&self) -> TokenStream {
         let mut toks = TokenStream::new();
         for v in self.iter() {
-            let name = v.t.name.as_ident();
+            let name = v.t.name.as_local_ident();
             toks.extend(quote! { #name , });
         }
         toks
@@ -529,7 +549,7 @@ impl ToTokens for stmt::VarTuple {
     fn to_tokens(&self, toks: &mut TokenStream) {
         match self {
             Self::Single(s) => {
-                let s = s.as_ident();
+                let s = s.as_local_ident();
                 toks.extend(quote!( #s ));
             }
             Self::Multiple(m) if m.t.is_empty() => {

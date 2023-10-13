@@ -31,9 +31,7 @@ Tests that we want
         autodep
         missing spec
         redefinition
-            - variable twice (in several positions of input/output/local)
-            - variable shadows global
-            - variable compat global
+            - global compat node
             - variable compat node
             - node compat global
     - positivity

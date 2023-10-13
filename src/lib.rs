@@ -256,3 +256,11 @@ lustre::decl! {
         (i, j) = ret2();
     tel
 }
+
+lustre::decl! {
+    const X : int = 0;
+    node X() returns (X : int);
+    let X = 1; tel
+}
+
+
