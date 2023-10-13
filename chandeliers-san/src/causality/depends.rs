@@ -53,7 +53,9 @@ pub enum Reference {
     /// An instanciation of a node.
     NodeId(Sp<usize>),
     /// A variable.
-    VarName(Sp<String>),
+    LocalVarName(Sp<String>),
+    /// A global constant.
+    GlobalVarName(Sp<String>),
 }
 
 impl GraphError for Reference {
@@ -61,7 +63,8 @@ impl GraphError for Reference {
     fn emit(&self, msg: String) -> Self::Error {
         match self {
             Self::NodeId(i) => i.emit(msg),
-            Self::VarName(v) => v.emit(msg),
+            Self::LocalVarName(v) => v.emit(msg),
+            Self::GlobalVarName(v) => v.emit(msg),
             Self::FunName(fun) => fun.emit(msg),
         }
     }
@@ -72,7 +75,8 @@ impl fmt::Display for Reference {
         match self {
             Self::NodeId(id) => write!(f, "Block #{id}"),
             Self::FunName(fun) => write!(f, "Node `{fun}`"),
-            Self::VarName(var) => write!(f, "Variable `{var}`"),
+            Self::LocalVarName(var) => write!(f, "Variable `{var}`"),
+            Self::GlobalVarName(var) => write!(f, "Global `{var}`"),
         }
     }
 }
@@ -287,12 +291,20 @@ impl Depends for expr::Expr {
     }
 }
 
-/// `Var` is a leaf.
-impl Depends for expr::Var {
+/// `LocalVar` is a leaf.
+impl Depends for expr::LocalVar {
     type Output = Reference;
-    provide_this!(|this: &Self| Reference::VarName(this.name.clone()));
-    require_this!(|this: &Self| Reference::VarName(this.name.clone()));
+    provide_this!(|this: &Self| Reference::LocalVarName(this.name.clone()));
+    require_this!(|this: &Self| Reference::LocalVarName(this.name.clone()));
 }
+
+/// `GlobalVar` is a leaf.
+impl Depends for expr::GlobalVar {
+    type Output = Reference;
+    provide_this!(|this: &Self| Reference::GlobalVarName(this.name.clone()));
+    require_this!(|this: &Self| Reference::GlobalVarName(this.name.clone()));
+}
+
 
 /// `Reference` is a wrapper.
 impl Depends for expr::Reference {

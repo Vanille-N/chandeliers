@@ -27,8 +27,9 @@ Tests that we want
     - causality
         all of the following in both global and local contexts
         cycle
-        big cycle
+        big cycle (incl subnodes and ->)
         autodep
+            (incl. autodep after a -> and autodep in a subnode)
         missing spec
         redefinition
             - global compat node

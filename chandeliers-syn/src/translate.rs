@@ -102,7 +102,7 @@ impl Translate for lus::ExtConst {
     type Ctx<'i> = ();
     type Output = candle::decl::ExtConst;
     fn translate(self, _span: Span, _: ()) -> TrResult<Self::Output> {
-        let name = self.name.map(|span, name| candle::expr::Var {
+        let name = self.name.map(|span, name| candle::expr::GlobalVar {
             name: Sp::new(name.to_string(), span),
         });
         let ty = self.ty.translate(())?;
@@ -212,7 +212,7 @@ impl Translate for lus::Const {
     type Ctx<'i> = ();
     type Output = candle::decl::Const;
     fn translate(self, span: Span, _: ()) -> TrResult<candle::decl::Const> {
-        let name = self.name.map(|span, name| candle::expr::Var {
+        let name = self.name.map(|span, name| candle::expr::GlobalVar {
             name: Sp::new(name.to_string(), span),
         });
         let ty = self.ty.translate(())?;
@@ -230,8 +230,8 @@ impl Translate for lus::Const {
 
 impl Translate for lus::ArgsTys {
     type Ctx<'i> = ();
-    type Output = candle::Tuple<Sp<candle::decl::Var>>;
-    fn translate(self, _span: Span, _: ()) -> TrResult<candle::Tuple<Sp<candle::decl::Var>>> {
+    type Output = candle::Tuple<Sp<candle::decl::TyVar>>;
+    fn translate(self, _span: Span, _: ()) -> TrResult<candle::Tuple<Sp<candle::decl::TyVar>>> {
         let mut vs = candle::Tuple::default();
         for item in self.items {
             item.translate(&mut vs)?;
@@ -241,7 +241,7 @@ impl Translate for lus::ArgsTys {
 }
 
 impl Translate for lus::ArgsTy {
-    type Ctx<'i> = &'i mut candle::Tuple<Sp<candle::decl::Var>>;
+    type Ctx<'i> = &'i mut candle::Tuple<Sp<candle::decl::TyVar>>;
     type Output = ();
     fn translate(self, _span: Span, ctx: Self::Ctx<'_>) -> TrResult<()> {
         let ty = self.ty.translate(())?;
@@ -252,16 +252,16 @@ impl Translate for lus::ArgsTy {
 
 impl Translate for lus::Decls {
     type Ctx<'i> = (
-        &'i mut candle::Tuple<Sp<candle::decl::Var>>,
+        &'i mut candle::Tuple<Sp<candle::decl::TyVar>>,
         Sp<candle::ty::TyBase>,
     );
     type Output = ();
     fn translate(self, _span: Span, (vars, ty): Self::Ctx<'_>) -> TrResult<()> {
         for id in self.ids {
             vars.push(id.map(|span, id| {
-                candle::decl::Var {
+                candle::decl::TyVar {
                     name: Sp::new(
-                        candle::expr::Var {
+                        candle::expr::LocalVar {
                             name: Sp::new(id.to_string(), span),
                         },
                         span,
@@ -305,7 +305,7 @@ impl Translate for lus::BaseType {
 
 impl Translate for lus::OptionalVarsDecl {
     type Ctx<'i> = ();
-    type Output = candle::Tuple<Sp<candle::decl::Var>>;
+    type Output = candle::Tuple<Sp<candle::decl::TyVar>>;
     fn translate(self, _span: Span, _: ()) -> TrResult<Self::Output> {
         match self {
             Self::Decls(d) => d.flat_translate(()),
@@ -316,7 +316,7 @@ impl Translate for lus::OptionalVarsDecl {
 
 impl Translate for lus::VarsDecl {
     type Ctx<'i> = ();
-    type Output = candle::Tuple<Sp<candle::decl::Var>>;
+    type Output = candle::Tuple<Sp<candle::decl::TyVar>>;
     fn translate(self, _span: Span, _: ()) -> TrResult<Self::Output> {
         self.decls.flat_translate(())
     }
@@ -364,7 +364,7 @@ impl Translate for lus::TargetExpr {
     fn translate(self, span: Span, _: ()) -> TrResult<Self::Output> {
         match self {
             Self::Var(i) => Ok(candle::stmt::VarTuple::Single(Sp::new(
-                candle::expr::Var {
+                candle::expr::LocalVar {
                     name: i.map(|_, t| t.to_string()),
                 },
                 span,
@@ -821,7 +821,7 @@ impl Translate for lus::expr::VarExpr {
             Ok(CandleExpr::Reference(Sp::new(
                 candle::expr::Reference::Var(Sp::new(
                     candle::expr::ClockVar {
-                        var: Sp::new(candle::expr::Var { name }, span),
+                        var: Sp::new(candle::expr::LocalVar { name }, span),
                         depth: candle::clock::Depth {
                             span,
                             dt: ctx.depth,
@@ -834,7 +834,7 @@ impl Translate for lus::expr::VarExpr {
         } else {
             Ok(CandleExpr::Reference(Sp::new(
                 candle::expr::Reference::Global(Sp::new(
-                    candle::expr::Var {
+                    candle::expr::GlobalVar {
                         name,
                     },
                     span,

@@ -20,10 +20,8 @@
 //!     but these errors are both less reliable and less
 //!     understandable than the ones triggered in `causality`)
 //!
-//! 3. (TODO) Depth resolution
-//!
-//!    (you can skip this step for now, but you won't be able
-//!    to run any programs that require `fby`s and `pre`s)
+//! 3. Depth resolution
+//!     by `positivity::MakePositive`
 //!
 //! 4. Codegen
 //!     by `quote::ToTokens` in `codegen`
@@ -60,5 +58,7 @@ pub mod causality;
 pub mod codegen;
 
 pub mod typecheck;
+
+pub mod positivity;
 
 pub mod candle;

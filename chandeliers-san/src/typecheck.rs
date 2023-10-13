@@ -19,9 +19,9 @@ type SpTyBaseTuple = Sp<Tuple<Sp<TyBase>>>;
 #[derive(Debug)]
 pub struct TyCtx<'i> {
     /// Global variables with their types (all scalar).
-    global: &'i HashMap<ast::expr::Var, Sp<TyBase>>,
+    global: &'i HashMap<ast::expr::GlobalVar, Sp<TyBase>>,
     /// Local variables (both inputs/outputs and hidden locals).
-    vars: HashMap<ast::expr::Var, Sp<TyBase>>,
+    vars: HashMap<ast::expr::LocalVar, Sp<TyBase>>,
     /// Known input and output types of nodes.
     /// Notice how these maps use `NodeId`s, not `NodeName`s:
     /// at the level at which typechecking on expressions is done, we have
@@ -34,7 +34,7 @@ pub struct TyCtx<'i> {
 /// Construct a fresh context with known global variables but no
 /// locals or blocks.
 impl<'i> TyCtx<'i> {
-    fn from_ext(global: &'i HashMap<ast::expr::Var, Sp<TyBase>>) -> TyCtx<'i> {
+    fn from_ext(global: &'i HashMap<ast::expr::GlobalVar, Sp<TyBase>>) -> TyCtx<'i> {
         Self {
             global,
             vars: Default::default(),
@@ -46,7 +46,7 @@ impl<'i> TyCtx<'i> {
 
 impl TyCtx<'_> {
     /// Interpret a variable as a local variable and get its type if it exists.
-    fn get_var(&self, var: Sp<&ast::expr::Var>) -> TcResult<Sp<TyTuple>> {
+    fn get_var(&self, var: Sp<&ast::expr::LocalVar>) -> TcResult<Sp<TyTuple>> {
         match self.vars.get(var.t) {
             Some(ty) => Ok(ty.map(|span, ty| TyTuple::Single(Sp::new(ty, span)))),
             None => {
@@ -61,7 +61,7 @@ impl TyCtx<'_> {
     }
 
     /// Interpret a variable as a global variable and get its type if it exists.
-    fn get_global(&self, var: Sp<&ast::expr::Var>) -> TcResult<Sp<TyTuple>> {
+    fn get_global(&self, var: Sp<&ast::expr::GlobalVar>) -> TcResult<Sp<TyTuple>> {
         match self.global.get(var.t) {
             Some(ty) => Ok(ty.map(|span, ty| TyTuple::Single(Sp::new(ty, span)))),
             None => {
@@ -540,7 +540,7 @@ impl Sp<ast::decl::Node> {
     pub fn typecheck(
         &mut self,
         extfun: &HashMap<ast::decl::NodeName, (SpTyBaseTuple, SpTyBaseTuple)>,
-        extvar: &HashMap<ast::expr::Var, Sp<TyBase>>,
+        extvar: &HashMap<ast::expr::GlobalVar, Sp<TyBase>>,
     ) -> TcResult<()> {
         let mut ctx = TyCtx::from_ext(extvar);
         // These are all the extra variables that we provide in addition
@@ -622,7 +622,7 @@ impl Sp<ast::decl::ExtNode> {
 }
 
 impl Sp<ast::decl::Const> {
-    pub fn typecheck(&self, varctx: &HashMap<ast::expr::Var, Sp<TyBase>>) -> TcResult<()> {
+    pub fn typecheck(&self, varctx: &HashMap<ast::expr::GlobalVar, Sp<TyBase>>) -> TcResult<()> {
         self.t.value.is_const()?;
         let e = self.t.value.typecheck(&TyCtx::from_ext(varctx))?;
         self.t
@@ -633,14 +633,14 @@ impl Sp<ast::decl::Const> {
     }
 
     /// The (name, type) pair that we need to add to the context.
-    pub fn signature(&self) -> (Sp<ast::expr::Var>, Sp<TyBase>) {
+    pub fn signature(&self) -> (Sp<ast::expr::GlobalVar>, Sp<TyBase>) {
         (self.t.name.clone(), self.t.ty)
     }
 }
 
 impl Sp<ast::decl::ExtConst> {
     /// The (name, type) pair that we need to add to the context.
-    pub fn signature(&self) -> (Sp<ast::expr::Var>, Sp<TyBase>) {
+    pub fn signature(&self) -> (Sp<ast::expr::GlobalVar>, Sp<TyBase>) {
         (self.t.name.clone(), self.t.ty)
     }
 }

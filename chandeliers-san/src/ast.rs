@@ -232,6 +232,11 @@ impl<T> Tuple<T> {
         self.elems.iter()
     }
 
+    /// Iterate over elements of the tuple.
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut T> {
+        self.elems.iter_mut()
+    }
+
     pub fn len(&self) -> usize {
         self.elems.len()
     }
@@ -376,13 +381,25 @@ pub mod expr {
         }
     }
 
-    /// A variable.
+    /// A local variable.
     #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-    pub struct Var {
+    pub struct LocalVar {
         pub name: Sp<String>,
     }
 
-    impl fmt::Display for Var {
+    /// A global constant.
+    #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+    pub struct GlobalVar {
+        pub name: Sp<String>,
+    }
+
+    impl fmt::Display for LocalVar {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            write!(f, "{}", self.name)
+        }
+    }
+
+    impl fmt::Display for GlobalVar {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
             write!(f, "{}", self.name)
         }
@@ -391,7 +408,7 @@ pub mod expr {
     /// A past value of a variable.
     #[derive(Debug, Clone)]
     pub struct ClockVar {
-        pub var: Sp<Var>,
+        pub var: Sp<LocalVar>,
         pub depth: clock::Depth,
     }
 
@@ -418,7 +435,7 @@ pub mod expr {
     #[derive(Debug, Clone)]
     pub enum Reference {
         /// A global variable.
-        Global(Sp<Var>),
+        Global(Sp<GlobalVar>),
         /// A local variable, possibly in the past.
         Var(Sp<ClockVar>),
         /// A subnode, possibly in the past.
@@ -585,7 +602,7 @@ pub mod stmt {
     /// The target of an assignment `(x, y, z) = ...`
     #[derive(Debug, Clone)]
     pub enum VarTuple {
-        Single(Sp<expr::Var>),
+        Single(Sp<expr::LocalVar>),
         Multiple(Sp<Tuple<Sp<VarTuple>>>),
     }
 
@@ -614,7 +631,7 @@ pub mod stmt {
             nbret: Sp<Option<usize>>,
         },
         /// Print debug information.
-        Trace { msg: String, fmt: Tuple<expr::Var> },
+        Trace { msg: String, fmt: Tuple<expr::LocalVar> },
         /// Perform an assertion.
         Assert(Sp<expr::Expr>),
     }
@@ -632,8 +649,8 @@ pub mod decl {
 
     /// A typed variable.
     #[derive(Debug, Clone)]
-    pub struct Var {
-        pub name: Sp<expr::Var>,
+    pub struct TyVar {
+        pub name: Sp<expr::LocalVar>,
         pub ty: Sp<ty::Stream>,
     }
 
@@ -652,9 +669,9 @@ pub mod decl {
     pub struct Node {
         pub name: Sp<NodeName>,
         /// Input and output variables.
-        pub inputs: Sp<Tuple<Sp<Var>>>,
-        pub outputs: Sp<Tuple<Sp<Var>>>,
-        pub locals: Sp<Tuple<Sp<Var>>>,
+        pub inputs: Sp<Tuple<Sp<TyVar>>>,
+        pub outputs: Sp<Tuple<Sp<TyVar>>>,
+        pub locals: Sp<Tuple<Sp<TyVar>>>,
         /// Other nodes that are used by this one.
         pub blocks: Vec<Sp<NodeName>>,
         /// Body of the node declaration.
@@ -664,7 +681,7 @@ pub mod decl {
     /// A global constant.
     #[derive(Debug, Clone)]
     pub struct Const {
-        pub name: Sp<expr::Var>,
+        pub name: Sp<expr::GlobalVar>,
         pub ty: Sp<TyBase>,
         pub value: Sp<expr::Expr>,
     }
@@ -675,8 +692,8 @@ pub mod decl {
     #[derive(Debug, Clone)]
     pub struct ExtNode {
         pub name: Sp<NodeName>,
-        pub inputs: Sp<Tuple<Sp<Var>>>,
-        pub outputs: Sp<Tuple<Sp<Var>>>,
+        pub inputs: Sp<Tuple<Sp<TyVar>>>,
+        pub outputs: Sp<Tuple<Sp<TyVar>>>,
     }
 
     /// A trusted constant declaration.
@@ -684,7 +701,7 @@ pub mod decl {
     /// asusme that it is well-defined.
     #[derive(Debug, Clone)]
     pub struct ExtConst {
-        pub name: Sp<expr::Var>,
+        pub name: Sp<expr::GlobalVar>,
         pub ty: Sp<TyBase>,
     }
 

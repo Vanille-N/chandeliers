@@ -80,7 +80,7 @@ impl Causality for ast::decl::Node {
         } = self;
         let mut g = Graph::default();
         for i in inputs.t.iter() {
-            g.already_provided(Reference::VarName(
+            g.already_provided(Reference::LocalVarName(
                 i.t.name.as_ref().map(|_, t| t.name.t.clone()),
             ));
         }
@@ -88,11 +88,11 @@ impl Causality for ast::decl::Node {
             g.insert(stmt)?;
         }
         for l in locals.t.iter() {
-            let unit = Reference::VarName(l.t.name.as_ref().map(|_, t| t.name.t.clone()));
+            let unit = Reference::LocalVarName(l.t.name.as_ref().map(|_, t| t.name.t.clone()));
             g.must_provide(unit)?;
         }
         for o in outputs.t.iter() {
-            let unit = Reference::VarName(o.t.name.as_ref().map(|_, t| t.name.t.clone()));
+            let unit = Reference::LocalVarName(o.t.name.as_ref().map(|_, t| t.name.t.clone()));
             g.must_provide(unit)?;
         }
         let stmts = g.scheduling()?;

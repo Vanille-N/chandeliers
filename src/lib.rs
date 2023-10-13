@@ -1,4 +1,5 @@
 use chandeliers_lus as lustre;
+use chandeliers_sem::{assert_is, lit};
 
 /*
 lustre::decl! {
@@ -58,6 +59,7 @@ fn foo() {
 }
 */
 
+#[test]
 fn main() {
     /*
     let _ = lustre::expr!(x);
@@ -186,25 +188,6 @@ fn add_correct() {
 }
 
 lustre::decl! {
-    const FIB0 : int = 0;
-    const FIB1 : int = 1;
-    node fib() returns (x : int);
-    let
-        x = FIB0 -> FIB1 -> FIB1;
-    tel;
-}
-
-#[test]
-fn fib_behavior() {
-    let mut fib = fib::default();
-    let mut vals = vec![];
-    for _ in 0..10 {
-        vals.push(fib.update_mut().unwrap());
-    }
-    assert_eq!(&vals, &[0, 1, 1, 2, 3, 5, 8, 13, 21, 34]);
-}
-
-lustre::decl! {
     node test() returns ();
     var x : float;
     let
@@ -257,10 +240,81 @@ lustre::decl! {
     tel
 }
 
+/*
+lustre::decl! {
+    node dep() returns (y : int);
+    let
+        y = 1 -> y;
+    tel
+}
+*/
+
 lustre::decl! {
     const X : int = 0;
     node X() returns (X : int);
     let X = 1; tel
+}
+
+lustre::decl! {
+    node count() returns (x : int);
+    let
+        x = 0 -> pre x + 1;
+    tel;
+}
+
+lustre::decl! {
+    const FIB0 : int = 0;
+    const FIB1 : int = 1;
+    node fib() returns (x : int);
+    let
+        x = FIB0 -> FIB1 -> pre x + pre pre x;
+    tel;
+}
+
+lustre::decl! {
+    extern node count() returns (out : int);
+
+    node counting_twice() returns (out : int);
+    var b : bool;
+    let
+        b = true fby (not b);
+        out = if true then count() else count();
+    tel;
+
+    node counting_late() returns (out : int);
+    let
+        out = 0 fby 0 fby count();
+    tel;
+}
+
+
+#[test]
+fn fib_behavior() {
+    let mut fib = fib::default();
+    let mut vals = vec![];
+    for _ in 0..10 {
+        vals.push(fib.update_mut().unwrap());
+    }
+    assert_eq!(&vals, &[0, 1, 1, 2, 3, 5, 8, 13, 21, 34]);
+}
+
+#[test]
+fn counting_twice_behavior() {
+    let mut count = counting_twice::default();
+    for i in 0..10 {
+        let j = count.update_mut();
+        assert_is!(j, lit!(i));
+    }
+}
+
+#[test]
+fn counting_late_behavior() {
+    let mut count = counting_late::default();
+    for i in 0..10 {
+        let j = count.update_mut();
+        let actual_i = 0.max(i - 2);
+        assert_is!(j, lit!(actual_i));
+    }
 }
 
 

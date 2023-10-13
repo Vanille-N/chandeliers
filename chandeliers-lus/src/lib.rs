@@ -8,6 +8,7 @@ use chandeliers_san as sanitizer;
 
 use syntax::translate::SpanTranslate;
 use sanitizer::causality::Causality;
+use sanitizer::positivity::MakePositive;
 use sanitizer::ast::Sp;
 
 #[proc_macro]
@@ -22,6 +23,10 @@ pub fn decl(i: proc_macro::TokenStream) -> proc_macro::TokenStream {
         Err(e) => return e.into(),
     };
     match prog.typecheck() {
+        Ok(()) => {},
+        Err(e) => return e.into(),
+    }
+    match prog.make_positive() {
         Ok(()) => {},
         Err(e) => return e.into(),
     }

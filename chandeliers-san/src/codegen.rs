@@ -40,12 +40,8 @@ impl ToTokens for decl::Decl {
                 });
             }
             Self::Node(n) => {
-                let declare = n.declare_node();
-                let implement = n.implement_node();
                 toks.extend(quote! {
-                    #declare
-
-                    #implement
+                    #n
                 })
             }
         }
@@ -60,9 +56,7 @@ impl ToTokens for decl::Decl {
 impl ToTokens for decl::Const {
     fn to_tokens(&self, toks: &mut TokenStream) {
         let Self { name, ty, value } = self;
-        let name = name.as_ident();
         let value = value.const_expr();
-        let ty = ty.as_base_ty();
         toks.extend(quote! {
             #name : chandeliers_sem::ty_mapping!(#ty) = #value
         });
@@ -106,64 +100,59 @@ impl ToTokens for decl::Const {
 ///
 /// See the actual definitions of the language in crate `chandeliers-sem`
 /// if you find the above example confusing.
-impl decl::Node {
-    fn declare_node(&self) -> TokenStream {
+impl ToTokens for decl::Node {
+    fn to_tokens(&self, toks: &mut TokenStream) {
         let Self {
             name,
             inputs,
             outputs,
             locals,
             blocks,
-            stmts: _, // statements only relevant for impl
+            stmts,
         } = self;
+
         let name = name.as_ident();
-        let pos_inputs = inputs.t.iter().filter(|v| v.t.strictly_positive());
-        let pos_outputs = outputs.t.iter().filter(|v| v.t.strictly_positive());
-        let pos_locals = locals.t.iter().filter(|v| v.t.strictly_positive());
+        let pos_inputs_decl = inputs.t.iter().filter(|v| v.t.strictly_positive());
+        let pos_outputs_decl = outputs.t.iter().filter(|v| v.t.strictly_positive());
+        let pos_locals_decl = locals.t.iter().filter(|v| v.t.strictly_positive());
         let blocks = blocks.iter().map(|n| n.as_ident()).collect::<Vec<_>>();
-        quote! {
+
+        let pos_inputs_use = inputs.t.iter().filter(|v| v.t.strictly_positive()).map(|v| v.as_ref().map(|_, v| v.name_of()));
+        let pos_outputs_use = outputs.t.iter().filter(|v| v.t.strictly_positive()).map(|v| v.as_ref().map(|_, v| v.name_of()));
+        let pos_locals_use = locals.t.iter().filter(|v| v.t.strictly_positive()).map(|v| v.as_ref().map(|_, v| v.name_of()));
+        let inputs_sep = inputs.t.iter();
+        let outputs_ty = outputs.t.iter().map(|sv| sv.as_ref().map(|_, v| v.type_of()));
+        let outputs_vs = outputs.t.iter().map(|sv| sv.as_ref().map(|_, v| v.name_of()));
+
+        toks.extend(quote! {
             #[derive(Debug, Default)]
             #[allow(non_camel_case_types)]
             #[allow(non_snake_case)]
-            struct #name {
+            pub struct #name {
                 __clock: usize,
-                #( #pos_inputs , )*
-                #( #pos_outputs , )*
-                #( #pos_locals , )*
+                #( #pos_inputs_decl , )*
+                #( #pos_outputs_decl , )*
+                #( #pos_locals_decl , )*
                 __nodes: ( #( #blocks , )* ),
             }
-        }
-    }
 
-    fn implement_node(&self) -> TokenStream {
-        let Self {
-            name,
-            inputs,
-            outputs,
-            locals,
-            blocks: _, // blocks only relevant for decl
-            stmts,
-        } = self;
-        let name = name.as_ident();
-        let inputs_sep = inputs.comma_separated_decls();
-        let outputs_ty = outputs.type_tuple();
-        let outputs_vs = outputs.local_name_tuple();
-        let pos_inputs = inputs.t.iter().filter(|v| v.t.strictly_positive());
-        let pos_outputs = outputs.t.iter().filter(|v| v.t.strictly_positive());
-        let pos_locals = locals.t.iter().filter(|v| v.t.strictly_positive());
-        quote! {
             #[allow(non_snake_case)]
             impl #name {
-                fn update_mut(&mut self, #inputs_sep) -> #outputs_ty {
+                pub fn update_mut(
+                    &mut self,
+                    #( #inputs_sep ),*
+                ) -> (
+                    #( chandeliers_sem::ty!(#outputs_ty) ),*
+                ) {
                     #( #stmts ; )*
                     chandeliers_sem::tick!(self);
-                    #( update(self, #pos_inputs ); )*
-                    #( update(self, #pos_outputs ); )*
-                    #( update(self, #pos_locals ); )*
-                    #outputs_vs
+                    #( chandeliers_sem::update!(self, #pos_inputs_use ); )*
+                    #( chandeliers_sem::update!(self, #pos_outputs_use ); )*
+                    #( chandeliers_sem::update!(self, #pos_locals_use ); )*
+                    ( #( #outputs_vs ),* )
                 }
             }
-        }
+        });
     }
 }
 
@@ -173,35 +162,23 @@ impl Sp<decl::NodeName> {
     }
 }
 
-impl decl::Var {
+impl decl::TyVar {
     fn strictly_positive(&self) -> bool {
         self.ty.t.depth.dt > 0
     }
 }
 
-impl Sp<expr::Var> {
-    /// Format the variable name verbatim.
-    fn as_ident(&self) -> Ident {
-        Ident::new(&self.t.name.t, self.t.name.span)
-    }
-
-    /// Format the variable name for a local variable.
-    ///
-    /// Rust does not allow const shadowing, so we need to make local
-    /// identifiers unique.
-    fn as_local_ident(&self) -> Ident {
-        Ident::new(&format!("_local_{}", &self.t.name.t), self.t.name.span)
+impl ToTokens for Sp<expr::GlobalVar> {
+    fn to_tokens(&self, toks: &mut TokenStream) {
+        let id = Ident::new(&self.t.name.t, self.t.name.span);
+        toks.extend(quote!( #id ));
     }
 }
 
-impl Sp<decl::Node> {
-    fn declare_node(&self) -> TokenStream {
-        let toks = self.t.declare_node();
-        quote_spanned! {self.span=> #toks }
-    }
-    fn implement_node(&self) -> TokenStream {
-        let toks = self.t.implement_node();
-        quote_spanned! {self.span=> #toks }
+impl ToTokens for Sp<expr::LocalVar> {
+    fn to_tokens(&self, toks: &mut TokenStream) {
+        let id = Ident::new(&format!("_local_{}", &self.t.name.t), self.t.name.span);
+        toks.extend(quote!( #id ));
     }
 }
 
@@ -342,11 +319,9 @@ impl ToTokens for expr::Reference {
                 toks.extend(quote!( #v ));
             }
             Self::Node(n) => {
-                let ident = Ident::new(&format!("_{}", n.t.id), n.span);
-                toks.extend(quote!( #ident ));
+                toks.extend(quote!( #n ));
             }
             Self::Global(v) => {
-                let v = v.as_ident();
                 toks.extend(quote! {
                     chandeliers_sem::lit!(#v)
                 });
@@ -360,10 +335,7 @@ impl expr::Reference {
         match self {
             Self::Var(_) => unreachable!("Var is invalid in const contexts"),
             Self::Node(_) => unreachable!("Node is invalid in const contexts"),
-            Self::Global(v) => {
-                let v = v.as_ident();
-                quote!( #v )
-            }
+            Self::Global(v) => quote!( #v ),
         }
     }
 }
@@ -373,119 +345,54 @@ impl expr::Reference {
 impl ToTokens for expr::ClockVar {
     fn to_tokens(&self, toks: &mut TokenStream) {
         let Self { var, depth } = self;
-        let var = var.as_local_ident();
         toks.extend(quote! {
             chandeliers_sem::var!(self <~ #depth; #var)
         });
     }
 }
 
-/*
-impl ToTokens for Sp<expr::Var> {
-    fn to_tokens(&self, toks: &mut TokenStream) {
-        let id = Ident::new(&format!("_local_{}", &self.t.name.t), self.t.name.span);
-        toks.extend(quote!( #id ));
-    }
-}
-*/
-
-impl ToTokens for decl::Var {
+impl ToTokens for decl::TyVar {
     fn to_tokens(&self, toks: &mut TokenStream) {
         let Self { name, ty } = self;
-        let name = name.as_local_ident();
-        let ty = ty.as_base_ty();
         toks.extend(quote! {
             #name : chandeliers_sem::ty!(#ty)
         });
     }
 }
 
-impl Sp<Tuple<Sp<decl::Var>>> {
-    /// A `Var` contains both names and types.
-    /// This method prints the comma-separated types.
-    fn type_tuple(&self) -> TokenStream {
-        let toks = self.t.type_tuple();
-        quote_spanned! {self.span=> #toks }
+impl decl::TyVar {
+    fn type_of(&self) -> ty::TyBase {
+        self.ty.t.base.t
     }
 
-    /// A `Var` contains both names and types.
-    /// This method prints the comma-separated names.
-    fn local_name_tuple(&self) -> TokenStream {
-        let toks = self.t.local_name_tuple();
-        quote_spanned! {self.span=> #toks }
-    }
-
-    /// A `Var` contains both names and types.
-    /// This method prints the comma-separated `name: type`s
-    fn comma_separated_decls(&self) -> TokenStream {
-        let toks = self.t.comma_separated_decls();
-        quote_spanned! {self.span=> #toks }
+    fn name_of(&self) -> expr::LocalVar {
+        self.name.t.clone()
     }
 }
 
-impl Tuple<Sp<decl::Var>> {
-    fn type_tuple(&self) -> TokenStream {
-        if self.len() == 1 {
-            let ty = self.iter().next().unwrap().t.ty.as_base_ty();
-            quote! { chandeliers_sem::ty!(#ty) }
-        } else {
-            let tup = self.comma_separated_types();
-            quote! {
-                ( #tup )
-            }
-        }
-    }
-
-    fn local_name_tuple(&self) -> TokenStream {
-        if self.len() == 1 {
-            let name = self.iter().next().unwrap().t.name.as_local_ident();
-            quote! { #name }
-        } else {
-            let tup = self.comma_separated_local_names();
-            quote! {
-                ( #tup )
-            }
-        }
-    }
-
-    fn comma_separated_types(&self) -> TokenStream {
-        let mut toks = TokenStream::new();
-        for v in self.iter() {
-            let ty = v.t.ty.as_base_ty();
-            toks.extend(quote! { chandeliers_sem::ty!(#ty) , });
-        }
-        toks
-    }
-
-    fn comma_separated_local_names(&self) -> TokenStream {
-        let mut toks = TokenStream::new();
-        for v in self.iter() {
-            let name = v.t.name.as_local_ident();
-            toks.extend(quote! { #name , });
-        }
-        toks
-    }
-
-    fn comma_separated_decls(&self) -> TokenStream {
-        let mut toks = TokenStream::new();
-        for v in self.iter() {
-            toks.extend(quote! { #v , });
-        }
-        toks
+impl ty::Stream {
+    fn as_base_ty(&self) -> ty::TyBase {
+        self.base.t
     }
 }
 
 /// Print the type of a stream without the temporal information.
 /// This is the type that it has in function arguments and return values.
-impl Sp<ty::Stream> {
-    fn as_base_ty(&self) -> Ident {
-        self.t.base.as_base_ty()
+impl ToTokens for Sp<ty::Stream> {
+    fn to_tokens(&self, toks: &mut TokenStream) {
+        let ty = self.t.base;
+        let mut pluses = Vec::new();
+        for _ in 0..self.t.depth.dt {
+            pluses.push(quote!( + ));
+        }
+        toks.extend(quote_spanned!(self.span=> #ty #(#pluses)* ));
     }
 }
 
-impl Sp<ty::TyBase> {
-    fn as_base_ty(&self) -> Ident {
-        Ident::new(&format!("{}", self.t), self.span)
+impl ToTokens for Sp<ty::TyBase> {
+    fn to_tokens(&self, toks: &mut TokenStream) {
+        let ty = Ident::new(&format!("{}", self.t), self.span);
+        toks.extend(quote_spanned!(self.span=> #ty ));
     }
 }
 
@@ -531,7 +438,7 @@ impl ToTokens for stmt::Statement {
                 unimplemented!("Trace");
             }
             Self::Assert(e) => {
-                let s = format!("Assertion failed: {}", &e);
+                let s = format!("{}", &e);
                 toks.extend(quote! {
                     chandeliers_sem::truth!(#e, #s);
                 })
@@ -549,7 +456,6 @@ impl ToTokens for stmt::VarTuple {
     fn to_tokens(&self, toks: &mut TokenStream) {
         match self {
             Self::Single(s) => {
-                let s = s.as_local_ident();
                 toks.extend(quote!( #s ));
             }
             Self::Multiple(m) if m.t.is_empty() => {

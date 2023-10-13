@@ -210,9 +210,9 @@ macro_rules! node_trace {
 #[macro_export]
 macro_rules! update {
     ($this:ident, $var:ident) => {{
-        use $crate::traits::*;
+        use $crate::traits::Update;
         $this.$var.update_mut($var)
-    };};
+    }};
 }
 
 /// Fetch a variable from the environment. [pure]
@@ -231,7 +231,7 @@ macro_rules! var {
         $field
     };
     ($this:ident <~ $dt:expr ; $field:tt) => {{
-        use $crate::traits::*;
+        use $crate::traits::Ago;
         *$this.$field.ago($dt)
     }};
 }
