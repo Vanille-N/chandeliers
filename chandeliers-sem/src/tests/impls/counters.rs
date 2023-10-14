@@ -79,7 +79,7 @@ fn counting_late_behavior() {
 pub struct counting_parallel {
     __trace: bool,
     __clock: usize,
-    __nodes: (counting, counting, ),
+    __nodes: (counting, counting),
 }
 
 impl counting_parallel {
@@ -114,4 +114,3 @@ fn counting_parallel_test() {
     cpt.update_mut();
     cpt.update_mut();
 }
-

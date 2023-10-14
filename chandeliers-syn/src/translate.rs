@@ -812,6 +812,22 @@ impl Translate for lus::expr::CallExpr {
     }
 }
 
+impl Translate for lus::expr::AtomicExpr {
+    type Ctx<'i> = ExprCtxView<'i>;
+    type Output = CandleExpr;
+    fn translate(self, span: Span, ctx: Self::Ctx<'_>) -> TrResult<CandleExpr> {
+        match self {
+            Self::Lit(l) => l.translate(span, ctx),
+            Self::Call(c) => c.translate(span, ctx),
+            Self::Var(v) => v.translate(span, ctx),
+            Self::Paren(p) => p.translate(span, ctx),
+            Self::Pre(p) => p.translate(span, ctx),
+            Self::Neg(n) => n.translate(span, ctx),
+            Self::Not(n) => n.translate(span, ctx),
+        }
+    }
+}
+
 impl Translate for lus::expr::VarExpr {
     type Ctx<'i> = ExprCtxView<'i>;
     type Output = CandleExpr;

@@ -117,4 +117,3 @@ fn all_cmp_correct() {
     assert_is!(cmp!(!=; lit!(5), nil!()), nil!());
     assert_is!(cmp!(!=; BNIL, BNIL), nil!());
 }
-

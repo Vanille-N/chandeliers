@@ -452,4 +452,3 @@ macro_rules! truth {
         }
     };
 }
-

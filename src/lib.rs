@@ -287,7 +287,6 @@ lustre::decl! {
     tel;
 }
 
-
 #[test]
 fn fib_behavior() {
     let mut fib = fib::default();
@@ -316,5 +315,3 @@ fn counting_late_behavior() {
         assert_is!(j, lit!(actual_i));
     }
 }
-
-

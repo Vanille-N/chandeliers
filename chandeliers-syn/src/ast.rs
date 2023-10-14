@@ -267,20 +267,21 @@ where
 pub mod expr {
     pub use super::*;
     // Expressions by order of decreasing precedence
-    //    FIXME: if
     //    [ _ or _ ] (<-)
     //    [ _ and _ ] (<-)
-    //    [ not _ ]
     //    [ _ <= _ ], [ _ >= _ ], [ _ < _ ], [ _ > _ ] [ _ = _ ] (==)
     //    [ _ fby _ ] (<-)
     //    [ _ -> _ ] (<-)
-    //    [ pre _ ]
     //    [ _ + _ ], [ _ - _ ] (->)
     //    [ _ * _ ], [ _ / _ ], [ _ % _ ] (->)
+    //
+    // Atomics:
+    //    [ pre _ ]
     //    [ - _ ]
     //    [ ( _, ... ) ]
     //    [ f( _, ... ) ]
     //    [ v ]
+    //    [ not _ ]
 
     #[allow(private_bounds)]
     #[derive(syn_derive::Parse)]
@@ -331,7 +332,6 @@ pub mod expr {
         pub lit: Sp<Lit>,
     }
     span_end_on_field!(LitExpr.lit);
-    pub type LitLevelExpr = LitExpr;
     impl Hint for LitExpr {
         fn hint(s: ParseStream) -> bool {
             s.peek(Lit)
@@ -339,11 +339,38 @@ pub mod expr {
     }
 
     #[derive(syn_derive::Parse)]
+    pub enum AtomicExpr {
+        #[parse(peek_func = ParenExpr::hint)]
+        Paren(ParenExpr),
+        #[parse(peek_func = PreExpr::hint)]
+        Pre(PreExpr),
+        #[parse(peek_func = NegExpr::hint)]
+        Neg(NegExpr),
+        #[parse(peek_func = NotExpr::hint)]
+        Not(NotExpr),
+        #[parse(peek_func = CallExpr::hint)]
+        Call(CallExpr),
+        #[parse(peek_func = LitExpr::hint)]
+        Lit(LitExpr),
+        Var(VarExpr),
+    }
+    span_end_by_match! {
+        AtomicExpr.
+            Paren(p) => p;
+            Pre(p) => p;
+            Neg(n) => n;
+            Not(n) => n;
+            Call(c) => c;
+            Lit(l) => l;
+            Var(v) => v;
+
+    }
+
+    #[derive(syn_derive::Parse)]
     pub struct VarExpr {
         pub name: Sp<LusIdent>,
     }
     span_end_on_field!(VarExpr.name);
-    pub type VarLevelExpr = ExprHierarchy<VarExpr, LitLevelExpr>;
     impl Hint for VarExpr {
         fn hint(s: ParseStream) -> bool {
             LusIdent::peek(s)
@@ -360,7 +387,6 @@ pub mod expr {
         pub args: Punctuated<Sp<Box<Expr>>, Token![,]>,
     }
     span_end_on_field!(CallExpr._paren);
-    pub type CallLevelExpr = ExprHierarchy<CallExpr, VarLevelExpr>;
     impl Hint for CallExpr {
         fn hint(s: ParseStream) -> bool {
             fn is_parenthesized(s: ParseStream) -> Result<Paren> {
@@ -382,7 +408,6 @@ pub mod expr {
         pub inner: Punctuated<Sp<Box<Expr>>, Token![,]>,
     }
     span_end_on_field!(ParenExpr._paren);
-    pub type ParenLevelExpr = ExprHierarchy<ParenExpr, CallLevelExpr>;
     impl Hint for ParenExpr {
         fn hint(s: ParseStream) -> bool {
             fn is_parenthesized(s: ParseStream) -> Result<Paren> {
@@ -397,10 +422,9 @@ pub mod expr {
     #[derive(syn_derive::Parse)]
     pub struct PreExpr {
         pub _pre: kw::pre,
-        pub inner: Sp<Box<PreLevelExpr>>,
+        pub inner: Sp<Box<AtomicExpr>>,
     }
     span_end_on_field!(PreExpr.inner);
-    pub type PreLevelExpr = ExprHierarchy<PreExpr, ParenLevelExpr>;
     impl Hint for PreExpr {
         fn hint(s: ParseStream) -> bool {
             s.peek(kw::pre)
@@ -410,13 +434,24 @@ pub mod expr {
     #[derive(syn_derive::Parse)]
     pub struct NegExpr {
         pub _neg: Token![-],
-        pub inner: Sp<Box<NegLevelExpr>>,
+        pub inner: Sp<Box<AtomicExpr>>,
     }
     span_end_on_field!(NegExpr.inner);
-    pub type NegLevelExpr = ExprHierarchy<NegExpr, PreLevelExpr>;
     impl Hint for NegExpr {
         fn hint(s: ParseStream) -> bool {
             s.peek(Token![-])
+        }
+    }
+
+    #[derive(syn_derive::Parse)]
+    pub struct NotExpr {
+        pub _not: kw::not,
+        pub inner: Sp<Box<AtomicExpr>>,
+    }
+    span_end_on_field!(NotExpr.inner);
+    impl Hint for NotExpr {
+        fn hint(s: ParseStream) -> bool {
+            s.peek(kw::not)
         }
     }
 
@@ -461,7 +496,7 @@ pub mod expr {
     #[derive(syn_derive::Parse)]
     pub struct MulExpr {
         #[parse(punctuated_parse_separated_nonempty_costly)]
-        pub items: Punctuated<Sp<NegLevelExpr>, MulOp>,
+        pub items: Punctuated<Sp<AtomicExpr>, MulOp>,
     }
     span_end_on_field!(MulExpr.items);
     pub type MulLevelExpr = MulExpr;
@@ -499,22 +534,9 @@ pub mod expr {
     pub type CmpLevelExpr = CmpExpr;
 
     #[derive(syn_derive::Parse)]
-    pub struct NotExpr {
-        pub _not: kw::not,
-        pub inner: Sp<Box<NotLevelExpr>>,
-    }
-    span_end_on_field!(NotExpr.inner);
-    pub type NotLevelExpr = ExprHierarchy<NotExpr, CmpLevelExpr>;
-    impl Hint for NotExpr {
-        fn hint(s: ParseStream) -> bool {
-            s.peek(kw::not)
-        }
-    }
-
-    #[derive(syn_derive::Parse)]
     pub struct AndExpr {
         #[parse(Punctuated::parse_separated_nonempty)]
-        pub items: Punctuated<Sp<NotLevelExpr>, kw::and>,
+        pub items: Punctuated<Sp<CmpLevelExpr>, kw::and>,
     }
     span_end_on_field!(AndExpr.items);
     pub type AndLevelExpr = AndExpr;
