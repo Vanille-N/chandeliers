@@ -499,64 +499,57 @@ pub mod expr {
         pub items: Punctuated<Sp<AtomicExpr>, MulOp>,
     }
     span_end_on_field!(MulExpr.items);
-    pub type MulLevelExpr = MulExpr;
 
     #[derive(syn_derive::Parse)]
     pub struct AddExpr {
         #[parse(punctuated_parse_separated_nonempty_costly)]
-        pub items: Punctuated<Sp<MulLevelExpr>, AddOp>,
+        pub items: Punctuated<Sp<MulExpr>, AddOp>,
     }
     span_end_on_field!(AddExpr.items);
-    pub type AddLevelExpr = AddExpr;
 
     #[derive(syn_derive::Parse)]
     pub struct ThenExpr {
         #[parse(punctuated_parse_separated_nonempty_costly)]
-        pub items: Punctuated<Sp<AddLevelExpr>, Token![->]>,
+        pub items: Punctuated<Sp<AddExpr>, Token![->]>,
     }
     span_end_on_field!(ThenExpr.items);
-    pub type ThenLevelExpr = ThenExpr;
 
     #[derive(syn_derive::Parse)]
     pub struct FbyExpr {
         #[parse(punctuated_parse_separated_nonempty_costly)]
-        pub items: Punctuated<Sp<ThenLevelExpr>, kw::fby>,
+        pub items: Punctuated<Sp<ThenExpr>, kw::fby>,
     }
     span_end_on_field!(FbyExpr.items);
-    pub type FbyLevelExpr = FbyExpr;
 
     #[derive(syn_derive::Parse)]
     pub struct CmpExpr {
         #[parse(punctuated_parse_separated_nonempty_costly)]
-        pub items: Punctuated<Sp<FbyLevelExpr>, CmpOp>,
+        pub items: Punctuated<Sp<FbyExpr>, CmpOp>,
     }
     span_end_on_field!(CmpExpr.items);
-    pub type CmpLevelExpr = CmpExpr;
 
     #[derive(syn_derive::Parse)]
     pub struct AndExpr {
         #[parse(Punctuated::parse_separated_nonempty)]
-        pub items: Punctuated<Sp<CmpLevelExpr>, kw::and>,
+        pub items: Punctuated<Sp<CmpExpr>, kw::and>,
     }
     span_end_on_field!(AndExpr.items);
-    pub type AndLevelExpr = AndExpr;
 
     #[derive(syn_derive::Parse)]
     pub struct OrExpr {
         #[parse(Punctuated::parse_separated_nonempty)]
-        pub items: Punctuated<Sp<AndLevelExpr>, kw::or>,
+        pub items: Punctuated<Sp<AndExpr>, kw::or>,
     }
     span_end_on_field!(OrExpr.items);
-    pub type OrLevelExpr = OrExpr;
 
     #[derive(syn_derive::Parse)]
     pub struct IfExpr {
         pub _if: Token![if],
-        pub cond: Sp<OrLevelExpr>,
+        pub cond: Sp<OrExpr>,
         pub _then: kw::then,
-        pub yes: Sp<OrLevelExpr>,
+        pub yes: Sp<OrExpr>,
         pub _else: Token![else],
-        pub no: Sp<OrLevelExpr>,
+        pub no: Sp<OrExpr>,
     }
     impl Hint for IfExpr {
         fn hint(s: ParseStream) -> bool {
@@ -564,7 +557,7 @@ pub mod expr {
         }
     }
     span_end_on_field!(IfExpr.no);
-    pub type IfLevelExpr = ExprHierarchy<IfExpr, OrLevelExpr>;
+    pub type IfLevelExpr = ExprHierarchy<IfExpr, OrExpr>;
 
     pub struct Expr {
         pub inner: Sp<IfLevelExpr>,
