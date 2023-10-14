@@ -1,15 +1,15 @@
 #![feature(proc_macro_diagnostic)]
 
-use syn::parse_macro_input;
 use quote::ToTokens;
+use syn::parse_macro_input;
 
-use chandeliers_syn as syntax;
 use chandeliers_san as sanitizer;
+use chandeliers_syn as syntax;
 
-use syntax::translate::SpanTranslate;
+use sanitizer::ast::Sp;
 use sanitizer::causality::Causality;
 use sanitizer::positivity::MakePositive;
-use sanitizer::ast::Sp;
+use syntax::translate::SpanTranslate;
 
 #[proc_macro]
 pub fn decl(i: proc_macro::TokenStream) -> proc_macro::TokenStream {
@@ -23,11 +23,11 @@ pub fn decl(i: proc_macro::TokenStream) -> proc_macro::TokenStream {
         Err(e) => return e.into(),
     };
     match prog.typecheck() {
-        Ok(()) => {},
+        Ok(()) => {}
         Err(e) => return e.into(),
     }
     match prog.make_positive() {
-        Ok(()) => {},
+        Ok(()) => {}
         Err(e) => return e.into(),
     }
     let mut toks = proc_macro2::TokenStream::new();
@@ -42,7 +42,7 @@ macro_rules! ui_fail {
             let t = trybuild::TestCases::new();
             t.compile_fail(concat!("tests/fail/ui/", stringify!($dir), "/**/*.rs"));
         }
-    }
+    };
 }
 
 ui_fail!(ui_fail_causality in causality);
@@ -54,7 +54,3 @@ fn pass_ui() {
     let t = trybuild::TestCases::new();
     t.pass("tests/pass/ui/**/*.rs");
 }
-
-
-
-

@@ -2,9 +2,6 @@
 
 use crate::ast::*;
 
-use proc_macro2::TokenStream;
-use syn::parse::Parse;
-use syn::parse_macro_input;
 use syn::Token;
 
 macro_rules! success {

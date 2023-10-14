@@ -305,7 +305,6 @@ impl Depends for expr::GlobalVar {
     require_this!(|this: &Self| Reference::GlobalVarName(this.name.clone()));
 }
 
-
 /// `Reference` is a wrapper.
 impl Depends for expr::Reference {
     type Output = Reference;

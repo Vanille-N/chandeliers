@@ -833,12 +833,7 @@ impl Translate for lus::expr::VarExpr {
             )))
         } else {
             Ok(CandleExpr::Reference(Sp::new(
-                candle::expr::Reference::Global(Sp::new(
-                    candle::expr::GlobalVar {
-                        name,
-                    },
-                    span,
-                )),
+                candle::expr::Reference::Global(Sp::new(candle::expr::GlobalVar { name }, span)),
                 span,
             )))
         }

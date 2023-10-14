@@ -631,7 +631,10 @@ pub mod stmt {
             nbret: Sp<Option<usize>>,
         },
         /// Print debug information.
-        Trace { msg: String, fmt: Tuple<expr::LocalVar> },
+        Trace {
+            msg: String,
+            fmt: Tuple<expr::LocalVar>,
+        },
         /// Perform an assertion.
         Assert(Sp<expr::Expr>),
     }

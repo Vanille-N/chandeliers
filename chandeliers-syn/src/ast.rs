@@ -1,5 +1,7 @@
 use chandeliers_san::ast::{Sp, SpanEnd};
 use proc_macro2::Span;
+use std::fmt;
+use syn::ext::IdentExt;
 use syn::parse::{Parse, ParseStream, Result};
 use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
@@ -79,6 +81,57 @@ pub mod punct {
     custom_punctuation!(Neq, <>);
 }
 
+pub struct LusIdent {
+    pub inner: Ident,
+}
+
+impl Parse for LusIdent {
+    fn parse(input: ParseStream) -> Result<Self> {
+        let ahead = input.fork();
+        match ahead.call(Ident::parse_any) {
+            Ok(inner) => {
+                match inner.to_string().as_str() {
+                    "true" | "false" | "fby" | "if" | "then" | "else" | "or" | "and" | "not"
+                    | "pre" | "node" | "const" | "extern" | "returns" | "var" | "let" | "tel"
+                    | "assert" => Err(syn::Error::new(
+                        inner.span(),
+                        "expected identifier, found keyword reserved by Lustre",
+                    )),
+                    "crate" | "self" | "Self" | "super" | "move" | "static" => {
+                        Err(syn::Error::new(
+                            inner.span(),
+                            "expected identifier, found keyword reserved by Rust",
+                        ))
+                    }
+                    // NOTE: "int", "float" and "bool" are also keywords, but they are not
+                    // reserved. Because the grammar is not ambiguous we can always tell if "float"
+                    // refers to the type or the builtin.
+                    _ => {
+                        let _ = input.call(Ident::parse_any).unwrap();
+                        Ok(Self { inner })
+                    }
+                }
+            }
+            Err(e) => Err(e),
+        }
+    }
+}
+
+impl LusIdent {
+    fn peek(input: ParseStream) -> bool {
+        let ahead = input.fork();
+        Self::parse(&ahead).is_ok()
+    }
+}
+
+impl fmt::Display for LusIdent {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.inner)
+    }
+}
+
+span_end_on_field!(LusIdent.inner);
+
 #[derive(syn_derive::Parse)]
 pub enum BaseType {
     #[parse(peek = kw::int)]
@@ -104,7 +157,7 @@ span_end_on_field!(Type.base);
 #[derive(syn_derive::Parse)]
 pub struct Decls {
     #[parse(Punctuated::parse_separated_nonempty)]
-    pub ids: Punctuated<Sp<Ident>, Token![,]>,
+    pub ids: Punctuated<Sp<LusIdent>, Token![,]>,
 }
 span_end_on_field!(Decls.ids);
 
@@ -149,7 +202,7 @@ impl ArgsTys {
 pub enum TargetExpr {
     #[parse(peek = Paren)]
     Tuple(Sp<TargetExprTuple>),
-    Var(Sp<Ident>),
+    Var(Sp<LusIdent>),
 }
 span_end_by_match! {
     TargetExpr.
@@ -287,19 +340,19 @@ pub mod expr {
 
     #[derive(syn_derive::Parse)]
     pub struct VarExpr {
-        pub name: Sp<Ident>,
+        pub name: Sp<LusIdent>,
     }
     span_end_on_field!(VarExpr.name);
     pub type VarLevelExpr = ExprHierarchy<VarExpr, LitLevelExpr>;
     impl Hint for VarExpr {
         fn hint(s: ParseStream) -> bool {
-            s.peek(Ident)
+            LusIdent::peek(s)
         }
     }
 
     #[derive(syn_derive::Parse)]
     pub struct CallExpr {
-        pub fun: Sp<Ident>,
+        pub fun: Sp<LusIdent>,
         #[syn(parenthesized)]
         pub _paren: Paren,
         #[syn(in = _paren)]
@@ -311,7 +364,7 @@ pub mod expr {
     impl Hint for CallExpr {
         fn hint(s: ParseStream) -> bool {
             fn is_parenthesized(s: ParseStream) -> Result<Paren> {
-                s.parse::<Ident>()?;
+                s.parse::<LusIdent>()?;
                 let _content;
                 let p = syn::parenthesized!(_content in s);
                 Ok(p)
@@ -556,7 +609,7 @@ span_end_by_match! {
 pub struct Node {
     _node: kw::node,
 
-    pub name: Sp<Ident>,
+    pub name: Sp<LusIdent>,
 
     #[syn(parenthesized)]
     pub _inputs_paren: Paren,
@@ -588,7 +641,7 @@ span_end_on_field!(Node._kwtel);
 #[derive(syn_derive::Parse)]
 pub struct Const {
     _const: Token![const],
-    pub name: Sp<Ident>,
+    pub name: Sp<LusIdent>,
     _colon: Token![:],
     pub ty: Sp<Type>,
     _equal: Token![=],
@@ -600,7 +653,7 @@ span_end_on_field!(Const.value);
 pub struct ExtNode {
     _extern: Token![extern],
     _node: kw::node,
-    pub name: Sp<Ident>,
+    pub name: Sp<LusIdent>,
 
     #[syn(parenthesized)]
     pub _inputs_paren: Paren,
@@ -622,7 +675,7 @@ span_end_on_field!(ExtNode.outputs);
 pub struct ExtConst {
     _extern: Token![extern],
     _const: Token![const],
-    pub name: Sp<Ident>,
+    pub name: Sp<LusIdent>,
     _colon: Token![:],
     pub ty: Sp<Type>,
 }
@@ -643,21 +696,21 @@ span_end_by_match! {
 
 #[derive(syn_derive::Parse)]
 pub enum AttrArg {
-    #[parse(peek = Ident)]
-    Ident(Sp<Ident>),
+    #[parse(peek_func = LusIdent::peek)]
+    LusIdent(Sp<LusIdent>),
     #[parse(peek = Lit)]
     Lit(Sp<Lit>),
 }
 span_end_by_match! {
     AttrArg.
-        Ident(i) => i;
+        LusIdent(i) => i;
         Lit(l) => l;
 }
 
 #[derive(syn_derive::Parse)]
 pub struct AttrDef {
     // FIXME
-    _action: Sp<Ident>,
+    _action: Sp<LusIdent>,
     #[syn(parenthesized)]
     _paren: Paren,
     #[syn(in = _paren)]

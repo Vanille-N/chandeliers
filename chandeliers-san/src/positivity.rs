@@ -14,7 +14,6 @@ type TokResult<T> = Result<T, TokenStream>;
 
 use crate::ast::*;
 
-
 struct VarsDepth<'i> {
     max_known: &'i mut HashMap<expr::LocalVar, usize>,
     current: usize,
@@ -26,7 +25,7 @@ macro_rules! fork {
             max_known: &mut *$depths.max_known,
             current: $depths.current,
         }
-    }
+    };
 }
 
 impl VarsDepth<'_> {
@@ -35,7 +34,7 @@ impl VarsDepth<'_> {
         self
     }
 
-    fn update(mut self, var: &expr::LocalVar, depth: usize) {
+    fn update(self, var: &expr::LocalVar, depth: usize) {
         if let Some(old) = self.max_known.get(var) {
             if *old >= depth {
                 return;
@@ -120,7 +119,7 @@ impl CheckPositive for stmt::Statement {
                     arg.check_positive(fork!(depths).with(clk.dt))?;
                 }
                 Ok(())
-            },
+            }
         }
     }
 }

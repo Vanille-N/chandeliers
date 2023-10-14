@@ -36,14 +36,13 @@ impl ToTokens for decl::Decl {
             Self::ExtNode(_) => {}
             Self::Const(c) => {
                 toks.extend(quote! {
+                    #[allow(non_upper_case_globals)]
                     const #c ;
                 });
             }
-            Self::Node(n) => {
-                toks.extend(quote! {
-                    #n
-                })
-            }
+            Self::Node(n) => toks.extend(quote! {
+                #n
+            }),
         }
     }
 }
@@ -117,12 +116,30 @@ impl ToTokens for decl::Node {
         let pos_locals_decl = locals.t.iter().filter(|v| v.t.strictly_positive());
         let blocks = blocks.iter().map(|n| n.as_ident()).collect::<Vec<_>>();
 
-        let pos_inputs_use = inputs.t.iter().filter(|v| v.t.strictly_positive()).map(|v| v.as_ref().map(|_, v| v.name_of()));
-        let pos_outputs_use = outputs.t.iter().filter(|v| v.t.strictly_positive()).map(|v| v.as_ref().map(|_, v| v.name_of()));
-        let pos_locals_use = locals.t.iter().filter(|v| v.t.strictly_positive()).map(|v| v.as_ref().map(|_, v| v.name_of()));
+        let pos_inputs_use = inputs
+            .t
+            .iter()
+            .filter(|v| v.t.strictly_positive())
+            .map(|v| v.as_ref().map(|_, v| v.name_of()));
+        let pos_outputs_use = outputs
+            .t
+            .iter()
+            .filter(|v| v.t.strictly_positive())
+            .map(|v| v.as_ref().map(|_, v| v.name_of()));
+        let pos_locals_use = locals
+            .t
+            .iter()
+            .filter(|v| v.t.strictly_positive())
+            .map(|v| v.as_ref().map(|_, v| v.name_of()));
         let inputs_sep = inputs.t.iter();
-        let outputs_ty = outputs.t.iter().map(|sv| sv.as_ref().map(|_, v| v.type_of()));
-        let outputs_vs = outputs.t.iter().map(|sv| sv.as_ref().map(|_, v| v.name_of()));
+        let outputs_ty = outputs
+            .t
+            .iter()
+            .map(|sv| sv.as_ref().map(|_, v| v.base_type_of()));
+        let outputs_vs = outputs
+            .t
+            .iter()
+            .map(|sv| sv.as_ref().map(|_, v| v.name_of()));
 
         toks.extend(quote! {
             #[derive(Debug, Default)]
@@ -158,7 +175,7 @@ impl ToTokens for decl::Node {
 
 impl Sp<decl::NodeName> {
     fn as_ident(&self) -> Ident {
-        Ident::new(&self.t.0.t, self.t.0.span)
+        Ident::new_raw(&self.t.0.t, self.t.0.span)
     }
 }
 
@@ -170,7 +187,7 @@ impl decl::TyVar {
 
 impl ToTokens for Sp<expr::GlobalVar> {
     fn to_tokens(&self, toks: &mut TokenStream) {
-        let id = Ident::new(&self.t.name.t, self.t.name.span);
+        let id = Ident::new_raw(&self.t.name.t, self.t.name.span);
         toks.extend(quote!( #id ));
     }
 }
@@ -361,18 +378,12 @@ impl ToTokens for decl::TyVar {
 }
 
 impl decl::TyVar {
-    fn type_of(&self) -> ty::TyBase {
+    fn base_type_of(&self) -> ty::TyBase {
         self.ty.t.base.t
     }
 
     fn name_of(&self) -> expr::LocalVar {
         self.name.t.clone()
-    }
-}
-
-impl ty::Stream {
-    fn as_base_ty(&self) -> ty::TyBase {
-        self.base.t
     }
 }
 
@@ -459,7 +470,7 @@ impl ToTokens for stmt::VarTuple {
                 toks.extend(quote!( #s ));
             }
             Self::Multiple(m) if m.t.is_empty() => {
-                toks.extend(quote!( _ ));
+                toks.extend(quote!(_));
             }
             Self::Multiple(m) => {
                 let m = m.t.iter();
@@ -524,9 +535,7 @@ impl ToTokens for expr::Builtin {
     fn to_tokens(&self, toks: &mut TokenStream) {
         match self {
             Self::Float(arg) => {
-                toks.extend(quote!(
-                    chandeliers_sem::float!(#arg)
-                ));
+                toks.extend(quote!(chandeliers_sem::float!(#arg)));
             }
         }
     }
