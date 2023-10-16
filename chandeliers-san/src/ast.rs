@@ -28,6 +28,12 @@ pub struct Sp<T> {
     pub span: Span,
 }
 
+impl<T> Into<Span> for &Sp<T> {
+    fn into(self) -> Span {
+        self.span
+    }
+}
+
 impl<T> Sp<T> {
     /// Create a new `Sp` from a payload and a span.
     pub fn new(t: T, span: Span) -> Self {

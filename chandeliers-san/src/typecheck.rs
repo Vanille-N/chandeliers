@@ -2,11 +2,12 @@
 
 use std::collections::HashMap;
 
+use chandeliers_err as err;
 use crate::ast::{self, Sp};
-use proc_macro2::{Span, TokenStream};
+use proc_macro2::Span;
 use quote::quote_spanned;
 
-pub type TcResult<T> = Result<T, TokenStream>;
+pub type TcResult<T> = Result<T, err::Error>;
 
 use ast::ty::{TyBase, TyTuple};
 use ast::Tuple;
@@ -50,12 +51,11 @@ impl TyCtx<'_> {
         match self.vars.get(var.t) {
             Some(ty) => Ok(ty.map(|span, ty| TyTuple::Single(Sp::new(ty, span)))),
             None => {
-                let s = format!(
-                    "Variable {var} was not found in the context (assumed to be a local variable)"
-                );
-                Err(quote_spanned! {var.span=>
-                    compile_error!(#s);
-                })
+                Err(err::var_not_found(
+                    &var,
+                    self.vars.keys(),
+                    self.global.keys(),
+                ))
             }
         }
     }
@@ -65,12 +65,11 @@ impl TyCtx<'_> {
         match self.global.get(var.t) {
             Some(ty) => Ok(ty.map(|span, ty| TyTuple::Single(Sp::new(ty, span)))),
             None => {
-                let s = format!(
-                    "Variable {var} was not found in the context (assumed to be a global variable)"
-                );
-                Err(quote_spanned! {var.span=>
-                    compile_error!(#s);
-                })
+                Err(err::var_not_found(
+                    &var,
+                    self.vars.keys(),
+                    self.global.keys(),
+                ))
             }
         }
     }
@@ -118,7 +117,7 @@ impl TypeCheckStmt for Sp<ast::stmt::Statement> {
                 // Let needs the target to have the same type as the source.
                 let target_ty = target.typecheck(ctx)?;
                 let source_ty = source.typecheck(ctx)?;
-                Ok(Sp::new(target_ty.identical(&source_ty)?, self.span))
+                Ok(Sp::new(target_ty.identical(&source_ty, self.span)?, self.span))
             }
             Statement::Trace { .. } => Ok(Sp::new((), self.span)),
             Statement::Assert(e) => {
@@ -149,9 +148,9 @@ impl TypeCheckStmt for Sp<ast::stmt::Statement> {
                         expected_tys.t.len(),
                         args.t.len()
                     );
-                    return Err(quote_spanned! {self.span=>
+                    return Err(err::token_stream(quote_spanned! {self.span=>
                         compile_error!(#s);
-                    });
+                    }));
                 }
                 // Then we check that the arguments actually have the correct
                 // type at all positions.
@@ -159,7 +158,7 @@ impl TypeCheckStmt for Sp<ast::stmt::Statement> {
                     let actual_ty = arg.typecheck(ctx)?;
                     expected
                         .map(|span, t| TyTuple::Single(Sp::new(t, span)))
-                        .identical(&actual_ty)?;
+                        .identical(&actual_ty, self.span)?;
                 }
                 Ok(Sp::new((), self.span))
             }
@@ -210,7 +209,7 @@ impl TypeCheckExpr for Sp<ast::expr::Expr> {
                 } => {
                     let left = before.typecheck(ctx)?;
                     let right = after.typecheck(ctx)?;
-                    left.identical(&right)?;
+                    left.identical(&right, span)?;
                     Ok(left.t)
                 }
                 Expr::Ifx { cond, yes, no } => {
@@ -219,7 +218,7 @@ impl TypeCheckExpr for Sp<ast::expr::Expr> {
                     let no = no.typecheck(ctx)?;
                     let cond = cond.is_primitive()?;
                     cond.is_bool()?;
-                    yes.identical(&no)?;
+                    yes.identical(&no, span)?;
                     Ok(yes.t)
                 }
             }
@@ -249,9 +248,9 @@ impl TypeCheckExpr for Sp<ast::expr::Expr> {
             }
             Expr::Later { before, after, .. } => {
                 let span = before.span.join(after.span).expect("Faulty span");
-                Err(quote_spanned! {span=>
+                Err(err::token_stream(quote_spanned! {span=>
                     compile_error!("Later is not valid in const contexts");
-                })
+                }))
             }
             Expr::Ifx { cond, yes, no } => {
                 cond.is_const()?;
@@ -274,9 +273,9 @@ impl TypeCheckExpr for Sp<ast::expr::Builtin> {
                     TyTuple::Single(_) => Ok(TyTuple::Single(Sp::new(TyBase::Float, span))),
                     TyTuple::Multiple(m) => {
                         let s = "Builtin float expects a single argument, not a tuple";
-                        Err(quote_spanned! {m.span=>
+                        Err(err::token_stream(quote_spanned! {m.span=>
                             compile_error!(#s);
-                        })
+                        }))
                     }
                 },
             }
@@ -287,9 +286,9 @@ impl TypeCheckExpr for Sp<ast::expr::Builtin> {
     }
 
     fn is_const(&self) -> TcResult<()> {
-        Err(quote_spanned! {self.span=>
+        Err(err::token_stream(quote_spanned! {self.span=>
             compile_error!("Function calls are not valid in const contexts");
-        })
+        }))
     }
 }
 
@@ -366,28 +365,28 @@ impl ast::expr::BinOp {
             let s = format!(
                 "Binary operator {self} expects arguments of the same type: got {left} and {right}"
             );
-            return Err(quote_spanned! {span=>
+            return Err(err::token_stream(quote_spanned! {span=>
                 compile_error!(#s);
-            });
+            }));
         }
         match (self, left.t) {
             (Add | Mul | Div | Sub | Rem, Bool) => {
                 let s = format!("Operator {self} does not expect a bool argument");
-                Err(quote_spanned! {span=>
+                Err(err::token_stream(quote_spanned! {span=>
                     compile_error!(#s);
-                })
+                }))
             }
             (Rem, Float) => {
                 let s = format!("Operator {self} expects integer arguments: got floats");
-                Err(quote_spanned! {span=>
+                Err(err::token_stream(quote_spanned! {span=>
                     compile_error!(#s);
-                })
+                }))
             }
             (BitAnd | BitOr | BitXor, Float) => {
                 let s = "Cannot apply logical operators to float";
-                Err(quote_spanned! {span=>
+                Err(err::token_stream(quote_spanned! {span=>
                     compile_error!(#s);
-                })
+                }))
             }
             _ => Ok(()),
         }
@@ -402,9 +401,9 @@ impl ast::expr::UnOp {
         match (self, inner.t) {
             (Neg, Bool) | (Not, Float) => {
                 let s = format!("Operator {self} cannot be applied to {inner}");
-                Err(quote_spanned! {inner.span=>
+                Err(err::token_stream(quote_spanned! {inner.span=>
                     compile_error!(#s);
-                })
+                }))
             }
             _ => Ok(()),
         }
@@ -419,16 +418,16 @@ impl ast::expr::CmpOp {
         let span = left.span.join(right.span).unwrap();
         if left.t != right.t {
             let s = format!("Comparison operator {self} expects arguments of the same type: got {left} and {right}");
-            return Err(quote_spanned! {span=>
+            return Err(err::token_stream(quote_spanned! {span=>
                 compile_error!(#s);
-            });
+            }));
         }
         match (self, left.t) {
             (Ne, Float) | (Eq, Float) => {
                 let s = "Equality on float is not reliable";
-                Err(quote_spanned! {span=>
+                Err(err::token_stream(quote_spanned! {span=>
                     compile_error!(#s);
-                })
+                }))
             }
             _ => Ok(()),
         }
@@ -440,14 +439,15 @@ impl Sp<TyBase> {
         match self.t {
             TyBase::Bool => Ok(()),
             _ => {
-                let s = format!("Expected bool, got {self}");
-                Err(quote_spanned! {self.span=>
+                let s = format!("expected bool, got {self}");
+                Err(err::token_stream(quote_spanned! {self.span=>
                     compile_error!(#s);
-                })
+                }))
             }
         }
     }
 }
+
 
 impl Sp<TyTuple> {
     /// Check that two tuple types are identical:
@@ -457,44 +457,36 @@ impl Sp<TyTuple> {
     /// size-1 `Multiple` while the other is a `Single`. If your language
     /// is such that `(T,)` and `T` are known to be isomorphic, you should
     /// compress `Multiple`s of size 1 earlier in the AST generation.
-    fn identical(&self, other: &Self) -> TcResult<()> {
+    fn identical(&self, other: &Self, source: Span) -> Result<(), err::Error> {
         use TyTuple::*;
         match (&self.t, &other.t) {
             (Single(left), Single(right)) => {
                 if left.t != right.t {
-                    let s = format!("Expected {left}, got {right}");
-                    Err(quote_spanned! {other.span=>
-                        compile_error!(#s);//FIXME: must show both spans
-                    })
+                    let msg = format!("Base types should be identical: expected {left}, got {right}");
+                    Err(err::type_mismatch(source, self, other, msg))
                 } else {
                     Ok(())
                 }
             }
             (Multiple(ts), Multiple(us)) => {
                 if ts.t.len() != us.t.len() {
-                    let s = format!(
-                        "Expected {self}, got {other} instead that does not have the same length"
+                    let msg = format!(
+                        "expected {self}, got {other} instead that does not have the same length"
                     );
-                    return Err(quote_spanned! {other.span=>
-                        compile_error!(#s);//FIXME: must show both spans
-                    });
+                    return Err(err::type_mismatch(source, self, other, msg));
                 }
                 for (t, u) in ts.t.iter().zip(us.t.iter()) {
-                    t.identical(u)?;
+                    t.identical(u, source)?;
                 }
                 Ok(())
             }
             (Multiple(_), Single(_)) => {
-                let s = format!("Expected a tuple {}, got a scalar {}", self, other);
-                Err(quote_spanned! {other.span=>
-                    compile_error!(#s);//FIXME: must show both spans
-                })
+                let msg = format!("expected a tuple {self}, got a scalar {other}");
+                Err(err::type_mismatch(source, self, other, msg))
             }
             (Single(_), Multiple(_)) => {
-                let s = format!("Expected a scalar {}, got a tuple {}", self, other);
-                Err(quote_spanned! {other.span=>
-                    compile_error!(#s);//FIXME: must show both spans
-                })
+                let msg = format!("expected a scalar {self}, got a tuple {other}");
+                Err(err::type_mismatch(source, self, other, msg))
             }
         }
     }
@@ -509,10 +501,10 @@ impl Sp<TyTuple> {
             .map(|_, t| match t {
                 Single(t) => Ok(t.t),
                 Multiple(_) => {
-                    let s = "Expected a scalar type, got a tuple type";
-                    Err(quote_spanned! {self.span=>
+                    let s = "expected a scalar type, got a tuple type";
+                    Err(err::token_stream(quote_spanned! {self.span=>
                         compile_error!(#s);
-                    })
+                    }))
                 }
             })
             .transpose()
@@ -556,9 +548,9 @@ impl Sp<ast::decl::Node> {
                         "Variable {} is declared twice in node {}",
                         v.t.name, self.t.name
                     );
-                    return Err(quote_spanned! {v.span=>
+                    return Err(err::token_stream(quote_spanned! {v.span=>
                         compile_error!(#s);
-                    });
+                    }));
                 }
             }
         }
@@ -566,9 +558,9 @@ impl Sp<ast::decl::Node> {
         for (id, blk) in self.t.blocks.iter().enumerate() {
             let Some((i, o)) = extfun.get(&blk.t) else {
                 let s = format!("Block {blk} is not defined");
-                return Err(quote_spanned! {blk.span =>
+                return Err(err::token_stream(quote_spanned! {blk.span =>
                     compile_error!(#s);//FIXME
-                });
+                }));
             };
             let id = ast::expr::NodeId {
                 id: Sp::new(id, blk.span),
@@ -628,7 +620,7 @@ impl Sp<ast::decl::Const> {
         self.t
             .ty
             .map(|span, t| TyTuple::Single(Sp::new(t, span)))
-            .identical(&e)?;
+            .identical(&e, self.span)?;
         Ok(())
     }
 
@@ -661,9 +653,9 @@ impl Sp<ast::decl::Prog> {
                     let (name, ty) = c.signature();
                     if varctx.insert(name.t.clone(), ty).is_some() {
                         let s = format!("Redefinition of const {}", name);
-                        return Err(quote_spanned! {c.span=>
+                        return Err(err::token_stream(quote_spanned! {c.span=>
                             compile_error!(#s);
-                        });
+                        }));
                     }
                 }
                 ast::decl::Decl::Node(n) => {
@@ -671,27 +663,27 @@ impl Sp<ast::decl::Prog> {
                     let (i, o) = n.signature();
                     if functx.insert(n.t.name.t.clone(), (i, o)).is_some() {
                         let s = format!("Redefinition of node {}", n.t.name);
-                        return Err(quote_spanned! {n.span=>
+                        return Err(err::token_stream(quote_spanned! {n.span=>
                             compile_error!(#s);
-                        });
+                        }));
                     }
                 }
                 ast::decl::Decl::ExtConst(c) => {
                     let (name, ty) = c.signature();
                     if varctx.insert(name.t.clone(), ty).is_some() {
                         let s = format!("Redefinition of const {}", name);
-                        return Err(quote_spanned! {c.span=>
+                        return Err(err::token_stream(quote_spanned! {c.span=>
                             compile_error!(#s);
-                        });
+                        }));
                     }
                 }
                 ast::decl::Decl::ExtNode(n) => {
                     let (i, o) = n.signature();
                     if functx.insert(n.t.name.t.clone(), (i, o)).is_some() {
                         let s = format!("Redefinition of node {}", n.t.name);
-                        return Err(quote_spanned! {n.span=>
+                        return Err(err::token_stream(quote_spanned! {n.span=>
                             compile_error!(#s);
-                        });
+                        }));
                     }
                 }
             }

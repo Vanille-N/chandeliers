@@ -1,0 +1,16 @@
+error: Type mismatch between the left and right sides: Base types should be identical: expected int, got float
+  --> tests/fail/ui/tc/tuples.rs:12:9
+   |
+12 |         (a, b, c) = gen();
+   |         ^^^^^^^^^^^^^^^^^
+   |
+note: This element has type int
+  --> tests/fail/ui/tc/tuples.rs:12:13
+   |
+12 |         (a, b, c) = gen();
+   |             ^
+note: While this element has type float
+  --> tests/fail/ui/tc/tuples.rs:2:38
+   |
+2  |     node gen() returns (a : int; b : float; c : bool);
+   |                                      ^^^^^
