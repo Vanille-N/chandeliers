@@ -1,6 +1,18 @@
-use chandeliers_san::ast::{Sp, SpanEnd};
-use proc_macro2::Span;
+//! Parsing output of a Lustre program.
+//!
+//! This AST is targeted for ease of parsing and quality of error messages,
+//! not for traversal.
+//! See `translate.rs` for how we can transform this AST into one that is
+//! more easy to use.
+//!
+//! A Lustre program is a sequence of declarations, that are either
+//! constants or nodes.
+//! A node has inputs, outputs, and a body constituted of definitions of
+//! outputs from inputs.
+
 use std::fmt;
+
+use proc_macro2::Span;
 use syn::ext::IdentExt;
 use syn::parse::{Parse, ParseStream, Result};
 use syn::punctuated::Punctuated;
@@ -8,6 +20,19 @@ use syn::spanned::Spanned;
 use syn::token::{Bracket, Paren};
 use syn::{Ident, Lit, Token};
 
+use chandeliers_san::ast::{Sp, SpanEnd};
+
+/// Impl `SpanEnd` for structs.
+///
+/// ```skip
+/// #[derive(syn_derive::Parse)]
+/// struct Addition {
+///     lhs: Ident,
+///     plus: Token![+],
+///     rhs: Ident,
+/// }
+/// span_end_on_field!(Addition.rhs);
+/// ```
 macro_rules! span_end_on_field {
     ($ty:ident . $field:ident) => {
         impl SpanEnd for $ty {
@@ -18,6 +43,24 @@ macro_rules! span_end_on_field {
     };
 }
 
+/// Impl `SpanEnd` for enums.
+///
+/// ```skip
+/// #[derive(syn_derive::Parse)]
+/// enum Operator {
+///     #[parse(peek = Token![+])]
+///     Plus(Token![+]),
+///     #[parse(peek = Token![-])]
+///     Minus(Token![-]),
+///     Times(Token![*]),
+/// }
+/// span_end_by_match! {
+///     Operator.
+///         Plus(o) => o;
+///         Minus(o) => o;
+///         Times(o) => o;
+/// }
+/// ```
 macro_rules! span_end_by_match {
     ( $ty:ident . $( $variant:ident ( $($field:tt),* ) => $select:ident ; )* ) => {
         impl SpanEnd for $ty {
@@ -32,6 +75,8 @@ macro_rules! span_end_by_match {
     }
 }
 
+/// Trivial implementation of `SpanEnd` for types that already have a
+/// `span` method.
 macro_rules! span_end_from_spanned {
     ( $($ty:tt)* ) => {
         impl SpanEnd for $($ty)* {
@@ -42,10 +87,13 @@ macro_rules! span_end_from_spanned {
     }
 }
 
+/// `peek`-like implementation for types that do not implement `syn`'s
+/// `Token` but are nevertheless still trivially peekable.
 trait Hint {
     fn hint(s: ParseStream) -> bool;
 }
 
+/// Reserved keywords defined by Lustre.
 pub mod kw {
     use syn::custom_keyword;
 
@@ -75,17 +123,41 @@ span_end_from_spanned!(kw::bool);
 span_end_from_spanned!(kw::float);
 span_end_from_spanned!(kw::tel);
 
+/// Extra punctuation defined by Lustre.
 pub mod punct {
     use syn::custom_punctuation;
 
     custom_punctuation!(Neq, <>);
 }
 
+/// A valid Lustre identifier.
+///
+/// The identifiers accepted here are not comparable with those accepted by
+/// Rust, because some keywords are reserved by Lustre that do not exist in
+/// Rust, and some Rust keywords can't even be used as raw identifiers.
+///
+/// See the `Parse` implementation for details.
 pub struct LusIdent {
     pub inner: Ident,
 }
 
 impl Parse for LusIdent {
+    /// Attempts to read an identifier from a stream.
+    ///
+    /// Valid identifiers *exclude*
+    /// - Keywords that both Lustre and Rust agree are reserved
+    ///     * literals: `true`, `false`
+    ///     * control flow: `if`, `else`
+    ///     * declarations: `let`, `const`, `extern`
+    /// - Lustre-only reserved keywords
+    ///     * temporal operators: `pre`, `fby`
+    ///     * boolean operators: `or`, `and`, `not`
+    ///     * control flow: `then`, `assert`
+    ///     * declarations: `node`, `returns`, `var`, `tel`
+    /// - Rust keywords that cannot be raw identifiers
+    ///     * path keywords: `crate`, `self`, `Self`, `super`
+    ///     * `move`
+    ///     * `static`
     fn parse(input: ParseStream) -> Result<Self> {
         let ahead = input.fork();
         match ahead.call(Ident::parse_any) {
@@ -132,6 +204,7 @@ impl fmt::Display for LusIdent {
 
 span_end_on_field!(LusIdent.inner);
 
+/// A scalar type: `int`, `bool`, `float`.
 #[derive(syn_derive::Parse)]
 pub enum BaseType {
     #[parse(peek = kw::int)]
@@ -154,6 +227,13 @@ pub struct Type {
 }
 span_end_on_field!(Type.base);
 
+/// A comma-separated list of idents.
+///
+/// ```lus
+/// var x, y, z : int; a, b, c : float;
+///     ^^^^^^^
+///                    ^^^^^^^
+/// ```
 #[derive(syn_derive::Parse)]
 pub struct Decls {
     #[parse(Punctuated::parse_separated_nonempty)]
@@ -161,6 +241,13 @@ pub struct Decls {
 }
 span_end_on_field!(Decls.ids);
 
+/// Variables and one type that applies to them all.
+///
+/// ```lus
+/// var x, y, z : int; a, b, c : float;
+///     ^^^^^^^^^^^^^
+///                    ^^^^^^^^^^^^^^^
+/// ```
 #[derive(syn_derive::Parse)]
 pub struct ArgsTy {
     pub args: Sp<Decls>,
@@ -169,6 +256,12 @@ pub struct ArgsTy {
 }
 span_end_on_field!(ArgsTy.ty);
 
+/// Declarations of variables and their types.
+///
+/// ```lus
+/// var x, y, z : int; a, b, c : float;
+///     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/// ```
 #[derive(Default)]
 pub struct ArgsTys {
     pub items: Punctuated<Sp<ArgsTy>, Token![;]>,
@@ -198,6 +291,20 @@ impl ArgsTys {
     }
 }
 
+/// Assignment expression.
+///
+/// ```lus
+/// x
+/// ^Var
+///
+/// (x, y, z)
+/// ^^^^^^^^^Tuple
+///
+/// (x, (y, z), w)
+///  ^Var       ^Var
+///     ^^^^^^Tuple
+/// ^^^^^^^^^^^^^^Tuple
+/// ```
 #[derive(syn_derive::Parse)]
 pub enum TargetExpr {
     #[parse(peek = Paren)]
@@ -210,6 +317,13 @@ span_end_by_match! {
         Var(v) => v;
 }
 
+/// Parenthesized tuple of variables.
+///
+/// ```lus
+/// (x, (y, z), w)
+///      ^^^^fields
+///  ^^^^^^^^^^^^fields
+/// ```
 #[derive(syn_derive::Parse)]
 pub struct TargetExprTuple {
     #[syn(parenthesized)]
@@ -220,6 +334,8 @@ pub struct TargetExprTuple {
 }
 span_end_on_field!(TargetExprTuple.fields);
 
+/// Implement a version of `Punctuated::parse_separated_nonempty` but
+/// for punctuation that is not trivially peekable.
 pub fn punctuated_parse_separated_nonempty_costly<T, P>(
     input: ParseStream,
 ) -> Result<Punctuated<T, P>>
@@ -242,6 +358,8 @@ where
     Ok(punctuated)
 }
 
+/// Implement a version of `Punctuated::parse_terminated` but that requires
+/// trailing punctuation and stops upon seeing a terminator of type `E`.
 pub fn punctuated_parse_separated_trailing_until<T, P, E>(
     input: ParseStream,
 ) -> Result<Punctuated<T, P>>
@@ -264,28 +382,31 @@ where
 
     Ok(punctuated)
 }
+
+/// Parsing expressions.
 pub mod expr {
-    pub use super::*;
-    // Expressions by order of decreasing precedence
-    //    [ _ or _ ] (<-)
-    //    [ _ and _ ] (<-)
-    //    [ _ <= _ ], [ _ >= _ ], [ _ < _ ], [ _ > _ ] [ _ = _ ] (==)
-    //    [ _ fby _ ] (<-)
-    //    [ _ -> _ ] (<-)
-    //    [ _ + _ ], [ _ - _ ] (->)
-    //    [ _ * _ ], [ _ / _ ], [ _ % _ ] (->)
-    //
-    // Atomics:
-    //    [ pre _ ]
-    //    [ - _ ]
-    //    [ ( _, ... ) ]
-    //    [ f( _, ... ) ]
-    //    [ v ]
-    //    [ not _ ]
+    //! Expressions by order of decreasing precedence
+    //!    [ _ or _ ] (<-)
+    //!    [ _ and _ ] (<-)
+    //!    [ _ <= _ ], [ _ >= _ ], [ _ < _ ], [ _ > _ ] [ _ = _ ] (==)
+    //!    [ _ fby _ ] (<-)
+    //!    [ _ -> _ ] (<-)
+    //!    [ _ + _ ], [ _ - _ ] (->)
+    //!    [ _ * _ ], [ _ / _ ], [ _ % _ ] (->)
+    //!
+    //! Atomics:
+    //!    [ pre _ ]
+    //!    [ - _ ]
+    //!    [ ( _, ... ) ]
+    //!    [ f( _, ... ) ]
+    //!    [ v ]
+    //!    [ not _ ]
+
+    use super::*;
 
     #[allow(private_bounds)]
     #[derive(syn_derive::Parse)]
-    pub enum ExprHierarchyParser<Here, Below>
+    enum ExprHierarchyParser<Here, Below>
     where
         Here: Parse + Hint,
         Below: Parse,
@@ -295,6 +416,8 @@ pub mod expr {
         Below(Below),
     }
 
+    /// A helper for constructing expressions that are defined by
+    /// an `enum` of several cases.
     pub enum ExprHierarchy<Here, Below> {
         Here(Here),
         Below(Below),
@@ -327,6 +450,15 @@ pub mod expr {
         }
     }
 
+    /// A literal.
+    ///
+    /// ```lus
+    /// 1.0
+    /// ^^^lit
+    ///
+    /// 2
+    /// ^lit
+    /// ```
     #[derive(syn_derive::Parse)]
     pub struct LitExpr {
         pub lit: Sp<Lit>,
@@ -338,8 +470,37 @@ pub mod expr {
         }
     }
 
+    /// An expression that is atomically parseable.
+    ///
+    /// It must not have any associativity and must always consume
+    /// at least one token immediately.
+    ///
+    /// ```lus
+    /// (a + b, c)
+    /// ^^^^^^^^^^Paren
+    ///
+    /// pre x
+    /// ^^^^^Pre
+    ///
+    /// -x
+    /// ^^Neg
+    ///
+    /// not x
+    /// ^^^^^Not
+    ///
+    /// f(x, y)
+    /// ^^^^^^^Call
+    ///
+    /// 1.0
+    /// ^^^Lit
+    ///
+    /// y
+    /// ^Var
+    /// ```
     #[derive(syn_derive::Parse)]
     pub enum AtomicExpr {
+        #[parse(peek_func = IfExpr::hint)]
+        If(IfExpr),
         #[parse(peek_func = ParenExpr::hint)]
         Paren(ParenExpr),
         #[parse(peek_func = PreExpr::hint)]
@@ -356,6 +517,7 @@ pub mod expr {
     }
     span_end_by_match! {
         AtomicExpr.
+            If(i) => i;
             Paren(p) => p;
             Pre(p) => p;
             Neg(n) => n;
@@ -366,6 +528,10 @@ pub mod expr {
 
     }
 
+    /// A variable.
+    ///
+    /// It can have any name accepted under the rules defined by `LusIdent`
+    /// (i.e. everything except Lustre keywords and some Rust keywords)
     #[derive(syn_derive::Parse)]
     pub struct VarExpr {
         pub name: Sp<LusIdent>,
@@ -377,6 +543,14 @@ pub mod expr {
         }
     }
 
+    /// A function call
+    ///
+    /// ```lus
+    /// foo(x, y, z)
+    /// ^^^fun
+    ///    ^_paren
+    ///     ^^^^^^^args
+    /// ```
     #[derive(syn_derive::Parse)]
     pub struct CallExpr {
         pub fun: Sp<LusIdent>,
@@ -399,6 +573,13 @@ pub mod expr {
         }
     }
 
+    /// An expression between parentheses.
+    ///
+    /// ```lus
+    /// (x, y, z)
+    /// ^_paren
+    ///  ^^^^^^^inner
+    /// ```
     #[derive(syn_derive::Parse)]
     pub struct ParenExpr {
         #[syn(parenthesized)]
@@ -419,6 +600,13 @@ pub mod expr {
         }
     }
 
+    /// The temporal operator `pre`.
+    ///
+    /// ```lus
+    /// pre x
+    /// ^^^_pre
+    ///     ^inner
+    /// ```
     #[derive(syn_derive::Parse)]
     pub struct PreExpr {
         pub _pre: kw::pre,
@@ -431,6 +619,13 @@ pub mod expr {
         }
     }
 
+    /// A unary negation.
+    ///
+    /// ```lus
+    /// -x
+    /// ^_neg
+    ///  ^inner
+    /// ```
     #[derive(syn_derive::Parse)]
     pub struct NegExpr {
         pub _neg: Token![-],
@@ -443,6 +638,13 @@ pub mod expr {
         }
     }
 
+    /// A unary boolean negation.
+    ///
+    /// ```lus
+    /// not b
+    /// ^^^_not
+    ///     ^inner
+    /// ```
     #[derive(syn_derive::Parse)]
     pub struct NotExpr {
         pub _not: kw::not,
@@ -455,6 +657,7 @@ pub mod expr {
         }
     }
 
+    /// Multiplicative operators: `*`, `/`, `%`, all with the same precedence.
     #[derive(syn_derive::Parse)]
     pub enum MulOp {
         #[parse(peek = Token![*])]
@@ -465,10 +668,12 @@ pub mod expr {
         Rem(Token![%]),
     }
 
+    /// Do not confuse an actual `-` with the beginning of a `->`.
     fn exactly_token_neg(s: ParseStream) -> bool {
         s.peek(Token![-]) && !s.peek2(Token![>])
     }
 
+    /// Additive operators: `+`, `-`, all with the same precedence.
     #[derive(syn_derive::Parse)]
     pub enum AddOp {
         #[parse(peek = Token![+])]
@@ -477,8 +682,14 @@ pub mod expr {
         Sub(Token![-]),
     }
 
+    /// Comparison operators: `<=`, `>=`, `<`, `>`, `=`, `<>`.
+    ///
+    /// NOTE: these operators are associative at the parsing level,
+    /// but the typechecker will ensure that they are exactly binary.
     #[derive(syn_derive::Parse)]
     pub enum CmpOp {
+        #[parse(peek = punct::Neq)]
+        Ne(punct::Neq),
         #[parse(peek = Token![<=])]
         Le(Token![<=]),
         #[parse(peek = Token![>=])]
@@ -489,10 +700,9 @@ pub mod expr {
         Gt(Token![>]),
         #[parse(peek = Token![=])]
         Eq(Token![=]),
-        #[parse(peek = punct::Neq)]
-        Ne(punct::Neq),
     }
 
+    /// A multiplicative expression as a `MulOp`-separated list of atomic expressions.
     #[derive(syn_derive::Parse)]
     pub struct MulExpr {
         #[parse(punctuated_parse_separated_nonempty_costly)]
@@ -500,6 +710,7 @@ pub mod expr {
     }
     span_end_on_field!(MulExpr.items);
 
+    /// An additive expression as an `AddOp`-separated list of multiplicative expressions.
     #[derive(syn_derive::Parse)]
     pub struct AddExpr {
         #[parse(punctuated_parse_separated_nonempty_costly)]
@@ -507,27 +718,15 @@ pub mod expr {
     }
     span_end_on_field!(AddExpr.items);
 
-    #[derive(syn_derive::Parse)]
-    pub struct ThenExpr {
-        #[parse(punctuated_parse_separated_nonempty_costly)]
-        pub items: Punctuated<Sp<AddExpr>, Token![->]>,
-    }
-    span_end_on_field!(ThenExpr.items);
-
-    #[derive(syn_derive::Parse)]
-    pub struct FbyExpr {
-        #[parse(punctuated_parse_separated_nonempty_costly)]
-        pub items: Punctuated<Sp<ThenExpr>, kw::fby>,
-    }
-    span_end_on_field!(FbyExpr.items);
-
+    /// A comparison expression as a `CmpOp`-separated list of temporal expressions.
     #[derive(syn_derive::Parse)]
     pub struct CmpExpr {
         #[parse(punctuated_parse_separated_nonempty_costly)]
-        pub items: Punctuated<Sp<FbyExpr>, CmpOp>,
+        pub items: Punctuated<Sp<AddExpr>, CmpOp>,
     }
     span_end_on_field!(CmpExpr.items);
 
+    /// A conjunction as an `and`-separated list of comparisons.
     #[derive(syn_derive::Parse)]
     pub struct AndExpr {
         #[parse(Punctuated::parse_separated_nonempty)]
@@ -535,6 +734,7 @@ pub mod expr {
     }
     span_end_on_field!(AndExpr.items);
 
+    /// A disjunction as an `or`-separated list of conjunctions.
     #[derive(syn_derive::Parse)]
     pub struct OrExpr {
         #[parse(Punctuated::parse_separated_nonempty)]
@@ -542,14 +742,42 @@ pub mod expr {
     }
     span_end_on_field!(OrExpr.items);
 
+    /// A "Then" temporal expression as a `->`-separated list of additive expressions.
+    #[derive(syn_derive::Parse)]
+    pub struct ThenExpr {
+        #[parse(punctuated_parse_separated_nonempty_costly)]
+        pub items: Punctuated<Sp<OrExpr>, Token![->]>,
+    }
+    span_end_on_field!(ThenExpr.items);
+
+    /// A "Fby" temporal expression as a `fby`-separated list of then expressions.
+    #[derive(syn_derive::Parse)]
+    pub struct FbyExpr {
+        #[parse(punctuated_parse_separated_nonempty_costly)]
+        pub items: Punctuated<Sp<ThenExpr>, kw::fby>,
+    }
+    span_end_on_field!(FbyExpr.items);
+
+
+    /// A conditional expression.
+    ///
+    /// ```lus
+    /// if c then y else n
+    /// ^^_if
+    ///    ^cond
+    ///      ^^^^_then
+    ///           ^yes
+    ///             ^^^^_else
+    ///                  ^no
+    /// ```
     #[derive(syn_derive::Parse)]
     pub struct IfExpr {
         pub _if: Token![if],
-        pub cond: Sp<OrExpr>,
+        pub cond: Sp<Expr>,
         pub _then: kw::then,
-        pub yes: Sp<OrExpr>,
+        pub yes: Sp<Expr>,
         pub _else: Token![else],
-        pub no: Sp<OrExpr>,
+        pub no: Sp<Expr>,
     }
     impl Hint for IfExpr {
         fn hint(s: ParseStream) -> bool {
@@ -557,16 +785,16 @@ pub mod expr {
         }
     }
     span_end_on_field!(IfExpr.no);
-    pub type IfLevelExpr = ExprHierarchy<IfExpr, OrExpr>;
 
+    /// Any expression.
     pub struct Expr {
-        pub inner: Sp<IfLevelExpr>,
+        pub inner: Sp<FbyExpr>,
     }
     span_end_on_field!(Expr.inner);
 
     impl Parse for Expr {
         fn parse(input: ParseStream) -> Result<Self> {
-            let inner: Sp<IfLevelExpr> = input.parse()?;
+            let inner: Sp<FbyExpr> = input.parse()?;
             Ok(Self { inner })
         }
     }
@@ -574,6 +802,14 @@ pub mod expr {
 
 pub use expr::Expr;
 
+/// An assignment statement.
+///
+/// ```lus
+/// (x, y, z) = foo(a, b);
+/// ^^^^^^^^^target
+///           ^_equal
+///             ^^^^^^^^^source
+/// ```
 #[derive(syn_derive::Parse)]
 pub struct Def {
     pub target: Sp<TargetExpr>,
@@ -582,6 +818,13 @@ pub struct Def {
 }
 span_end_on_field!(Def.source);
 
+/// An assertion.
+///
+/// ```lus
+/// assert b;
+/// ^^^^^^_assert
+///        ^expr
+/// ```
 #[derive(syn_derive::Parse)]
 pub struct Assertion {
     _assert: kw::assert,
@@ -589,6 +832,15 @@ pub struct Assertion {
 }
 span_end_on_field!(Assertion.expr);
 
+/// A statement in the body of a node.
+///
+/// ```lus
+/// assert b;
+/// ^^^^^^^^Assert
+///
+/// x = 1;
+/// ^^^^^Def
+/// ```
 #[derive(syn_derive::Parse)]
 pub enum Statement {
     #[parse(peek = kw::assert)]
@@ -601,6 +853,13 @@ span_end_by_match! {
         Def(d) => d;
 }
 
+/// Declaration of local variables
+///
+/// ```lus
+/// var x, y : int;
+/// ^^^_var
+///     ^^^^^^^^^^^decls
+/// ```
 #[derive(syn_derive::Parse)]
 pub struct VarsDecl {
     _var: kw::var,
@@ -609,6 +868,7 @@ pub struct VarsDecl {
 }
 span_end_on_field!(VarsDecl.decls);
 
+/// Maybe local variables, or maybe empty.
 #[derive(syn_derive::Parse)]
 pub enum OptionalVarsDecl {
     #[parse(peek = kw::var)]
@@ -620,6 +880,27 @@ span_end_by_match! {
         Decls(d) => d;
 }
 
+/// A Lustre node.
+///
+/// ```lus
+/// node foo(i : int) returns (o : int);
+/// ^^^^_node
+///      ^^^name
+///         ^^^^^^^^^inputs
+///                   ^^^^^^^_returns
+///                           ^^^^^^^^^outputs
+///                                    ^_decl_semi
+/// var n : int;
+/// ^^^^^^^^^^^^locals
+///
+/// let
+/// ^^^_kwlet
+///     o = i;
+///     n = i;
+///     ^^^^^^defs
+/// tel
+/// ^^^_kwtel
+/// ```
 #[derive(syn_derive::Parse)]
 pub struct Node {
     _node: kw::node,
@@ -653,6 +934,17 @@ pub struct Node {
 }
 span_end_on_field!(Node._kwtel);
 
+/// Definition of a global constant.
+///
+/// ```lus
+/// const x : int = 5;
+/// ^^^^^_const
+///       ^name
+///         ^_colon
+///           ^^^ty
+///               ^_equal
+///                 ^value
+/// ```
 #[derive(syn_derive::Parse)]
 pub struct Const {
     _const: Token![const],
@@ -664,6 +956,18 @@ pub struct Const {
 }
 span_end_on_field!(Const.value);
 
+/// A Lustre node that the compiler should trust is defined elsewhere.
+///
+/// ```lus
+/// extern node foo(i : int) returns (o : int);
+/// ^^^^^^_extern
+///        ^^^^_node
+///             ^^^name
+///                ^^^^^^^^^inputs
+///                          ^^^^^^^_returns
+///                                  ^^^^^^^^^outputs
+///                                           ^_decl_semi
+/// ```
 #[derive(syn_derive::Parse)]
 pub struct ExtNode {
     _extern: Token![extern],
@@ -686,6 +990,16 @@ pub struct ExtNode {
 }
 span_end_on_field!(ExtNode.outputs);
 
+/// A global constant that the compiler should trust already exists.
+///
+/// ```lus
+/// extern const x : int;
+/// ^^^^^^_extern
+///        ^^^^^_const
+///              ^name
+///                ^_colon
+///                  ^^^ty
+/// ```
 #[derive(syn_derive::Parse)]
 pub struct ExtConst {
     _extern: Token![extern],

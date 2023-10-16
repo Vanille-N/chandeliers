@@ -1,3 +1,136 @@
+//! Translator from the Lustre parsing AST to the Candle pre-analysis AST.
+//!
+//! Translating from Lustre to Candle is not a difficult task because the two
+//! languages have mostly identical structures, but there are nevertheless
+//! numerous traps and subtleties that although minor for a programmer are very
+//! relevant for a systematic translator.
+//!
+//! We summarize here the differences between the two languages that constitute
+//! the details to look out for in the implementations of this file.
+//!
+//!
+//!
+//! # Builtin dispatch
+//!
+//! Relevant `impl`: `CallExpr`.
+//!
+//! In lustre, invoking a builtin function looks exactly the same as calling
+//! a node: `float(x)` (`float` is a builtin) looks the same as calling any
+//! node defined within Lustre.
+//! This is not true in Candle, where builtins have their own node kind in the
+//! AST. In order to emit maximally helpful error messages, the translator
+//! includes a list of known builtins and considers by default that anything
+//! not in this list is expected to be defined.
+//!
+//! Future improvements could include suggesting a misspelling of a builtin
+//! as a fallback for a function call with no matching declaration.
+//!
+//!
+//!
+//! # Global vs Local name resolution
+//!
+//! Relevant `impl`: `VarExpr`.
+//!
+//! Lustre allows for local variables to shadow global constants, and any
+//! use of a variable -- local or constant -- is syntactically identical.
+//! Not so in Candle, where several technical restrictions require that the
+//! Candle AST differentiate between the two:
+//! - Rust does not allow global constant shadowing, so during codegen
+//!   Candle must pick fresh identifiers for local variables that cannot
+//!   collide with those of constants,
+//! - global constants are given a Candle type that is not the same as that
+//!   of local variables with the same Lustre type.
+//!   Indeed the Candle type for variables of `int` is `Nillable<i64>`,
+//!   and the Candle type for constants of `int` is a plain `i64`.
+//! These thus require differences in the handling of variables and constants
+//! at both definition site and call site, which means that the translator
+//! must maintain a mutable context of currently shadowed variables.
+//!
+//!
+//!
+//! # Precedence
+//!
+//! Relevant `impl`s: all `expr::*`.
+//!
+//! The hierarchy of expressions exists only for parsing purposes to express
+//! the precedence of operators, and in Candle there is no longer any notion
+//! of `AtomicExpr` or `ExprHierarchy`.
+//! Candle has much fewer expression types (`Expr`) than the Lustre parsing
+//! AST (`MulExpr`, `AddExpr`, `PreExpr`, `AtomicExpr`, ...), and this is
+//! reflected in the translation that needs to create much more `Box`es
+//! but in return has more translation functions with the same output type.
+//!
+//!
+//!
+//! # Associativity
+//!
+//! Relevant `impl`s: `AddExpr`, `OrExpr`, `AndExpr`, `FbyExpr`, `MulExpr`.
+//!
+//! FIXME.
+//!
+//!
+//!
+//! # Noassoc comparisons
+//!
+//! Relevant `impl`: `CmpExpr`.
+//!
+//! FIXME.
+//!
+//!
+//!
+//! # Size-1 tuple flattening
+//!
+//! Relevant `impl`s: `TargetExprTuple`, `TargetExpr`.
+//!
+//! FIXME.
+//!
+//!
+//!
+//! # Fby-expansion and pre-pushing
+//!
+//! Relevant `impl`s: `FbyExpr`, `PreExpr`, `VarExpr`.
+//!
+//! Lustre and Candle don't quite have the same temporal operators.
+//! Both have a construct to fetch one value before a certain clock value
+//! and another after (`->` in Lustre, `later!` in Candle), but
+//! 1. only Lustre has `fby`, and
+//! 2. only Lustre can apply `pre` to arbitrary expressions.
+//! The first of these is easy: `e1 fby e2` expands to `e1 -> pre e2`,
+//! but this still leaves the issue that `e2` could be an expression on which
+//! Candle does not support `pre`. Indeed Candle's only other temporal operator
+//! is `pre^n v` (written `var!(self <~ n; v)`) that fetches the value `n` instants
+//! ago, but only for `v` a variable, not an arbitrary expression.
+//!
+//! The translator must thus push the `pre` to the leaves, according to the
+//! following non-exhaustive list of rules:
+//! - `pre n ~~> n` (`n` a literal or constant)
+//! - `pre (e1 + e2) ~~> (pre e1) + (pre e2)`
+//! - `pre (-e) ~~> -(pre e)`
+//! - `pre float(e) ~~> float(pre e)`
+//! - `pre (e1 or e2) ~~> (pre e1) or (pre e2)`
+//! - `pre (e1 -> e2) ~~> (pre e1) -> (pre e2)`
+//! - etc...
+//!
+//! To this end the translator carries in its context the current depth at
+//! with the expression is evaluated. Usually "regular" (`+`, `-`, `or`, ...)
+//! operators propagate the same depth to their arguments, and temporal operators
+//! act upon the depth: `pre` increases it by one, `fby` evaluates its two arguments
+//! on different depths, etc.
+//!
+//!
+//!
+//! # Substep extraction
+//!
+//! Relevant `impl`s: `Node`, all `expr::*` .
+//!
+//! Candle expressions are pure. This has the consequence that advancing by
+//! one tick another node cannot be part of an expression, and must instead
+//! be made part of a statement.
+//! This is managed by the type `ExprCtx` and its accessor `ExprCtxView`:
+//! when a call to another node is encountered, it is extracted to its own
+//! statement to assign its output to a fresh binding that can be used as
+//! a pure expression.
+
 use std::collections::HashSet;
 
 use super::ast as lus;
@@ -817,6 +950,7 @@ impl Translate for lus::expr::AtomicExpr {
     type Output = CandleExpr;
     fn translate(self, span: Span, ctx: Self::Ctx<'_>) -> TrResult<CandleExpr> {
         match self {
+            Self::If(i) => i.translate(span, ctx),
             Self::Lit(l) => l.translate(span, ctx),
             Self::Call(c) => c.translate(span, ctx),
             Self::Var(v) => v.translate(span, ctx),

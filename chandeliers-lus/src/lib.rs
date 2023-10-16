@@ -35,22 +35,22 @@ pub fn decl(i: proc_macro::TokenStream) -> proc_macro::TokenStream {
     toks.into()
 }
 
-macro_rules! ui_fail {
-    ($fun:ident in $dir:ident) => {
+macro_rules! compiling {
+    ($fun:ident with $testing:ident in $($dir:ident / )*) => {
         #[test]
         fn $fun() {
             let t = trybuild::TestCases::new();
-            t.compile_fail(concat!("tests/fail/ui/", stringify!($dir), "/**/*.rs"));
+            t.$testing(concat!("tests/", $( concat!(stringify!($dir), "/") , )* "**/*.rs"));
         }
     };
 }
 
-ui_fail!(ui_fail_causality in causality);
-ui_fail!(ui_fail_syn in syn);
-ui_fail!(ui_fail_tc in tc);
+compiling!(fail_ui_causality with compile_fail in fail/ui/causality/);
+compiling!(fail_ui_syn with compile_fail in fail/ui/syn/);
+compiling!(fail_ui_tc with compile_fail in fail/ui/tc/);
 
-#[test]
-fn pass_ui() {
-    let t = trybuild::TestCases::new();
-    t.pass("tests/pass/ui/**/*.rs");
-}
+compiling!(pass_ui with pass in pass/ui/);
+compiling!(pass_syn with pass in pass/syn/);
+compiling!(pass_std with pass in pass/std/);
+compiling!(pass_fromslides with pass in pass/fromslides/);
+compiling!(pass_given with pass in pass/given/);
