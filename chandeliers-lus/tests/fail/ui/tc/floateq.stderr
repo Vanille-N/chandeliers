@@ -1,0 +1,5 @@
+error: Equality on float is not reliable
+ --> tests/fail/ui/tc/floateq.rs:4:16
+  |
+4 |         assert 0.1 + 0.2 = 0.3;
+  |                ^^^^^^^^^^^^^^^

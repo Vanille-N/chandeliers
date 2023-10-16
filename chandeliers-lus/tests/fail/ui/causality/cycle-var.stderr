@@ -1,0 +1,5 @@
+error: Variable `v` is part of a dependency cycle
+ --> tests/fail/ui/causality/cycle-var.rs:5:9
+  |
+5 |         v = o;
+  |         ^^^^^

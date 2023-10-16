@@ -1,0 +1,5 @@
+error: Global `A` is part of a dependency cycle
+ --> tests/fail/ui/causality/cycle-const.rs:2:5
+  |
+2 |     const A : int = B + C;
+  |     ^^^^^^^^^^^^^^^^^^^^^
