@@ -1,0 +1,2 @@
+tests: crate trybuild
+docs: https://docs.rs/syn/latest/syn/#parsing-a-custom-syntax
