@@ -1,5 +1,7 @@
-error: Later is not valid in const contexts
+error: The later operator (-> / fby) is not valid in const contexts
  --> tests/fail/ui/tc/const/then.rs:2:21
   |
 2 |     const X : int = 0 -> 1;
   |                     ^^^^^^
+  |
+  = note: You must put this definition inside a node

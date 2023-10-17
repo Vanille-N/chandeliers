@@ -124,7 +124,7 @@ impl TypeCheckStmt for Sp<ast::stmt::Statement> {
                 // Assert requires exactly one bool.
                 let t = e.typecheck(ctx)?;
                 let t = t.is_primitive()?;
-                t.is_bool()?;
+                t.is_bool("The argument of assert", self.span)?;
                 Ok(Sp::new((), self.span))
             }
             Statement::Substep {
@@ -192,7 +192,7 @@ impl TypeCheckExpr for Sp<ast::expr::Expr> {
                 }
                 Expr::UnOp { op, inner } => {
                     let inner = inner.typecheck(ctx)?;
-                    op.accepts(inner.is_primitive()?)?;
+                    op.accepts(span, inner.is_primitive()?)?;
                     Ok(inner.t)
                 }
                 Expr::CmpOp { op, lhs, rhs } => {
@@ -217,7 +217,7 @@ impl TypeCheckExpr for Sp<ast::expr::Expr> {
                     let yes = yes.typecheck(ctx)?;
                     let no = no.typecheck(ctx)?;
                     let cond = cond.is_primitive()?;
-                    cond.is_bool()?;
+                    cond.is_bool("The condition of if", span)?;
                     yes.identical(&no, span)?;
                     Ok(yes.t)
                 }
@@ -248,9 +248,7 @@ impl TypeCheckExpr for Sp<ast::expr::Expr> {
             }
             Expr::Later { before, after, .. } => {
                 let span = before.span.join(after.span).expect("Faulty span");
-                Err(err::token_stream(quote_spanned! {span=>
-                    compile_error!("Later is not valid in const contexts");
-                }))
+                Err(err::not_const("The later operator (-> / fby) is", span))
             }
             Expr::Ifx { cond, yes, no } => {
                 cond.is_const()?;
@@ -286,9 +284,7 @@ impl TypeCheckExpr for Sp<ast::expr::Builtin> {
     }
 
     fn is_const(&self) -> TcResult<()> {
-        Err(err::token_stream(quote_spanned! {self.span=>
-            compile_error!("Function calls are not valid in const contexts");
-        }))
+        Err(err::not_const("Function calls are", self.span))
     }
 }
 
@@ -362,31 +358,41 @@ impl ast::expr::BinOp {
         use TyBase::*;
         let span = left.span.join(right.span).unwrap();
         if left.t != right.t {
-            let s = format!(
-                "Binary operator {self} expects arguments of the same type: got {left} and {right}"
-            );
-            return Err(err::token_stream(quote_spanned! {span=>
-                compile_error!(#s);
-            }));
+            return Err(err::binop_mismatch(
+                self,
+                span,
+                "the same type",
+                &left,
+                &right,
+            ));
         }
         match (self, left.t) {
-            (Add | Mul | Div | Sub | Rem, Bool) => {
-                let s = format!("Operator {self} does not expect a bool argument");
-                Err(err::token_stream(quote_spanned! {span=>
-                    compile_error!(#s);
-                }))
+            (Add | Mul | Div | Sub, Bool) => {
+                Err(err::binop_mismatch(
+                    self,
+                    span,
+                    "type int or float, found bool",
+                    &left,
+                    &right,
+                ))
             }
-            (Rem, Float) => {
-                let s = format!("Operator {self} expects integer arguments: got floats");
-                Err(err::token_stream(quote_spanned! {span=>
-                    compile_error!(#s);
-                }))
+            (Rem, Bool | Float) => {
+                Err(err::binop_mismatch(
+                    self,
+                    span,
+                    format!("type int, found {left}"),
+                    &left,
+                    &right,
+                ))
             }
             (BitAnd | BitOr | BitXor, Float) => {
-                let s = "Cannot apply logical operators to float";
-                Err(err::token_stream(quote_spanned! {span=>
-                    compile_error!(#s);
-                }))
+                Err(err::binop_mismatch(
+                    self,
+                    span,
+                    format!("type int or bool, found float"),
+                    &left,
+                    &right,
+                ))
             }
             _ => Ok(()),
         }
@@ -395,15 +401,25 @@ impl ast::expr::BinOp {
 
 impl ast::expr::UnOp {
     /// Determines if the unary operator can be applied to this argument.
-    fn accepts(&self, inner: Sp<TyBase>) -> TcResult<()> {
+    fn accepts(&self, span: Span, inner: Sp<TyBase>) -> TcResult<()> {
         use ast::expr::UnOp::*;
         use TyBase::*;
         match (self, inner.t) {
-            (Neg, Bool) | (Not, Float) => {
-                let s = format!("Operator {self} cannot be applied to {inner}");
-                Err(err::token_stream(quote_spanned! {inner.span=>
-                    compile_error!(#s);
-                }))
+            (Neg, Bool) => {
+                Err(err::unop_mismatch(
+                    self,
+                    span,
+                    "type int or float, found bool",
+                    &inner,
+                ))
+            }
+            (Not, Float) => {
+                Err(err::unop_mismatch(
+                    self,
+                    span,
+                    "type bool or int, found float",
+                    &inner,
+                ))
             }
             _ => Ok(()),
         }
@@ -417,17 +433,23 @@ impl ast::expr::CmpOp {
         use TyBase::*;
         let span = left.span.join(right.span).unwrap();
         if left.t != right.t {
-            let s = format!("Comparison operator {self} expects arguments of the same type: got {left} and {right}");
-            return Err(err::token_stream(quote_spanned! {span=>
-                compile_error!(#s);
-            }));
+            return Err(err::binop_mismatch(
+                self,
+                span,
+                "the same type",
+                &left,
+                &right,
+            ))
         }
         match (self, left.t) {
-            (Ne, Float) | (Eq, Float) => {
-                let s = "Equality on float is not reliable";
-                Err(err::token_stream(quote_spanned! {span=>
-                    compile_error!(#s);
-                }))
+            (Ne | Eq, Float) => {
+                Err(err::binop_mismatch(
+                    self,
+                    span,
+                    "type int or bool, not float because equality on float is not reliable",
+                    &left,
+                    &right,
+                ))
             }
             _ => Ok(()),
         }
@@ -435,14 +457,15 @@ impl ast::expr::CmpOp {
 }
 
 impl Sp<TyBase> {
-    fn is_bool(self) -> TcResult<()> {
+    fn is_bool(self, req: &str, span: Span) -> TcResult<()> {
         match self.t {
             TyBase::Bool => Ok(()),
             _ => {
-                let s = format!("expected bool, got {self}");
-                Err(err::token_stream(quote_spanned! {self.span=>
-                    compile_error!(#s);
-                }))
+                Err(err::bool_required(
+                    req,
+                    span,
+                    &self,
+                ))
             }
         }
     }

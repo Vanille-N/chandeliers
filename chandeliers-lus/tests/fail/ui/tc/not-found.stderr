@@ -5,4 +5,4 @@ error: Variable X not found in the context.
   |             ^
   |
   = note: Perhaps you meant one of the local variables: i
-  = note: or one of the global variables: Y, Z
+  = note: or one of the global variables: Z, Y
