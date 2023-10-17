@@ -75,10 +75,23 @@ where S: Display,
     })
 }
 
+pub fn cycle_detected<T>(elements: Vec<(T, Option<Span>)>) -> Error
+where T: Display,
+{
+    Error::Cycle(Cycle {
+        elements: elements.into_iter().enumerate().map(|(i, (t, s))| {
+            if i == 0 {
+                (format!("{t} was found to be part of a dependency cycle"), s)
+            } else {
+                (format!("The cycle also goes through {t}"), s)
+            }
+        }).collect(),
+    })
+}
+
 pub fn token_stream(toks: TokenStream) -> Error {
     Error::TokenStream(toks)
 }
-
 
 pub enum Error {
     TypeMismatch(TypeMismatch),
@@ -88,6 +101,7 @@ pub enum Error {
     BinopMismatch(BinopMismatch),
     UnopMismatch(UnopMismatch),
     BoolRequired(BoolRequired),
+    Cycle(Cycle),
 }
 
 impl Error {
@@ -99,6 +113,7 @@ impl Error {
             Self::BinopMismatch(e) => Ok(e.elements()),
             Self::UnopMismatch(e) => Ok(e.elements()),
             Self::BoolRequired(e) => Ok(e.elements()),
+            Self::Cycle(e) => Ok(e.elements()),
             Self::TokenStream(ts) => Err(ts),
         }
     }
@@ -195,5 +210,15 @@ impl BoolRequired {
         v.push((self.msg, Some(self.span)));
         v.push((format!("The argument is found to be of type {}", self.inner.0), Some(self.inner.1)));
         v
+    }
+}
+
+pub struct Cycle {
+    elements: Vec<(String, Option<Span>)>,
+}
+
+impl Cycle {
+    pub fn elements(self) -> Vec<(String, Option<Span>)> {
+        self.elements
     }
 }

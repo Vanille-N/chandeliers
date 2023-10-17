@@ -20,7 +20,10 @@ pub fn decl(i: proc_macro::TokenStream) -> proc_macro::TokenStream {
     };
     let mut prog = match prog.causality() {
         Ok(prog) => prog,
-        Err(e) => return e.into(),
+        Err(e) => match e.elements() {
+            Ok(es) => return emit(es).into(),
+            Err(e) => return e.into(),
+        }
     };
     match prog.typecheck() {
         Ok(()) => {}

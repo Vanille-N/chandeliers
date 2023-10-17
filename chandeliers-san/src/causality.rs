@@ -6,18 +6,18 @@
 //! the structures that need to have their dependencies analyzed,
 //! which is done by the `Causality` trait.
 
-use proc_macro2::TokenStream;
 use quote::quote_spanned;
 
 use crate::ast;
 use ast::Sp;
+use chandeliers_err as err;
 
 pub mod depends;
 pub mod graph;
 use depends::Reference;
 use graph::{Graph, GraphError};
 
-type CycResult<T> = Result<T, TokenStream>;
+type CycResult<T> = Result<T, err::Error>;
 
 /// Sort the internals of `Self` to remove cyclic dependencies and allow
 /// typechecking in the right order.
@@ -26,11 +26,11 @@ pub trait Causality: Sized {
 }
 
 impl<T> GraphError for Sp<T> {
-    type Error = TokenStream;
-    fn emit(&self, msg: String) -> TokenStream {
-        quote_spanned! {self.span=>
+    type Error = err::Error;
+    fn emit(&self, msg: String) -> err::Error {
+        err::token_stream(quote_spanned! {self.span=>
             compile_error!(#msg);
-        }
+        })
     }
 }
 

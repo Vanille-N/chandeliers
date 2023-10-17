@@ -1,6 +1,11 @@
-error: Node `foo` is part of a dependency cycle
- --> tests/fail/ui/causality/cycle-node.rs:2:5
+error: Node `bar` was found to be part of a dependency cycle
+ --> tests/fail/ui/causality/cycle-node.rs:5:10
   |
-2 | /     node foo(i : int) returns (o : int);
-3 | |     let o = bar(i); tel;
-  | |_______________________^
+5 |     node bar(i : int) returns (o : int);
+  |          ^^^
+  |
+note: The cycle also goes through Node `foo`
+ --> tests/fail/ui/causality/cycle-node.rs:2:10
+  |
+2 |     node foo(i : int) returns (o : int);
+  |          ^^^

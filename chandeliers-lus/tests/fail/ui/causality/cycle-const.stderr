@@ -1,5 +1,16 @@
-error: Global `A` is part of a dependency cycle
- --> tests/fail/ui/causality/cycle-const.rs:2:5
+error: Global `D` was found to be part of a dependency cycle
+ --> tests/fail/ui/causality/cycle-const.rs:5:11
+  |
+5 |     const D : int = A;
+  |           ^
+  |
+note: The cycle also goes through Global `B`
+ --> tests/fail/ui/causality/cycle-const.rs:4:11
+  |
+4 |     const B : int = D;
+  |           ^
+note: The cycle also goes through Global `A`
+ --> tests/fail/ui/causality/cycle-const.rs:2:11
   |
 2 |     const A : int = B + C;
-  |     ^^^^^^^^^^^^^^^^^^^^^
+  |           ^

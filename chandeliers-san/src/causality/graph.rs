@@ -41,6 +41,7 @@
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::hash::Hash;
+use proc_macro2::Span;
 
 use super::depends::Depends;
 
@@ -52,8 +53,14 @@ pub trait GraphError {
     /// Typically something like `String` or `TokenStream` that will
     /// print the failure readably.
     type Error;
-    /// Produce an error message.
+    /// Produce an error message on a single object.
     fn emit(&self, msg: String) -> Self::Error;
+}
+
+/// How to display a dependency cycle.
+pub trait Cyclic : GraphError {
+    /// Print a cycle.
+    fn print_cycle(elems: Vec<(&Self, Option<Span>)>) -> Self::Error;
 }
 
 /// The identifier of a `Unit`.
@@ -77,7 +84,7 @@ pub struct Graph<Obj, Unit> {
     /// once sorted.
     elements: Vec<Obj>,
     /// Bidirectional map of the building blocks that describe dependencies.
-    atomics: (Vec<Unit>, HashMap<Unit, usize>),
+    atomics: (Vec<(Unit, Option<Span>)>, HashMap<Unit, usize>),
     /// `provide[k]` is the list of `Unit`s provided by `elements[k]`.
     provide: Vec<Vec<usize>>,
     /// `require[k]` is the list of `Unit`s required by `elements[k]`.
@@ -104,20 +111,25 @@ impl<O, U> Default for Graph<O, U> {
 impl<Obj, Unit, E> Graph<Obj, Unit>
 where
     Obj: Depends<Output = Unit> + GraphError<Error = E> + fmt::Debug,
-    Unit: Clone + Hash + PartialEq + Eq + GraphError<Error = E> + fmt::Debug + fmt::Display,
+    for<'a> &'a Unit: Into<Span>,
+    Unit: Clone + Hash + PartialEq + Eq + GraphError<Error = E> + Cyclic + fmt::Debug + fmt::Display,
 {
     /// Get the identifier of a `Unit` if it exists,
     /// or insert a new one with a fresh id.
-    fn get_or_insert_atomic(&mut self, o: Unit) -> usize {
-        match self.atomics.1.get(&o) {
+    fn get_or_insert_atomic(&mut self, o: Unit, override_span: bool) -> usize {
+        let uid = match self.atomics.1.get(&o) {
             Some(uid) => *uid,
             None => {
                 let uid = self.atomics.0.len();
-                self.atomics.0.push(o.clone());
+                self.atomics.0.push((o.clone(), None));
                 self.atomics.1.insert(o.clone(), uid);
                 uid
             }
+        };
+        if override_span && self.atomics.0[uid].1.is_none() {
+            self.atomics.0[uid].1 = Some((&o).into());
         }
+        uid
     }
 
     /// Declare a `Unit` that must not be provided by any of
@@ -127,7 +139,7 @@ where
     /// so it is fine to provide these constraints before or after
     /// all `insert`.
     pub fn already_provided(&mut self, o: Unit) {
-        let uid = self.get_or_insert_atomic(o);
+        let uid = self.get_or_insert_atomic(o, true);
         self.provided_by_ext.insert(uid);
     }
 
@@ -139,7 +151,7 @@ where
     /// so this method should be called after all insertions are
     /// complete.
     pub fn must_provide(&mut self, o: Unit) -> Result<(), E> {
-        let uid = self.get_or_insert_atomic(o.clone());
+        let uid = self.get_or_insert_atomic(o.clone(), false);
         if !self.provided_for_ext.contains(&uid) {
             let s = format!("No definition provided for {}", &o);
             Err(o.emit(s))
@@ -157,12 +169,12 @@ where
         t.provides(&mut provide_units);
         t.requires(&mut require_units);
         for prov in provide_units {
-            let uid = self.get_or_insert_atomic(prov);
+            let uid = self.get_or_insert_atomic(prov, true);
             provide_uids.push(uid);
             self.provided_for_ext.insert(uid);
         }
         for req in require_units {
-            let uid = self.get_or_insert_atomic(req);
+            let uid = self.get_or_insert_atomic(req, false);
             require_uids.push(uid);
         }
         assert!(self.elements.len() == self.provide.len());
@@ -199,13 +211,13 @@ where
                     if self.provided_by_ext.contains(&p) {
                         let s = format!(
                             "Cannot redefine {} (already provided by the context)",
-                            self.atomics.0[p]
+                            self.atomics.0[p].0
                         );
                         return Err(self.elements[id].emit(s));
                     }
                     if provider[p].is_some() {
                         // FIXME: also show first definition site
-                        let s = format!("{} is declared twice", self.atomics.0[p]);
+                        let s = format!("{} is declared twice", self.atomics.0[p].0);
                         return Err(self.elements[id].emit(s));
                     } else {
                         // Constraint is valid, record its provider.
@@ -216,7 +228,7 @@ where
                     // is fine with connected components of size 1.
                     for &r in &self.require[id] {
                         if r == p {
-                            let s = format!("{} depends on itself", self.atomics.0[p]);
+                            let s = format!("{} depends on itself", self.atomics.0[p].0);
                             return Err(self.elements[id].emit(s));
                         }
                         constraints[p].push(r);
@@ -311,11 +323,11 @@ where
             assert!(!c.is_empty(), "Malformed SCC of size 0");
             if c.len() > 1 {
                 // Oops, here's a loop.
-                let looping = *c.last().expect("Length > 1");
-                let cprov = provider[looping].expect("Element of SCC must have a provider");
-                let s = format!("{} is part of a dependency cycle", self.atomics.0[looping]);
-                // FIXME: print the entire cycle
-                return Err(unused[cprov].as_ref().unwrap().emit(s));
+                let looping = c.iter().map(|l| {
+                    let (u, s) = &self.atomics.0[*l];
+                    (u, *s)
+                });
+                return Err(Unit::print_cycle(looping.collect::<Vec<_>>()));
             } else {
                 // Correctly of size 1, we can use it next.
                 let id = *c.last().expect("Length == 1");
