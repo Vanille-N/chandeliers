@@ -44,23 +44,19 @@ use std::hash::Hash;
 use proc_macro2::Span;
 
 use super::depends::Depends;
+use chandeliers_err as err;
 
 /// Describes how to convert objects that the graph can manipulate
 /// (`Obj`, `Unit`) into ones that the environment wants to use as error messages.
 pub trait GraphError {
-    /// The type of errors.
-    ///
-    /// Typically something like `String` or `TokenStream` that will
-    /// print the failure readably.
-    type Error;
     /// Produce an error message on a single object.
-    fn emit(&self, msg: String) -> Self::Error;
+    fn emit(&self, msg: String) -> err::Error;
 }
 
 /// How to display a dependency cycle.
 pub trait Cyclic : GraphError {
     /// Print a cycle.
-    fn print_cycle(elems: Vec<(&Self, Option<Span>)>) -> Self::Error;
+    fn print_cycle(elems: Vec<(&Self, Option<Span>)>) -> err::Error;
 }
 
 /// The identifier of a `Unit`.
@@ -90,7 +86,7 @@ pub struct Graph<Obj, Unit> {
     /// `require[k]` is the list of `Unit`s required by `elements[k]`.
     require: Vec<Vec<usize>>,
     /// The set of all `Unit`s that must not be provided.
-    provided_by_ext: HashSet<usize>,
+    provided_by_ext: HashMap<usize, Span>,
     /// The set of all `Unit`s that have been provided.
     provided_for_ext: HashSet<usize>,
 }
@@ -108,11 +104,12 @@ impl<O, U> Default for Graph<O, U> {
     }
 }
 
-impl<Obj, Unit, E> Graph<Obj, Unit>
+impl<Obj, Unit> Graph<Obj, Unit>
 where
-    Obj: Depends<Output = Unit> + GraphError<Error = E> + fmt::Debug,
+    Obj: Depends<Output = Unit> + GraphError + fmt::Debug,
     for<'a> &'a Unit: Into<Span>,
-    Unit: Clone + Hash + PartialEq + Eq + GraphError<Error = E> + Cyclic + fmt::Debug + fmt::Display,
+    for<'a> &'a Obj: Into<Span>,
+    Unit: Clone + Hash + PartialEq + Eq + GraphError + Cyclic + fmt::Debug + fmt::Display,
 {
     /// Get the identifier of a `Unit` if it exists,
     /// or insert a new one with a fresh id.
@@ -139,8 +136,8 @@ where
     /// so it is fine to provide these constraints before or after
     /// all `insert`.
     pub fn already_provided(&mut self, o: Unit) {
-        let uid = self.get_or_insert_atomic(o, true);
-        self.provided_by_ext.insert(uid);
+        let uid = self.get_or_insert_atomic(o.clone(), true);
+        self.provided_by_ext.insert(uid, (&o).into());
     }
 
     /// Verify that a given `Unit` has already been provided by
@@ -150,7 +147,7 @@ where
     /// if the `Unit` in question has not already been encountered,
     /// so this method should be called after all insertions are
     /// complete.
-    pub fn must_provide(&mut self, o: Unit) -> Result<(), E> {
+    pub fn must_provide(&mut self, o: Unit) -> Result<(), err::Error> {
         let uid = self.get_or_insert_atomic(o.clone(), false);
         if !self.provided_for_ext.contains(&uid) {
             let s = format!("No definition provided for {}", &o);
@@ -161,7 +158,7 @@ where
     }
 
     /// Declare a new set of constraints.
-    pub fn insert(&mut self, t: Obj) -> Result<(), E> {
+    pub fn insert(&mut self, t: Obj) -> Result<(), err::Error> {
         let mut provide_units = Vec::new();
         let mut require_units = Vec::new();
         let mut provide_uids = Vec::new();
@@ -187,7 +184,7 @@ where
 
     /// Resolve all previously inserted constraints and return a scheduling
     /// without temporal inconsistencies.
-    pub fn scheduling(self) -> Result<Vec<Obj>, E> {
+    pub fn scheduling(self) -> Result<Vec<Obj>, err::Error> {
         let nb = self.atomics.0.len();
         let (provider, constraints) = {
             // First step is to create some reverse mappings that will
@@ -200,7 +197,7 @@ where
             // Fortunately building one is straightforward.
 
             // `provider[i]` is which `Obj` provides `i`.
-            let mut provider = vec![None; nb];
+            let mut provider: Vec<Option<usize>> = vec![None; nb];
             // `constraints[i]` is the list of `Unit`s that `i` depends on.
             let mut constraints = vec![vec![]; nb];
             for (id, provs) in self.provide.iter().enumerate() {
@@ -208,17 +205,22 @@ where
                     // First we check that the `Unit` is provided only once.
                     // This involves both `provided_by_ext` and `provider`
                     // currently being computed.
-                    if self.provided_by_ext.contains(&p) {
-                        let s = format!(
-                            "Cannot redefine {} (already provided by the context)",
-                            self.atomics.0[p].0
-                        );
-                        return Err(self.elements[id].emit(s));
+                    if let Some(prior) = self.provided_by_ext.get(&p) {
+                        return Err(err::graph_unit_declared_twice(
+                            &self.atomics.0[p].0,
+                            "the context",
+                            &self.elements[id],
+                            *prior,
+                        ));
                     }
-                    if provider[p].is_some() {
+                    if let Some(prov) = provider[p] {
                         // FIXME: also show first definition site
-                        let s = format!("{} is declared twice", self.atomics.0[p].0);
-                        return Err(self.elements[id].emit(s));
+                        return Err(err::graph_unit_declared_twice(
+                            &self.atomics.0[p].0,
+                            "a prior item",
+                            &self.elements[id],
+                            &self.elements[prov],
+                        ));
                     } else {
                         // Constraint is valid, record its provider.
                         provider[p] = Some(id);

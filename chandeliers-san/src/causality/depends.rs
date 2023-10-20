@@ -59,8 +59,7 @@ pub enum Reference {
 }
 
 impl GraphError for Reference {
-    type Error = err::Error;
-    fn emit(&self, msg: String) -> Self::Error {
+    fn emit(&self, msg: String) -> err::Error {
         match self {
             Self::NodeId(i) => i.emit(msg),
             Self::LocalVarName(v) => v.emit(msg),
@@ -82,7 +81,7 @@ impl fmt::Display for Reference {
 }
 
 impl Cyclic for Reference {
-    fn print_cycle(elements: Vec<(&Self, Option<Span>)>) -> Self::Error {
+    fn print_cycle(elements: Vec<(&Self, Option<Span>)>) -> err::Error {
         let len = elements.len();
         assert!(len > 1);
         err::cycle_detected(elements)

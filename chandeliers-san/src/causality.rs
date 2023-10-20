@@ -26,7 +26,6 @@ pub trait Causality: Sized {
 }
 
 impl<T> GraphError for Sp<T> {
-    type Error = err::Error;
     fn emit(&self, msg: String) -> err::Error {
         err::token_stream(quote_spanned! {self.span=>
             compile_error!(#msg);

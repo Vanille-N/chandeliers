@@ -1,5 +1,11 @@
-error: Cannot redefine Variable `a` (already provided by the context)
+error: Attempt to redefine Variable `a`, when the context already defines it
  --> tests/fail/ui/causality/redef-var-iv.rs:4:9
   |
 4 |     let a = 0.0; tel
   |         ^^^^^^^
+  |
+note: Already defined here
+ --> tests/fail/ui/causality/redef-var-iv.rs:2:14
+  |
+2 |     node foo(a : int) returns ();
+  |              ^

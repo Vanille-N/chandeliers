@@ -89,6 +89,19 @@ where T: Display,
     })
 }
 
+pub fn graph_unit_declared_twice<T, S, D1, D2>(unit: T, prior: S, new_span: D1, prior_span: D2) -> Error
+where T: Display,
+      S: Display,
+      D1: Into<Span>,
+      D2: Into<Span>,
+{
+    Error::GraphUnitDeclTwice(GraphUnitDeclTwice {
+        msg: format!("Attempt to redefine {unit}, when {prior} already defines it"),
+        new_span: new_span.into(),
+        prior_span: prior_span.into(),
+    })
+}
+
 pub fn token_stream(toks: TokenStream) -> Error {
     Error::TokenStream(toks)
 }
@@ -101,6 +114,7 @@ pub enum Error {
     BinopMismatch(BinopMismatch),
     UnopMismatch(UnopMismatch),
     BoolRequired(BoolRequired),
+    GraphUnitDeclTwice(GraphUnitDeclTwice),
     Cycle(Cycle),
 }
 
@@ -114,6 +128,7 @@ impl Error {
             Self::UnopMismatch(e) => Ok(e.elements()),
             Self::BoolRequired(e) => Ok(e.elements()),
             Self::Cycle(e) => Ok(e.elements()),
+            Self::GraphUnitDeclTwice(e) => Ok(e.elements()),
             Self::TokenStream(ts) => Err(ts),
         }
     }
@@ -220,5 +235,20 @@ pub struct Cycle {
 impl Cycle {
     pub fn elements(self) -> Vec<(String, Option<Span>)> {
         self.elements
+    }
+}
+
+pub struct GraphUnitDeclTwice {
+    msg: String,
+    new_span: Span,
+    prior_span: Span,
+}
+
+impl GraphUnitDeclTwice {
+    fn elements(self) -> Vec<(String, Option<Span>)> {
+        let mut v = vec![];
+        v.push((self.msg, Some(self.new_span)));
+        v.push((String::from("Already defined here"), Some(self.prior_span)));
+        v
     }
 }
