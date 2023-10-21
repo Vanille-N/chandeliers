@@ -38,10 +38,10 @@
 //! - a proof that this is impossible, in the form of a `Unit` that
 //!   is part of a dependency cycle.
 
+use proc_macro2::Span;
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::hash::Hash;
-use proc_macro2::Span;
 
 use super::depends::Depends;
 use chandeliers_err as err;
@@ -54,7 +54,7 @@ pub trait GraphError {
 }
 
 /// How to display a dependency cycle.
-pub trait Cyclic : GraphError {
+pub trait Cyclic: GraphError {
     /// Print a cycle.
     fn print_cycle(elems: Vec<(&Self, Option<Span>)>) -> err::Error;
 }
@@ -150,8 +150,7 @@ where
     pub fn must_provide(&mut self, o: Unit) -> Result<(), err::Error> {
         let uid = self.get_or_insert_atomic(o.clone(), false);
         if !self.provided_for_ext.contains(&uid) {
-            let s = format!("No definition provided for {}", &o);
-            Err(o.emit(s))
+            Err(err::graph_unit_undeclared(&o))
         } else {
             Ok(())
         }
@@ -214,7 +213,6 @@ where
                         ));
                     }
                     if let Some(prov) = provider[p] {
-                        // FIXME: also show first definition site
                         return Err(err::graph_unit_declared_twice(
                             &self.atomics.0[p].0,
                             "a prior item",

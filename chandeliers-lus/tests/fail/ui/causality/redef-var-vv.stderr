@@ -1,5 +1,11 @@
-error: Variable a is declared twice in node foo
+error: Attempt to redefine a, when a prior item already defines it
  --> tests/fail/ui/causality/redef-var-vv.rs:3:18
   |
 3 |     var a : int; a : int;
   |                  ^
+  |
+note: Already defined here
+ --> tests/fail/ui/causality/redef-var-vv.rs:3:9
+  |
+3 |     var a : int; a : int;
+  |         ^
