@@ -82,9 +82,9 @@ pub struct Graph<Obj, Unit> {
     /// Bidirectional map of the building blocks that describe dependencies.
     atomics: (Vec<(Unit, Option<Span>)>, HashMap<Unit, usize>),
     /// `provide[k]` is the list of `Unit`s provided by `elements[k]`.
-    provide: Vec<Vec<usize>>,
+    provide: Vec<Vec<(Span, usize)>>,
     /// `require[k]` is the list of `Unit`s required by `elements[k]`.
-    require: Vec<Vec<usize>>,
+    require: Vec<Vec<(Span, usize)>>,
     /// The set of all `Unit`s that must not be provided.
     provided_by_ext: HashMap<usize, Span>,
     /// The set of all `Unit`s that have been provided.
@@ -165,13 +165,13 @@ where
         t.provides(&mut provide_units);
         t.requires(&mut require_units);
         for prov in provide_units {
-            let uid = self.get_or_insert_atomic(prov, true);
-            provide_uids.push(uid);
+            let uid = self.get_or_insert_atomic(prov.clone(), true);
+            provide_uids.push(((&prov).into(), uid));
             self.provided_for_ext.insert(uid);
         }
         for req in require_units {
-            let uid = self.get_or_insert_atomic(req, false);
-            require_uids.push(uid);
+            let uid = self.get_or_insert_atomic(req.clone(), false);
+            require_uids.push(((&req).into(), uid));
         }
         assert!(self.elements.len() == self.provide.len());
         assert!(self.elements.len() == self.require.len());
@@ -204,34 +204,37 @@ where
                     // First we check that the `Unit` is provided only once.
                     // This involves both `provided_by_ext` and `provider`
                     // currently being computed.
-                    if let Some(prior) = self.provided_by_ext.get(&p) {
+                    if let Some(prior) = self.provided_by_ext.get(&p.1) {
                         return Err(err::graph_unit_declared_twice(
-                            &self.atomics.0[p].0,
+                            &self.atomics.0[p.1].0,
                             "the context",
                             &self.elements[id],
                             *prior,
                         ));
                     }
-                    if let Some(prov) = provider[p] {
+                    if let Some(prov) = provider[p.1] {
                         return Err(err::graph_unit_declared_twice(
-                            &self.atomics.0[p].0,
+                            &self.atomics.0[p.1].0,
                             "a prior item",
                             &self.elements[id],
                             &self.elements[prov],
                         ));
                     } else {
                         // Constraint is valid, record its provider.
-                        provider[p] = Some(id);
+                        provider[p.1] = Some(id);
                     }
                     // Check for cycles of length 1.
                     // This is the best time to do it since the default SCC algorithm
                     // is fine with connected components of size 1.
                     for &r in &self.require[id] {
-                        if r == p {
-                            let s = format!("{} depends on itself", self.atomics.0[p].0);
-                            return Err(self.elements[id].emit(s));
+                        if r.1 == p.1 {
+                            return Err(err::graph_unit_depends_on_itself(
+                                &self.atomics.0[p.1].0,
+                                &self.elements[id],
+                                r.0,
+                            ));
                         }
-                        constraints[p].push(r);
+                        constraints[p.1].push(r);
                     }
                 }
             }
@@ -277,7 +280,7 @@ where
             }
 
             /// Exploration procedure for one node.
-            fn explore_scc(v: usize, graph: &[Vec<usize>], expl: &mut SccExplorer) {
+            fn explore_scc(v: usize, graph: &[Vec<(Span, usize)>], expl: &mut SccExplorer) {
                 // Register unique identifiers for this new node.
                 expl.extra[v].index = Some(expl.index);
                 expl.extra[v].low_link = Some(expl.index);
@@ -289,14 +292,15 @@ where
                 // Compare `low_link` to find cycles: because `low_link` is initially
                 // the (unique) index, a child with a smaller `low_link` gives a cycle.
                 for &w in &graph[v] {
-                    if expl.extra[w].index.is_none() {
+                    if expl.extra[w.1].index.is_none() {
                         // Not explored at all, explore it.
-                        explore_scc(w, graph, expl);
-                        expl.extra[v].low_link = expl.extra[v].low_link.min(expl.extra[w].low_link);
-                    } else if expl.extra[w].on_stack {
+                        explore_scc(w.1, graph, expl);
+                        expl.extra[v].low_link =
+                            expl.extra[v].low_link.min(expl.extra[w.1].low_link);
+                    } else if expl.extra[w.1].on_stack {
                         // Exploration still ongoing, `low_link` has not yet been fully computed,
                         // so use `index` instead.
-                        expl.extra[v].low_link = expl.extra[v].low_link.min(expl.extra[w].index);
+                        expl.extra[v].low_link = expl.extra[v].low_link.min(expl.extra[w.1].index);
                     }
                 }
 
@@ -374,8 +378,7 @@ mod test {
     }
 
     impl GraphError for Triplet {
-        type Error = String;
-        fn emit(&self, msg: String) -> Self::Error {
+        fn emit(&self, msg: String) -> err::Error {
             msg
         }
     }

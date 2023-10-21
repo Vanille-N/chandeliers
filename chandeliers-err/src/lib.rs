@@ -137,6 +137,19 @@ where
     })
 }
 
+pub fn graph_unit_depends_on_itself<T, S1, S2>(unit: T, def: S1, reuse: S2) -> Error
+where
+    T: Display,
+    S1: Into<Span>,
+    S2: Into<Span>,
+{
+    Error::GraphUnitDependsOnItself(GraphUnitDependsOnItself {
+        msg: format!("{unit} depends on itself"),
+        span: def.into(),
+        usage: reuse.into(),
+    })
+}
+
 pub fn token_stream(toks: TokenStream) -> Error {
     Error::TokenStream(toks)
 }
@@ -151,6 +164,7 @@ pub enum Error {
     BoolRequired(BoolRequired),
     GraphUnitDeclTwice(GraphUnitDeclTwice),
     GraphUnitUndeclared(GraphUnitUndeclared),
+    GraphUnitDependsOnItself(GraphUnitDependsOnItself),
     Cycle(Cycle),
 }
 
@@ -166,6 +180,7 @@ impl Error {
             Self::Cycle(e) => Ok(e.elements()),
             Self::GraphUnitDeclTwice(e) => Ok(e.elements()),
             Self::GraphUnitUndeclared(e) => Ok(e.elements()),
+            Self::GraphUnitDependsOnItself(e) => Ok(e.elements()),
             Self::TokenStream(ts) => Err(ts),
         }
     }
@@ -341,6 +356,24 @@ impl GraphUnitUndeclared {
     fn elements(self) -> Vec<(String, Option<Span>)> {
         let mut v = vec![];
         v.push((self.msg, Some(self.span)));
+        v
+    }
+}
+
+pub struct GraphUnitDependsOnItself {
+    msg: String,
+    span: Span,
+    usage: Span,
+}
+
+impl GraphUnitDependsOnItself {
+    fn elements(self) -> Vec<(String, Option<Span>)> {
+        let mut v = vec![];
+        v.push((self.msg, Some(self.span)));
+        v.push((
+            String::from("used here within its own definition"),
+            Some(self.usage),
+        ));
         v
     }
 }
