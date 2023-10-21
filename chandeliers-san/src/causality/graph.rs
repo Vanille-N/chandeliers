@@ -44,7 +44,7 @@ use std::fmt;
 use std::hash::Hash;
 
 use super::depends::Depends;
-use chandeliers_err as err;
+use chandeliers_err::{self as err, IntoError};
 
 /// The identifier of a `Unit`.
 ///
@@ -137,7 +137,7 @@ where
     pub fn must_provide(&mut self, o: Unit) -> Result<(), err::Error> {
         let uid = self.get_or_insert_atomic(o.clone(), false);
         if !self.provided_for_ext.contains(&uid) {
-            Err(err::graph_unit_undeclared(&o))
+            Err(err::GraphUnitUndeclared { unit: &o }.into_err())
         } else {
             Ok(())
         }
@@ -192,20 +192,22 @@ where
                     // This involves both `provided_by_ext` and `provider`
                     // currently being computed.
                     if let Some(prior) = self.provided_by_ext.get(&p.1) {
-                        return Err(err::graph_unit_declared_twice(
-                            &self.atomics.0[p.1].0,
-                            "the context",
-                            &self.elements[id],
-                            *prior,
-                        ));
+                        return Err(err::GraphUnitDeclTwice {
+                            unit: &self.atomics.0[p.1].0,
+                            prior: "the context",
+                            new_site: &self.elements[id],
+                            prior_site: *prior,
+                        }
+                        .into_err());
                     }
                     if let Some(prov) = provider[p.1] {
-                        return Err(err::graph_unit_declared_twice(
-                            &self.atomics.0[p.1].0,
-                            "a prior item",
-                            &self.elements[id],
-                            &self.elements[prov],
-                        ));
+                        return Err(err::GraphUnitDeclTwice {
+                            unit: &self.atomics.0[p.1].0,
+                            prior: "a prior item",
+                            new_site: &self.elements[id],
+                            prior_site: &self.elements[prov],
+                        }
+                        .into_err());
                     } else {
                         // Constraint is valid, record its provider.
                         provider[p.1] = Some(id);
@@ -215,11 +217,12 @@ where
                     // is fine with connected components of size 1.
                     for &r in &self.require[id] {
                         if r.1 == p.1 {
-                            return Err(err::graph_unit_depends_on_itself(
-                                &self.atomics.0[p.1].0,
-                                &self.elements[id],
-                                r.0,
-                            ));
+                            return Err(err::GraphUnitDependsOnItself {
+                                unit: &self.atomics.0[p.1].0,
+                                def_site: &self.elements[id],
+                                usage: r.0,
+                            }
+                            .into_err());
                         }
                         constraints[p.1].push(r);
                     }
@@ -318,7 +321,7 @@ where
                     let (u, s) = &self.atomics.0[*l];
                     (u, *s)
                 });
-                return Err(err::cycle_detected(looping.collect::<Vec<_>>()));
+                return Err(err::Cycle { items: looping }.into_err());
             } else {
                 // Correctly of size 1, we can use it next.
                 let id = *c.last().expect("Length == 1");

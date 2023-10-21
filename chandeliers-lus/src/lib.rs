@@ -20,17 +20,11 @@ pub fn decl(i: proc_macro::TokenStream) -> proc_macro::TokenStream {
     };
     let mut prog = match prog.causality() {
         Ok(prog) => prog,
-        Err(e) => match e.elements() {
-            Ok(es) => return emit(es).into(),
-            Err(e) => return e.into(),
-        }
+        Err(e) => return emit(e).into(),
     };
     match prog.typecheck() {
         Ok(()) => {}
-        Err(e) => match e.elements() {
-            Ok(es) => return emit(es).into(),
-            Err(e) => return e.into(),
-        }
+        Err(e) => return emit(e).into(),
     }
     match prog.make_positive() {
         Ok(()) => {}
@@ -64,7 +58,8 @@ compiling!(pass_given with pass in pass/given/);
 fn emit(elements: Vec<(String, Option<proc_macro2::Span>)>) -> proc_macro2::TokenStream {
     let mut elements = elements.into_iter();
     let (msg, span) = elements.next().unwrap();
-    let mut d = proc_macro::Diagnostic::spanned(span.unwrap().unwrap(), proc_macro::Level::Error, msg);
+    let mut d =
+        proc_macro::Diagnostic::spanned(span.unwrap().unwrap(), proc_macro::Level::Error, msg);
     for (msg, span) in elements {
         if let Some(span) = span {
             d = d.span_note(span.unwrap(), msg)
