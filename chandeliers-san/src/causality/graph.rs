@@ -46,19 +46,6 @@ use std::hash::Hash;
 use super::depends::Depends;
 use chandeliers_err as err;
 
-/// Describes how to convert objects that the graph can manipulate
-/// (`Obj`, `Unit`) into ones that the environment wants to use as error messages.
-pub trait GraphError {
-    /// Produce an error message on a single object.
-    fn emit(&self, msg: String) -> err::Error;
-}
-
-/// How to display a dependency cycle.
-pub trait Cyclic: GraphError {
-    /// Print a cycle.
-    fn print_cycle(elems: Vec<(&Self, Option<Span>)>) -> err::Error;
-}
-
 /// The identifier of a `Unit`.
 ///
 /// To avoid out of bounds accesses it is very important to only ever use
@@ -106,10 +93,10 @@ impl<O, U> Default for Graph<O, U> {
 
 impl<Obj, Unit> Graph<Obj, Unit>
 where
-    Obj: Depends<Output = Unit> + GraphError + fmt::Debug,
+    Obj: Depends<Output = Unit> + fmt::Debug,
     for<'a> &'a Unit: Into<Span>,
     for<'a> &'a Obj: Into<Span>,
-    Unit: Clone + Hash + PartialEq + Eq + GraphError + Cyclic + fmt::Debug + fmt::Display,
+    Unit: Clone + Hash + PartialEq + Eq + fmt::Debug + fmt::Display,
 {
     /// Get the identifier of a `Unit` if it exists,
     /// or insert a new one with a fresh id.
@@ -331,7 +318,7 @@ where
                     let (u, s) = &self.atomics.0[*l];
                     (u, *s)
                 });
-                return Err(Unit::print_cycle(looping.collect::<Vec<_>>()));
+                return Err(err::cycle_detected(looping.collect::<Vec<_>>()));
             } else {
                 // Correctly of size 1, we can use it next.
                 let id = *c.last().expect("Length == 1");

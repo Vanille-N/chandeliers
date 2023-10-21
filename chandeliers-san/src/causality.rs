@@ -6,16 +6,13 @@
 //! the structures that need to have their dependencies analyzed,
 //! which is done by the `Causality` trait.
 
-use quote::quote_spanned;
-
 use crate::ast;
-use ast::Sp;
 use chandeliers_err as err;
 
 pub mod depends;
 pub mod graph;
 use depends::Reference;
-use graph::{Graph, GraphError};
+use graph::Graph;
 
 type CycResult<T> = Result<T, err::Error>;
 
@@ -23,14 +20,6 @@ type CycResult<T> = Result<T, err::Error>;
 /// typechecking in the right order.
 pub trait Causality: Sized {
     fn causality(self) -> CycResult<Self>;
-}
-
-impl<T> GraphError for Sp<T> {
-    fn emit(&self, msg: String) -> err::Error {
-        err::token_stream(quote_spanned! {self.span=>
-            compile_error!(#msg);
-        })
-    }
 }
 
 impl Causality for ast::decl::Prog {

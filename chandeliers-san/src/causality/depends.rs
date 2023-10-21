@@ -14,10 +14,8 @@
 
 use std::fmt;
 
-use chandeliers_err as err;
-use proc_macro2::Span;
 use crate::ast::*;
-use crate::causality::{GraphError, graph::Cyclic};
+use proc_macro2::Span;
 
 /// Construct the dependency constraints introduced by `Self`.
 /// A typical implementation will consist of
@@ -58,17 +56,6 @@ pub enum Reference {
     GlobalVarName(Sp<String>),
 }
 
-impl GraphError for Reference {
-    fn emit(&self, msg: String) -> err::Error {
-        match self {
-            Self::NodeId(i) => i.emit(msg),
-            Self::LocalVarName(v) => v.emit(msg),
-            Self::GlobalVarName(v) => v.emit(msg),
-            Self::FunName(fun) => fun.emit(msg),
-        }
-    }
-}
-
 impl fmt::Display for Reference {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -77,14 +64,6 @@ impl fmt::Display for Reference {
             Self::LocalVarName(var) => write!(f, "Variable `{var}`"),
             Self::GlobalVarName(var) => write!(f, "Global `{var}`"),
         }
-    }
-}
-
-impl Cyclic for Reference {
-    fn print_cycle(elements: Vec<(&Self, Option<Span>)>) -> err::Error {
-        let len = elements.len();
-        assert!(len > 1);
-        err::cycle_detected(elements)
     }
 }
 
