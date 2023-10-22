@@ -8,6 +8,7 @@
 //! converting them into interpretable code using the methods from `codegen.rs`.
 
 use crate::causality::depends::Depends;
+use chandeliers_err as err;
 use proc_macro2::Span;
 use std::fmt;
 use std::hash::{Hash, Hasher};
@@ -31,6 +32,12 @@ pub struct Sp<T> {
 impl<T> Into<Span> for &Sp<T> {
     fn into(self) -> Span {
         self.span
+    }
+}
+
+impl<T> err::TrySpan for Sp<T> {
+    fn try_span(&self) -> Option<Span> {
+        Some(self.into())
     }
 }
 

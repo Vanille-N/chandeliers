@@ -5,6 +5,27 @@ pub type Error = Vec<(String, Option<Span>)>;
 pub trait IntoError {
     fn into_err(self) -> Error;
 }
+pub trait TrySpan {
+    fn try_span(&self) -> Option<Span> {
+        None
+    }
+}
+
+impl TrySpan for Span {
+    fn try_span(&self) -> Option<Span> {
+        Some(*self)
+    }
+}
+impl<T: TrySpan> TrySpan for &T {
+    fn try_span(&self) -> Option<Span> {
+        (*self).try_span()
+    }
+}
+impl<T: TrySpan> TrySpan for Option<T> {
+    fn try_span(&self) -> Option<Span> {
+        self.as_ref().and_then(|t| t.try_span())
+    }
+}
 
 pub struct Basic {
     pub msg: String,
@@ -26,10 +47,10 @@ pub struct TypeMismatch<Source, Left, Right, Msg> {
 
 impl<Source, Left, Right, Msg> IntoError for TypeMismatch<Source, Left, Right, Msg>
 where
-    Source: Into<Span>,
+    Source: TrySpan,
     Msg: Display,
-    Left: Display + Into<Span>,
-    Right: Display + Into<Span>,
+    Left: Display + TrySpan,
+    Right: Display + TrySpan,
 {
     fn into_err(self) -> Error {
         let mut v = vec![];
@@ -38,15 +59,15 @@ where
                 "Type mismatch between the left and right sides: {}",
                 self.msg
             ),
-            Some(self.source.into()),
+            self.source.try_span(),
         ));
         v.push((
             format!("This element has type {}", self.left),
-            Some(self.left.into()),
+            self.left.try_span(),
         ));
         v.push((
             format!("While this element has type {}", self.right),
-            Some(self.right.into()),
+            self.right.try_span(),
         ));
         v
     }
@@ -60,7 +81,7 @@ pub struct VarNotFound<Var, Suggest1, Suggest2> {
 
 impl<Var, Suggest1, S1, Suggest2, S2> IntoError for VarNotFound<Var, Suggest1, Suggest2>
 where
-    Var: Display + Into<Span>,
+    Var: Display + TrySpan,
     Suggest1: IntoIterator<Item = S1>,
     Suggest2: IntoIterator<Item = S2>,
     S1: Display,
@@ -93,7 +114,7 @@ where
         let mut v = vec![];
         v.push((
             format!("Variable {} not found in the context.", self.var),
-            Some(self.var.into()),
+            self.var.try_span(),
         ));
         v.push((
             format!("Perhaps you meant one of the local variables: {}", suggest1),
@@ -115,13 +136,13 @@ pub struct NotConst<Item, Site> {
 impl<Item, Site> IntoError for NotConst<Item, Site>
 where
     Item: Display,
-    Site: Into<Span>,
+    Site: TrySpan,
 {
     fn into_err(self) -> Error {
         let mut v = vec![];
         v.push((
             format!("{} not valid in const contexts", self.what),
-            Some(self.site.into()),
+            self.site.try_span(),
         ));
         v.push((format!("You must put this definition inside a node"), None));
         v
@@ -139,10 +160,10 @@ pub struct BinopMismatch<Oper, Site, Expect, Left, Right> {
 impl<Oper, Site, Expect, Left, Right> IntoError for BinopMismatch<Oper, Site, Expect, Left, Right>
 where
     Oper: Display,
-    Site: Into<Span>,
+    Site: TrySpan,
     Expect: Display,
-    Left: Display + Into<Span>,
-    Right: Display + Into<Span>,
+    Left: Display + TrySpan,
+    Right: Display + TrySpan,
 {
     fn into_err(self) -> Vec<(String, Option<Span>)> {
         let mut v = vec![];
@@ -151,21 +172,19 @@ where
                 "Binary operator {} expects arguments of {}",
                 self.oper, self.expect
             ),
-            Some(self.site.into()),
+            self.site.try_span(),
         ));
         v.push((
             format!("The left-hand-side is found to be of type {}", self.left),
-            Some(self.left.into()),
+            self.left.try_span(),
         ));
         v.push((
             format!("The right-hand-side is found to be of type {}", self.right),
-            Some(self.right.into()),
+            self.right.try_span(),
         ));
         v
     }
 }
-
-// HERE
 
 pub struct UnopMismatch<Oper, Expect, Site, Inner> {
     pub oper: Oper,
@@ -178,8 +197,8 @@ impl<Oper, Expect, Site, Inner> IntoError for UnopMismatch<Oper, Expect, Site, I
 where
     Oper: Display,
     Expect: Display,
-    Site: Into<Span>,
-    Inner: Display + Into<Span>,
+    Site: TrySpan,
+    Inner: Display + TrySpan,
 {
     fn into_err(self) -> Error {
         let mut v = vec![];
@@ -188,11 +207,11 @@ where
                 "Unary operator {} expects an argument of {}",
                 self.oper, self.expect
             ),
-            Some(self.site.into()),
+            self.site.try_span(),
         ));
         v.push((
             format!("The inner value is found to be of type {}", self.inner),
-            Some(self.inner.into()),
+            self.inner.try_span(),
         ));
         v
     }
@@ -207,18 +226,18 @@ pub struct BoolRequired<Type, Site, Inner> {
 impl<Type, Site, Inner> IntoError for BoolRequired<Type, Site, Inner>
 where
     Type: Display,
-    Site: Into<Span>,
-    Inner: Display + Into<Span>,
+    Site: TrySpan,
+    Inner: Display + TrySpan,
 {
     fn into_err(self) -> Error {
         let mut v = vec![];
         v.push((
             format!("{} should be of type bool", self.actual),
-            Some(self.site.into()),
+            self.site.try_span(),
         ));
         v.push((
             format!("The argument is found to be of type {}", self.inner),
-            Some(self.inner.into()),
+            self.inner.try_span(),
         ));
         v
     }
@@ -231,7 +250,7 @@ pub struct Cycle<Items> {
 impl<Items, Item> IntoError for Cycle<Items>
 where
     Items: IntoIterator<Item = (Item, Option<Span>)>,
-    Item: Display,
+    Item: Display + TrySpan,
 {
     fn into_err(self) -> Error {
         let mut v = vec![];
@@ -261,8 +280,8 @@ impl<Unit, NewSite, Prior, PriorSite> IntoError
 where
     Unit: Display,
     Prior: Display,
-    NewSite: Into<Span>,
-    PriorSite: Into<Span>,
+    NewSite: TrySpan,
+    PriorSite: TrySpan,
 {
     fn into_err(self) -> Error {
         let mut v = vec![];
@@ -271,11 +290,11 @@ where
                 "Attempt to redefine {}, when {} already defines it",
                 self.unit, self.prior
             ),
-            Some(self.new_site.into()),
+            self.new_site.try_span(),
         ));
         v.push((
             String::from("Already defined here"),
-            Some(self.prior_site.into()),
+            self.prior_site.try_span(),
         ));
         v
     }
@@ -287,13 +306,13 @@ pub struct GraphUnitUndeclared<Unit> {
 
 impl<Unit> IntoError for GraphUnitUndeclared<Unit>
 where
-    Unit: Display + Into<Span>,
+    Unit: Display + TrySpan,
 {
     fn into_err(self) -> Error {
         let mut v = vec![];
         v.push((
             format!("No definition provided for {} which is required", self.unit),
-            Some(self.unit.into()),
+            self.unit.try_span(),
         ));
         v
     }
@@ -308,18 +327,18 @@ pub struct GraphUnitDependsOnItself<Unit, Site1, Site2> {
 impl<Unit, Site1, Site2> IntoError for GraphUnitDependsOnItself<Unit, Site1, Site2>
 where
     Unit: Display,
-    Site1: Into<Span>,
-    Site2: Into<Span>,
+    Site1: TrySpan,
+    Site2: TrySpan,
 {
     fn into_err(self) -> Error {
         let mut v = vec![];
         v.push((
             format!("{} depends on itself", self.unit),
-            Some(self.def_site.into()),
+            self.def_site.try_span(),
         ));
         v.push((
             String::from("used here within its own definition"),
-            Some(self.usage.into()),
+            self.usage.try_span(),
         ));
         v
     }

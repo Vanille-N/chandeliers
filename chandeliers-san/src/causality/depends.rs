@@ -15,6 +15,7 @@
 use std::fmt;
 
 use crate::ast::*;
+use chandeliers_err as err;
 use proc_macro2::Span;
 
 /// Construct the dependency constraints introduced by `Self`.
@@ -67,13 +68,13 @@ impl fmt::Display for Reference {
     }
 }
 
-impl Into<Span> for &Reference {
-    fn into(self) -> Span {
+impl err::TrySpan for Reference {
+    fn try_span(&self) -> Option<Span> {
         match self {
-            Reference::NodeId(i) => i.into(),
-            Reference::FunName(i) => i.into(),
-            Reference::LocalVarName(i) => i.into(),
-            Reference::GlobalVarName(i) => i.into(),
+            Reference::NodeId(i) => i.try_span(),
+            Reference::FunName(i) => i.try_span(),
+            Reference::LocalVarName(i) => i.try_span(),
+            Reference::GlobalVarName(i) => i.try_span(),
         }
     }
 }

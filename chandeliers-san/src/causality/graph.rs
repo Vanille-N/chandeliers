@@ -44,7 +44,7 @@ use std::fmt;
 use std::hash::Hash;
 
 use super::depends::Depends;
-use chandeliers_err::{self as err, IntoError};
+use chandeliers_err::{self as err, IntoError, TrySpan};
 
 /// The identifier of a `Unit`.
 ///
@@ -69,11 +69,11 @@ pub struct Graph<Obj, Unit> {
     /// Bidirectional map of the building blocks that describe dependencies.
     atomics: (Vec<(Unit, Option<Span>)>, HashMap<Unit, usize>),
     /// `provide[k]` is the list of `Unit`s provided by `elements[k]`.
-    provide: Vec<Vec<(Span, usize)>>,
+    provide: Vec<Vec<(Option<Span>, usize)>>,
     /// `require[k]` is the list of `Unit`s required by `elements[k]`.
-    require: Vec<Vec<(Span, usize)>>,
+    require: Vec<Vec<(Option<Span>, usize)>>,
     /// The set of all `Unit`s that must not be provided.
-    provided_by_ext: HashMap<usize, Span>,
+    provided_by_ext: HashMap<usize, Option<Span>>,
     /// The set of all `Unit`s that have been provided.
     provided_for_ext: HashSet<usize>,
 }
@@ -94,8 +94,8 @@ impl<O, U> Default for Graph<O, U> {
 impl<Obj, Unit> Graph<Obj, Unit>
 where
     Obj: Depends<Output = Unit> + fmt::Debug,
-    for<'a> &'a Unit: Into<Span>,
-    for<'a> &'a Obj: Into<Span>,
+    Unit: TrySpan,
+    Obj: TrySpan,
     Unit: Clone + Hash + PartialEq + Eq + fmt::Debug + fmt::Display,
 {
     /// Get the identifier of a `Unit` if it exists,
@@ -111,7 +111,7 @@ where
             }
         };
         if override_span && self.atomics.0[uid].1.is_none() {
-            self.atomics.0[uid].1 = Some((&o).into());
+            self.atomics.0[uid].1 = o.try_span();
         }
         uid
     }
@@ -124,7 +124,7 @@ where
     /// all `insert`.
     pub fn already_provided(&mut self, o: Unit) {
         let uid = self.get_or_insert_atomic(o.clone(), true);
-        self.provided_by_ext.insert(uid, (&o).into());
+        self.provided_by_ext.insert(uid, o.try_span());
     }
 
     /// Verify that a given `Unit` has already been provided by
@@ -153,12 +153,12 @@ where
         t.requires(&mut require_units);
         for prov in provide_units {
             let uid = self.get_or_insert_atomic(prov.clone(), true);
-            provide_uids.push(((&prov).into(), uid));
+            provide_uids.push((prov.try_span(), uid));
             self.provided_for_ext.insert(uid);
         }
         for req in require_units {
             let uid = self.get_or_insert_atomic(req.clone(), false);
-            require_uids.push(((&req).into(), uid));
+            require_uids.push((req.try_span(), uid));
         }
         assert!(self.elements.len() == self.provide.len());
         assert!(self.elements.len() == self.require.len());
@@ -185,7 +185,7 @@ where
             // `provider[i]` is which `Obj` provides `i`.
             let mut provider: Vec<Option<usize>> = vec![None; nb];
             // `constraints[i]` is the list of `Unit`s that `i` depends on.
-            let mut constraints = vec![vec![]; nb];
+            let mut constraints: Vec<Vec<(Option<Span>, usize)>> = vec![vec![]; nb];
             for (id, provs) in self.provide.iter().enumerate() {
                 for &p in provs {
                     // First we check that the `Unit` is provided only once.
@@ -270,7 +270,7 @@ where
             }
 
             /// Exploration procedure for one node.
-            fn explore_scc(v: usize, graph: &[Vec<(Span, usize)>], expl: &mut SccExplorer) {
+            fn explore_scc(v: usize, graph: &[Vec<(Option<Span>, usize)>], expl: &mut SccExplorer) {
                 // Register unique identifiers for this new node.
                 expl.extra[v].index = Some(expl.index);
                 expl.extra[v].low_link = Some(expl.index);
@@ -347,7 +347,8 @@ mod test {
     use std::fmt;
 
     use super::super::depends::Depends;
-    use super::{Graph, GraphError};
+    use super::Graph;
+    use chandeliers_err as err;
 
     #[derive(Debug, PartialEq)]
     struct Triplet(char, char, char);
@@ -367,17 +368,9 @@ mod test {
         }
     }
 
-    impl GraphError for Triplet {
-        fn emit(&self, msg: String) -> err::Error {
-            msg
-        }
-    }
-    impl GraphError for Unit {
-        type Error = String;
-        fn emit(&self, msg: String) -> Self::Error {
-            msg
-        }
-    }
+    impl err::TrySpan for Triplet {} // Default impl is None
+    impl err::TrySpan for Unit {}
+
     impl Depends for Triplet {
         type Output = Unit;
         fn provides(&self, v: &mut Vec<Self::Output>) {
@@ -389,12 +382,16 @@ mod test {
         }
     }
 
-    fn schedule(pairs: Vec<Triplet>) -> Result<Vec<Triplet>, String> {
+    fn vec_proj1<T, U>(v: Vec<(T, U)>) -> Vec<T> {
+        v.into_iter().map(|(t, _)| t).collect()
+    }
+
+    fn schedule(pairs: Vec<Triplet>) -> Result<Vec<Triplet>, Vec<String>> {
         let mut g = Graph::default();
         for pair in pairs {
-            g.insert(pair)?;
+            g.insert(pair).map_err(vec_proj1)?;
         }
-        Ok(g.scheduling()?)
+        Ok(g.scheduling().map_err(vec_proj1)?)
     }
 
     #[test]
@@ -414,12 +411,18 @@ mod test {
 
         assert_eq!(
             schedule(vec![Triplet('a', 'b', 'a')]),
-            Err(String::from("(a) depends on itself")),
+            Err(vec![
+                String::from("(a) depends on itself"),
+                String::from("used here within its own definition")
+            ]),
         );
 
         assert_eq!(
             schedule(vec![Triplet('a', 'b', 'c'), Triplet('b', 'a', 'c')]),
-            Err(String::from("(a) is part of a dependency cycle")),
+            Err(vec![
+                String::from("(b) was found to be part of a dependency cycle"),
+                String::from("The cycle also goes through (a)")
+            ]),
         );
     }
 }
