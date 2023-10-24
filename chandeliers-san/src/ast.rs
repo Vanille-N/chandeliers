@@ -29,9 +29,9 @@ pub struct Sp<T> {
     pub span: Span,
 }
 
-impl<T> Into<Span> for &Sp<T> {
-    fn into(self) -> Span {
-        self.span
+impl<T> From<&Sp<T>> for Span {
+    fn from(val: &Sp<T>) -> Self {
+        val.span
     }
 }
 

@@ -6,5 +6,5 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-chandeliers-lus = { path = "chandeliers-lus/" }
-chandeliers-sem = "0.1"
+chandeliers-lus = { path = "chandeliers-lus", version = "0.2" }
+chandeliers-sem = { path = "chandeliers-sem", version = "0.2" }

@@ -35,6 +35,7 @@ macro_rules! embed_for_tuple {
         where $( $T : Embed ),*
         {
             type Target = ( $( <$T>::Target, )* );
+            #[allow(clippy::unused_unit)]
             fn embed(self) -> Self::Target {
                 ( $( self.$i.embed(), )* )
             }
@@ -69,6 +70,7 @@ macro_rules! trusted_for_tuple {
         where $( $T : Trusted ),*
         {
             type Target = ( $( <$T>::Target, )* );
+            #[allow(clippy::unused_unit)]
             fn trusted(self) -> Self::Target {
                 ( $( self.$i.trusted(), )* )
             }

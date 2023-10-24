@@ -315,3 +315,45 @@ fn counting_late_behavior() {
         assert_is!(j, lit!(actual_i));
     }
 }
+
+mod random {
+    use chandeliers_sem::*;
+    //use rand::Rng;
+
+    #[derive(Default, Debug)]
+    struct RandomInt {
+        //rng: rand::rngs::ThreadRng,
+    }
+
+    impl RandomInt {
+        fn update_mut(&mut self) -> ty!(int) {
+            //lit!(self.rng.gen())
+            lit!(4) // chosen by fair dice roll
+        }
+    }
+
+    chandeliers_lus::decl! {
+        extern node RandomInt() returns (r : int);
+
+        node sum(inc : int) returns (s : int);
+        let
+            s = 0 fby (s + inc);
+        tel;
+
+        node randsum() returns (r, s : int);
+        let
+            r = RandomInt();
+            s = sum(r);
+        tel;
+    }
+
+    fn main() {
+        let mut randsum = randsum::default();
+        let mut sum = 0;
+        for _ in 0..100 {
+            let (r, s) = randsum.update_mut();
+            sum += r.unwrap();
+            assert_eq!(sum, s.unwrap());
+        }
+    }
+}

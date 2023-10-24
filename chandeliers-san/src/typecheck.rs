@@ -276,7 +276,7 @@ impl TypeCheckExpr for Sp<ast::expr::Builtin> {
                 Builtin::Float(e) => match e.typecheck(ctx)?.t {
                     TyTuple::Single(_) => Ok(TyTuple::Single(Sp::new(TyBase::Float, span))),
                     TyTuple::Multiple(m) => {
-                        let s = format!("Builtin float expects a single argument, not a tuple");
+                        let s = "Builtin float expects a single argument, not a tuple".to_string();
                         Err(err::Basic {
                             span: m.span,
                             msg: s,
@@ -399,7 +399,7 @@ impl ast::expr::BinOp {
             (BitAnd | BitOr | BitXor, Float) => Err(err::BinopMismatch {
                 oper: self,
                 site: span,
-                expect: format!("type int or bool, found float"),
+                expect: "type int or bool, found float".to_string(),
                 left: &left,
                 right: &right,
             }
@@ -555,7 +555,7 @@ impl Sp<TyTuple> {
             .map(|_, t| match t {
                 Single(t) => Ok(t.t),
                 Multiple(_) => {
-                    let s = format!("expected a scalar type, got a tuple type");
+                    let s = "expected a scalar type, got a tuple type".to_string();
                     Err(err::Basic {
                         span: self.span,
                         msg: s,

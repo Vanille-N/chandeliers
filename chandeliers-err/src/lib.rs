@@ -250,7 +250,7 @@ pub struct Cycle<Items> {
 impl<Items, Item> IntoError for Cycle<Items>
 where
     Items: IntoIterator<Item = (Item, Option<Span>)>,
-    Item: Display + TrySpan,
+    Item: Display,
 {
     fn into_err(self) -> Error {
         let mut v = vec![];

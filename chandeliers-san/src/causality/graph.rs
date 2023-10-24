@@ -60,6 +60,47 @@ struct UnitIdx(usize);
 #[derive(Debug, Clone, Copy)]
 struct ObjIdx(usize);
 
+#[derive(Debug, Clone, Copy)]
+struct WithDefSite<Unit> {
+    contents: Unit,
+    def_site: Option<Span>,
+}
+
+impl<Unit> WithDefSite<Unit> {
+    fn without(o: &Unit) -> Self
+    where
+        Unit: Clone,
+    {
+        Self {
+            contents: o.clone(),
+            def_site: None,
+        }
+    }
+
+    fn try_with(o: &Unit, sp: impl TrySpan) -> Self
+    where
+        Unit: Clone,
+    {
+        Self {
+            contents: o.clone(),
+            def_site: sp.try_span(),
+        }
+    }
+
+    fn try_override_span(&mut self, o: &Unit)
+    where
+        Unit: TrySpan,
+    {
+        if self.def_site.is_none() {
+            self.def_site = o.try_span();
+        }
+    }
+
+    fn elements(&self) -> (&Unit, Option<Span>) {
+        (&self.contents, self.def_site)
+    }
+}
+
 /// A scheduler to resolve dependency requirements.
 #[derive(Debug, Clone)]
 pub struct Graph<Obj, Unit> {
@@ -67,13 +108,13 @@ pub struct Graph<Obj, Unit> {
     /// once sorted.
     elements: Vec<Obj>,
     /// Bidirectional map of the building blocks that describe dependencies.
-    atomics: (Vec<(Unit, Option<Span>)>, HashMap<Unit, usize>),
+    atomics: (Vec<WithDefSite<Unit>>, HashMap<Unit, usize>),
     /// `provide[k]` is the list of `Unit`s provided by `elements[k]`.
-    provide: Vec<Vec<(Option<Span>, usize)>>,
+    provide: Vec<Vec<WithDefSite<usize>>>,
     /// `require[k]` is the list of `Unit`s required by `elements[k]`.
-    require: Vec<Vec<(Option<Span>, usize)>>,
+    require: Vec<Vec<WithDefSite<usize>>>,
     /// The set of all `Unit`s that must not be provided.
-    provided_by_ext: HashMap<usize, Option<Span>>,
+    provided_by_ext: HashMap<usize, WithDefSite<()>>,
     /// The set of all `Unit`s that have been provided.
     provided_for_ext: HashSet<usize>,
 }
@@ -105,13 +146,13 @@ where
             Some(uid) => *uid,
             None => {
                 let uid = self.atomics.0.len();
-                self.atomics.0.push((o.clone(), None));
+                self.atomics.0.push(WithDefSite::without(&o));
                 self.atomics.1.insert(o.clone(), uid);
                 uid
             }
         };
-        if override_span && self.atomics.0[uid].1.is_none() {
-            self.atomics.0[uid].1 = o.try_span();
+        if override_span {
+            self.atomics.0[uid].try_override_span(&o);
         }
         uid
     }
@@ -124,7 +165,8 @@ where
     /// all `insert`.
     pub fn already_provided(&mut self, o: Unit) {
         let uid = self.get_or_insert_atomic(o.clone(), true);
-        self.provided_by_ext.insert(uid, o.try_span());
+        self.provided_by_ext
+            .insert(uid, WithDefSite::try_with(&(), o));
     }
 
     /// Verify that a given `Unit` has already been provided by
@@ -153,12 +195,12 @@ where
         t.requires(&mut require_units);
         for prov in provide_units {
             let uid = self.get_or_insert_atomic(prov.clone(), true);
-            provide_uids.push((prov.try_span(), uid));
+            provide_uids.push(WithDefSite::try_with(&uid, prov));
             self.provided_for_ext.insert(uid);
         }
         for req in require_units {
             let uid = self.get_or_insert_atomic(req.clone(), false);
-            require_uids.push((req.try_span(), uid));
+            require_uids.push(WithDefSite::try_with(&uid, req));
         }
         assert!(self.elements.len() == self.provide.len());
         assert!(self.elements.len() == self.require.len());
@@ -185,24 +227,24 @@ where
             // `provider[i]` is which `Obj` provides `i`.
             let mut provider: Vec<Option<usize>> = vec![None; nb];
             // `constraints[i]` is the list of `Unit`s that `i` depends on.
-            let mut constraints: Vec<Vec<(Option<Span>, usize)>> = vec![vec![]; nb];
+            let mut constraints: Vec<Vec<WithDefSite<usize>>> = vec![vec![]; nb];
             for (id, provs) in self.provide.iter().enumerate() {
-                for &p in provs {
+                for p in provs {
                     // First we check that the `Unit` is provided only once.
                     // This involves both `provided_by_ext` and `provider`
                     // currently being computed.
-                    if let Some(prior) = self.provided_by_ext.get(&p.1) {
+                    if let Some(prior) = self.provided_by_ext.get(&p.contents) {
                         return Err(err::GraphUnitDeclTwice {
-                            unit: &self.atomics.0[p.1].0,
+                            unit: &self.atomics.0[p.contents].contents,
                             prior: "the context",
                             new_site: &self.elements[id],
-                            prior_site: *prior,
+                            prior_site: prior.def_site,
                         }
                         .into_err());
                     }
-                    if let Some(prov) = provider[p.1] {
+                    if let Some(prov) = provider[p.contents] {
                         return Err(err::GraphUnitDeclTwice {
-                            unit: &self.atomics.0[p.1].0,
+                            unit: &self.atomics.0[p.contents].contents,
                             prior: "a prior item",
                             new_site: &self.elements[id],
                             prior_site: &self.elements[prov],
@@ -210,21 +252,21 @@ where
                         .into_err());
                     } else {
                         // Constraint is valid, record its provider.
-                        provider[p.1] = Some(id);
+                        provider[p.contents] = Some(id);
                     }
                     // Check for cycles of length 1.
                     // This is the best time to do it since the default SCC algorithm
                     // is fine with connected components of size 1.
-                    for &r in &self.require[id] {
-                        if r.1 == p.1 {
+                    for r in &self.require[id] {
+                        if r.contents == p.contents {
                             return Err(err::GraphUnitDependsOnItself {
-                                unit: &self.atomics.0[p.1].0,
+                                unit: &self.atomics.0[p.contents].contents,
                                 def_site: &self.elements[id],
-                                usage: r.0,
+                                usage: r.def_site,
                             }
                             .into_err());
                         }
-                        constraints[p.1].push(r);
+                        constraints[p.contents].push(*r);
                     }
                 }
             }
@@ -270,7 +312,7 @@ where
             }
 
             /// Exploration procedure for one node.
-            fn explore_scc(v: usize, graph: &[Vec<(Option<Span>, usize)>], expl: &mut SccExplorer) {
+            fn explore_scc(v: usize, graph: &[Vec<WithDefSite<usize>>], expl: &mut SccExplorer) {
                 // Register unique identifiers for this new node.
                 expl.extra[v].index = Some(expl.index);
                 expl.extra[v].low_link = Some(expl.index);
@@ -281,16 +323,17 @@ where
                 // Explore all children.
                 // Compare `low_link` to find cycles: because `low_link` is initially
                 // the (unique) index, a child with a smaller `low_link` gives a cycle.
-                for &w in &graph[v] {
-                    if expl.extra[w.1].index.is_none() {
+                for w in &graph[v] {
+                    if expl.extra[w.contents].index.is_none() {
                         // Not explored at all, explore it.
-                        explore_scc(w.1, graph, expl);
+                        explore_scc(w.contents, graph, expl);
                         expl.extra[v].low_link =
-                            expl.extra[v].low_link.min(expl.extra[w.1].low_link);
-                    } else if expl.extra[w.1].on_stack {
+                            expl.extra[v].low_link.min(expl.extra[w.contents].low_link);
+                    } else if expl.extra[w.contents].on_stack {
                         // Exploration still ongoing, `low_link` has not yet been fully computed,
                         // so use `index` instead.
-                        expl.extra[v].low_link = expl.extra[v].low_link.min(expl.extra[w.1].index);
+                        expl.extra[v].low_link =
+                            expl.extra[v].low_link.min(expl.extra[w.contents].index);
                     }
                 }
 
@@ -317,10 +360,7 @@ where
             assert!(!c.is_empty(), "Malformed SCC of size 0");
             if c.len() > 1 {
                 // Oops, here's a loop.
-                let looping = c.iter().map(|l| {
-                    let (u, s) = &self.atomics.0[*l];
-                    (u, *s)
-                });
+                let looping = c.iter().map(|l| self.atomics.0[*l].elements());
                 return Err(err::Cycle { items: looping }.into_err());
             } else {
                 // Correctly of size 1, we can use it next.

@@ -205,6 +205,7 @@ impl ToTokens for decl::Node {
             }
 
             #[allow(non_snake_case)]
+            // FIXME: this should me an `impl Step for #name`
             impl #name {
                 pub fn step(
                     &mut self,
@@ -213,7 +214,9 @@ impl ToTokens for decl::Node {
                     #( chandeliers_sem::ty!(#outputs_ty) ),*
                 ) {
                     let ( #( #inputs_vs ),* ) = __inputs;
+                    // Actual body
                     #( #stmts ; )*
+                    // Finish by incrementing the clock and updating the streams.
                     chandeliers_sem::tick!(self);
                     #( chandeliers_sem::update!(self, #pos_inputs_use ); )*
                     #( chandeliers_sem::update!(self, #pos_outputs_use ); )*
@@ -274,11 +277,23 @@ impl ToTokens for decl::ExtNode {
             #[allow(non_snake_case)]
             fn #dummy_name() {
                 use chandeliers_sem::traits::*;
+                // We lock in the constraints for the input types: type
+                // inference will assume that this is correct and won't propagate
+                // the fault elsewhere.
                 let #actual_inputs: #expected_inputs_ty;
+                // We do the same for outputs.
                 let outputs: #expected_outputs_ty;
+                // Then we assert that the type implements `Default`.
                 let mut #dummy = <#name as Default>::default();
+                // We then forge inputs and get outputs
+                // (this doesn't actually execute, of course)
                 #actual_inputs = unimplemented!("Contructing a dummy value");
                 let tmp = #dummy.step(#actual_inputs);
+                // Finally this asserts that the output types match.
+                // Because we did the declarations above, if there is an error
+                // here then the error message will get printed with a very
+                // well-controlled span that we were able to forge during the
+                // section of `quote_spanned!` above.
                 outputs = tmp;
             }
         });
