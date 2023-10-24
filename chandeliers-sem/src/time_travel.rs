@@ -48,7 +48,7 @@ impl<N: fmt::Display, T: fmt::Display> fmt::Display for S<N, T> {
 
 /// This trait guarantees that you cannot create a stream of objects that
 /// are not supported efficiently.
-trait Sealed: Sized {}
+pub(crate) trait Sealed: Sized {}
 impl Sealed for i64 {}
 impl Sealed for f64 {}
 impl Sealed for bool {}

@@ -1,4 +1,5 @@
 use crate::macros::*;
+use crate::traits::*;
 
 // As a proof of concept we will implement here the following node
 //
@@ -31,8 +32,11 @@ pub struct cumul_avg {
     __nodes: (weighted_sum,),
 }
 
-impl weighted_sum {
-    pub fn update_mut(&mut self, x: ty!(float), y: ty!(float), weight: ty!(float)) -> ty!(float) {
+impl Step for weighted_sum {
+    type Input = (f64, f64, f64);
+    type Output = f64;
+    fn step(&mut self, inputs: (ty!(float), ty!(float), ty!(float))) -> ty!(float) {
+        let (x, y, weight) = inputs;
         node_trace!(
             self,
             "(x={},y={},weight={}) => weighted_sum()",
@@ -53,8 +57,10 @@ impl weighted_sum {
     }
 }
 
-impl cumul_avg {
-    pub fn update_mut(&mut self, x: ty!(float)) -> ty!(float) {
+impl Step for cumul_avg {
+    type Input = f64;
+    type Output = f64;
+    fn step(&mut self, x: ty!(float)) -> ty!(float) {
         node_trace!(self, "(x={}) => cumul_avg(n={})", x, self.n);
         let n = later!(self <~ 0; lit!(1), var!(self <~ 1; n) + lit!(1));
         update!(self, n);
@@ -84,13 +90,13 @@ fn cumul_avg_behavior() {
     let mut node = cumul_avg::default();
     node.__trace = true;
     node.__nodes.0.__trace = true;
-    let v = node.update_mut(lit!(0.5));
+    let v = node.step(lit!(0.5));
     println!("{}\n", v);
-    let v = node.update_mut(lit!(1.0));
+    let v = node.step(lit!(1.0));
     println!("{}\n", v);
-    let v = node.update_mut(lit!(0.3));
+    let v = node.step(lit!(0.3));
     println!("{}\n", v);
-    let v = node.update_mut(lit!(0.2));
+    let v = node.step(lit!(0.2));
     println!("{}\n", v);
     //panic!();
 }

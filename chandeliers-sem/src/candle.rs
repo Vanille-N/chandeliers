@@ -8,14 +8,14 @@
 //! A `struct` described using the constructs of Candle simulates a
 //! Lustre `node` by
 //! - deriving the `Default` trait,
-//! - having a `__clock` field of type `usize`,
+//! - (optional) having a `__clock` field of type `usize`,
 //! - (optional) having a `__nodes` field of type a tuple of all the subnodes
 //!   that the node uses,
-//! - (optional but recommended) having a `__trace` boolean field that enables
+//! - (optional) having a `__trace` boolean field that enables
 //!   priting debug information,
 //! - having fields of a type provided by the `ty!(_)` macro that converts
 //!   standard types into types with a memory of the past,
-//! - providing an `update_mut` method of signature
+//! - implementing the trait `stepping::Step`, of signature
 //!   `(&mut self, ty!(...)) -> ty!(...)` that takes the node inputs,
 //!   applies one step of computation, and returns the updated values of
 //!   the node outputs.
@@ -40,6 +40,7 @@
 //!
 //! ```
 //! use chandeliers_sem::macros::*;
+//! use chandeliers_sem::traits::*;
 //!
 //! #[allow(non_camel_case_types)]
 //! #[derive(Default)]
@@ -50,8 +51,10 @@
 //!     __nodes: (),
 //! }
 //!
-//! impl counter {
-//!     pub fn update_mut(&mut self) -> ty!(int) {
+//! impl Step for counter {
+//!     type Input = ();
+//!     type Output = i64;
+//!     fn step(&mut self, _: ()) -> ty!(int) {
 //!         node_trace!(self, "() => counter(n={})", self.n);
 //!         let n = later!(self <~ 0; lit!(0), var!(self <~ 1; n) + lit!(1));
 //!         update!(self, n);
@@ -64,7 +67,7 @@
 //! fn usage() {
 //!     let mut c = counter::default();
 //!     for i in 0..10 {
-//!         assert_is!(c.update_mut(), lit!(i));
+//!         assert_eq!(c.step(()).trusted(), i);
 //!     }
 //! }
 //! ```
@@ -88,14 +91,16 @@
 //!     // If the node is primive and has no subnodes, this field is optional.
 //!     __nodes: (...),
 //!     ... // add any extra variables that you want to keep in-between
-//!         // executions of `update_mut`.
+//!         // executions of `step`.
 //! }
 //!
-//! impl ... {
-//!     pub fn update_mut(&mut self, ...) -> ... {
+//! impl Step for ... {
+//!     type Input = ...;
+//!     type Output = ...;
+//!     pub fn step(&mut self, inputs: ...) -> ... {
 //!         node_trace!(self, ...); // Print any relevant information
 //!         ...
-//!         // You must always increment the clock once per call to `update_mut`.
+//!         // You must always increment the clock once per call to `step`.
 //!         tick!(self);
 //!         // And you must *never perform any computation* after incrementing the clock.
 //!         node_trace!(self, ...); // Print any relevant information
@@ -135,7 +140,7 @@ macro_rules! present_ty {
     ( $t:ty ) => { $crate::nillable::Nillable<$t> };
 }
 
-/// Do not use explicitly, call `ty` instead.
+/// It is recommended to call `ty` instead.
 ///
 /// Convert type names of Candle/Lustre to their internal Rust representation.
 /// ```ignore
@@ -144,7 +149,6 @@ macro_rules! present_ty {
 /// ty_mapping!(bool) ~ bool
 /// ty_mapping!(T) ~ T
 /// ```
-#[doc(hidden)]
 #[macro_export]
 macro_rules! ty_mapping {
     ( float ) => {
@@ -310,10 +314,10 @@ macro_rules! later {
 /// Usage: `substep!(self <~ $dt; $id => { ... }|****)` (expression)
 /// Assumption: `self` has a `__clock` field.
 /// Assumption: `self` has a tuple field `__nodes` of which the `$id`'th component
-///             has a method `update_mut` of the correct arity, input and output types.
+///             has a method `step` of the correct arity, input and output types.
 ///
 /// This advances the `$id`'th subnode by one step by providing it with the arguments to
-/// its `update_mut` method (provide the comma-separated list of arguments between
+/// its `step` method (provide the comma-separated list of arguments between
 /// the `{ ... }`) and gives the return value of said method.
 /// This computation will not be performed if the clock is not at least `$dt`,
 /// allowing delayed execution of subnodes.
@@ -327,9 +331,10 @@ macro_rules! later {
 macro_rules! substep {
     ($this:ident <~ $dt:expr ; $id:tt => { $( $arg:expr, )* } | $($sz:tt)* ) => {
         if $this.__clock >= $dt {
+            use $crate::traits::Step;
             $this.__nodes.$id
-                .update_mut(
-                    $( $arg ),*
+                .step(
+                    ( $( $arg ),* )
                 )
         } else {
             ( $( $crate::nil!( $sz ) ),* )

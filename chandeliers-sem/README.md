@@ -41,6 +41,7 @@ In Candle we would define the equivalent logic as follows:
 
 ```rs
 use chandeliers_sem::macros::*;
+use chandeliers_sem::traits::*;
 
 #[allow(non_camel_case_types)]
 #[derive(Default)]
@@ -51,8 +52,10 @@ pub struct counter {
     __nodes: (),
 }
 
-impl counter {
-    pub fn update_mut(&mut self, i: ty!(bool)) -> ty!(int) {
+impl Step for counter {
+    type Input = bool;
+    type Output = i64;
+    pub fn step(&mut self, i: ty!(bool)) -> ty!(int) {
         node_trace!(self, "(i={}) => counter(n={})", i, self.n);
         let n = binop!(+;
             later!(self <~ 0; lit!(0), var!(self <~ 1; n)),

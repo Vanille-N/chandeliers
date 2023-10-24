@@ -1,6 +1,6 @@
 [package]
 name = "chandeliers-sem"
-version = "0.1.1"
+version = "0.2.0"
 edition = "2021"
 authors = [ "Neven <vanille@crans.org>" ]
 description = "Semantics of Candle, a shallow embedding of Lustre in Rust"
