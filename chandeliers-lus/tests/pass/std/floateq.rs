@@ -12,5 +12,5 @@ chandeliers_lus::decl! {
 
 fn main() {
     let mut r = rounding_error::default();
-    r.update_mut();
+    r.step(());
 }

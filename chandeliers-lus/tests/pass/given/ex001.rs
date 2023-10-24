@@ -1,4 +1,4 @@
-use chandeliers_sem::*;
+use chandeliers_sem::traits::*;
 
 chandeliers_lus::decl! {
     node check (x: bool) returns (OK: bool);
@@ -13,8 +13,6 @@ chandeliers_lus::decl! {
 fn main() {
     let mut check = check::default();
     for b in [true, false, true, true, false, true, true, false, true] {
-        assert!(check.update_mut(lit!(b)).unwrap());
+        assert!(check.step(b.embed()).trusted());
     }
 }
-
-

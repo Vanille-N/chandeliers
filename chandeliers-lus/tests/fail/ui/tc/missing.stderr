@@ -1,0 +1,65 @@
+error[E0425]: cannot find value `MISSING` in this scope
+ --> tests/fail/ui/tc/missing.rs:7:18
+  |
+7 |     extern const MISSING: float;
+  |                  ^^^^^^^ not found in this scope
+
+error[E0412]: cannot find type `missing` in this scope
+  --> tests/fail/ui/tc/missing.rs:16:17
+   |
+16 |     extern node missing() returns ();
+   |                 ^^^^^^^ not found in this scope
+
+error[E0277]: the trait bound `not_impl_step: chandeliers_sem::stepping::Step` is not satisfied
+  --> tests/fail/ui/tc/missing.rs:22:17
+   |
+22 |     extern node not_impl_step() returns ();
+   |                 ^^^^^^^^^^^^^ the trait `chandeliers_sem::stepping::Step` is not implemented for `not_impl_step`
+   |
+   = help: the trait `chandeliers_sem::stepping::Step` is implemented for `wrong_step_sig`
+note: required by a bound in `DummyStep`
+  --> $CHANDELIERS_SEM/src/stepping.rs
+   |
+   | pub trait DummyStep:
+   |           --------- required by a bound in this trait
+   |     Step<Input = <Self as DummyStep>::Input, Output = <Self as DummyStep>::Output>
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `DummyStep`
+
+error[E0271]: type mismatch resolving `<wrong_step_sig as Step>::Input == ()`
+  --> tests/fail/ui/tc/missing.rs:35:17
+   |
+35 |     extern node wrong_step_sig() returns (b: bool);
+   |                 ^^^^^^^^^^^^^^ type mismatch resolving `<wrong_step_sig as Step>::Input == ()`
+   |
+note: expected this to be `()`
+  --> tests/fail/ui/tc/missing.rs:28:18
+   |
+28 |     type Input = i64;
+   |                  ^^^
+note: required by a bound in `DummyStep`
+  --> $CHANDELIERS_SEM/src/stepping.rs
+   |
+   | pub trait DummyStep:
+   |           --------- required by a bound in this trait
+   |     Step<Input = <Self as DummyStep>::Input, Output = <Self as DummyStep>::Output>
+   |          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `DummyStep`
+
+error[E0271]: type mismatch resolving `<wrong_step_sig as Step>::Output == bool`
+  --> tests/fail/ui/tc/missing.rs:35:17
+   |
+35 |     extern node wrong_step_sig() returns (b: bool);
+   |                 ^^^^^^^^^^^^^^ type mismatch resolving `<wrong_step_sig as Step>::Output == bool`
+   |
+note: expected this to be `bool`
+  --> tests/fail/ui/tc/missing.rs:29:19
+   |
+29 |     type Output = f64;
+   |                   ^^^
+note: required by a bound in `DummyStep`
+  --> $CHANDELIERS_SEM/src/stepping.rs
+   |
+   | pub trait DummyStep:
+   |           --------- required by a bound in this trait
+   |     Step<Input = <Self as DummyStep>::Input, Output = <Self as DummyStep>::Output>
+   |                                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `DummyStep`
+   = note: this error originates in the macro `chandeliers_sem::ty_mapping` (in Nightly builds, run with -Z macro-backtrace for more info)

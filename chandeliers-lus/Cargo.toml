@@ -1,7 +1,12 @@
 [package]
 name = "chandeliers-lus"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
+authors = [ "Neven <vanille@crans.org>" ]
+description = "Procedural macros for the Chandeliers project, implementing a deep embedding of Lustre in Rust"
+readme = "README.md"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/Vanille-N/chandeliers"
 
 [lib]
 proc-macro = true
@@ -10,11 +15,11 @@ proc-macro = true
 syn = "2.0"
 quote = "1.0"
 proc-macro2 = "1.0"
-chandeliers-syn = { path = "../chandeliers-syn" }
-chandeliers-san = { path = "../chandeliers-san" }
-chandeliers-sem = { path = "../chandeliers-sem" }
+chandeliers-syn = "0.2"
+chandeliers-san = "0.2"
+chandeliers-sem = "0.2"
 trybuild = "1.0"
 
 [dev-dependencies]
-chandeliers-syn = { path = "../chandeliers-syn" }
+chandeliers-syn = "0.2"
 rand = "0.8.5"

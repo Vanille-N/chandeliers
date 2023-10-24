@@ -7,5 +7,5 @@ chandeliers_lus::decl! {
 fn main() {
     assert_eq!(X, 0);
     let mut x = X::default();
-    assert_eq!(x.update_mut().unwrap(), 1);
+    assert_eq!(x.step(()).unwrap(), 1);
 }

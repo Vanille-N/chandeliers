@@ -29,12 +29,12 @@ chandeliers_lus::decl! {
 }
 
 fn main() {
-    use chandeliers_sem::*;
+    use chandeliers_sem::traits::*;
     let mut eq = equivalence::default();
     for a in [true, false] {
         for b in [true, false] {
             for c in [true, false] {
-                assert!(eq.update_mut(lit!(a), lit!(b), lit!(c)).unwrap())
+                assert!(eq.step((a, b, c).embed()).trusted())
             }
         }
     }

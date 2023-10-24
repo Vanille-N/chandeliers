@@ -1,3 +1,4 @@
+use chandeliers_sem::traits::*;
 use chandeliers_sem::*;
 use rand::Rng;
 
@@ -8,9 +9,11 @@ struct RandomInt {
     rng: rand::rngs::ThreadRng,
 }
 
-impl RandomInt {
-    fn update_mut(&mut self) -> ty!(int) {
-        lit!(self.rng.gen())
+impl Step for RandomInt {
+    type Input = ();
+    type Output = i64;
+    fn step(&mut self, _: ()) -> ty!(int) {
+        self.rng.gen::<i64>().embed()
     }
 }
 
@@ -34,8 +37,8 @@ fn main() {
     let mut randsum = randsum::default();
     let mut sum = 0;
     for _ in 0..100 {
-        let (r, s) = randsum.update_mut();
-        sum = (sum + r.unwrap()) % MOD;
-        assert_eq!(sum, s.unwrap());
+        let (r, s) = randsum.step(()).trusted();
+        sum = (sum + r) % MOD;
+        assert_eq!(sum, s);
     }
 }

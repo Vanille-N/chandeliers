@@ -9,5 +9,5 @@ chandeliers_lus::decl! {
 #[should_panic = "Assertion failed: false"]
 fn main() {
     let mut f = False::default();
-    f.update_mut()
+    f.step(())
 }

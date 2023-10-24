@@ -12,5 +12,5 @@ chandeliers_lus::decl! {
 
 fn main() {
     let mut a = assoc::default();
-    a.update_mut();
+    a.step(());
 }
