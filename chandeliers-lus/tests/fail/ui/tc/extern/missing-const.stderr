@@ -1,0 +1,5 @@
+error[E0425]: cannot find value `MISSING` in this scope
+ --> tests/fail/ui/tc/extern/missing-const.rs:2:18
+  |
+2 |     extern const MISSING: float;
+  |                  ^^^^^^^ not found in this scope

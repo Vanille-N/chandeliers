@@ -1,0 +1,5 @@
+error[E0412]: cannot find type `missing` in this scope
+ --> tests/fail/ui/tc/extern/missing-node.rs:2:17
+  |
+2 |     extern node missing() returns ();
+  |                 ^^^^^^^ not found in this scope

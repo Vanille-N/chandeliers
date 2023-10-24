@@ -331,7 +331,6 @@ macro_rules! later {
 macro_rules! substep {
     ($this:ident <~ $dt:expr ; $id:tt => { $( $arg:expr, )* } | $($sz:tt)* ) => {
         if $this.__clock >= $dt {
-            use $crate::traits::Step;
             $this.__nodes.$id
                 .step(
                     ( $( $arg ),* )

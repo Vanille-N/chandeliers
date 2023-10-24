@@ -101,10 +101,3 @@ pub trait Step {
     type Output: Embed;
     fn step(&mut self, input: <Self::Input as Embed>::Target) -> <Self::Output as Embed>::Target;
 }
-
-pub trait DummyStep:
-    Step<Input = <Self as DummyStep>::Input, Output = <Self as DummyStep>::Output>
-{
-    type Input: Embed;
-    type Output: Embed;
-}

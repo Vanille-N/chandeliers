@@ -34,8 +34,7 @@ impl ToTokens for decl::Decl {
         match self {
             Self::ExtConst(c) => {
                 toks.extend(quote! {
-                    #[allow(non_upper_case_globals)]
-                    const #c ;
+                    #c
                 });
             }
             Self::ExtNode(n) => {
@@ -75,12 +74,33 @@ impl ToTokens for decl::Const {
 ///
 /// There is no value to generate, we simply create a dummy const
 /// to assert that the one declared was found.
+///
+/// The trick here to get a decent error message that
+/// - points to the right place, and also
+/// - doesn't suggest nonsensical modifications,
+/// is to
+/// - do a variable assignment first to limit the compiler's visibility
+///   on who is in the right and who is in the wrong.
+/// - give some custom spans to the name and type so that the
+///   right parts "expected _, found _" and "expected due to this" are underlined,
+/// - wrap everything in an opaque wrapper `Type` so that the compiler
+///   can't suggest "use a conversion function, e.g. `as f64`".
+///
+/// We are effectively obfuscating the source of the error for the compiler
+/// so that it prints a less smart but more correct error message.
 impl ToTokens for decl::ExtConst {
     fn to_tokens(&self, toks: &mut TokenStream) {
         let Self { name, ty } = self;
-        let dummy_name = Ident::new(&format!("__const_must_exist_{}", name), name.span);
+        let dummy_name = Ident::new(&format!("__ext_const_typecheck__{}", name), name.span);
+        let real = quote_spanned!(name.span=> real );
+        let expected = quote_spanned!(ty.span=> Type<chandeliers_sem::ty_mapping!(#ty)> );
         toks.extend(quote! {
-            #dummy_name : chandeliers_sem::ty_mapping!(#ty) = #name
+            #[allow(non_snake_case)]
+            fn #dummy_name() {
+                struct Type<T>(T);
+                let #real = Type(#name);
+                let expected: #expected = #real ;
+            }
         });
     }
 }
@@ -206,6 +226,14 @@ impl ToTokens for decl::Node {
 }
 
 /// Extern node declaration: assert that it implements the right trait.
+///
+/// We use similar techniques to the ones in `ExtConst` to block the compiler's
+/// ability to make nonsensical suggestions and restrict how far ago it tries
+/// to find the fault.
+///
+/// The code we emit here is very ugly, but it's also completely dead code.
+/// It doesn't need to be good, it just needs to trigger precisely the right error
+/// messages.
 impl ToTokens for decl::ExtNode {
     fn to_tokens(&self, toks: &mut TokenStream) {
         let Self {
@@ -214,7 +242,7 @@ impl ToTokens for decl::ExtNode {
             outputs,
         } = self;
 
-        let name = name.as_ident();
+        let dummy_name = Ident::new(&format!("__ext_node_typecheck__{}", name), name.span);
 
         let inputs_ty = inputs
             .t
@@ -225,10 +253,33 @@ impl ToTokens for decl::ExtNode {
             .iter()
             .map(|sv| sv.as_ref().map(|_, v| v.base_type_of()));
 
+        let expected_outputs_ty = quote_spanned! {outputs.span=>
+            ( #( chandeliers_sem::ty!(#outputs_ty) ),* )
+        };
+        let expected_inputs_ty = quote_spanned! {inputs.span=>
+            ( #( chandeliers_sem::ty!(#inputs_ty) ),* )
+        };
+        let dummy = quote_spanned! {name.span=> dummy };
+        let actual_inputs = quote_spanned! {inputs.span=>
+            inputs
+        };
+
+        let name = name.as_ident();
         toks.extend(quote_spanned! {name.span()=>
-            impl chandeliers_sem::traits::DummyStep for #name {
-                type Input = ( #( chandeliers_sem::ty_mapping!(#inputs_ty) ),* );
-                type Output = ( #( chandeliers_sem::ty_mapping!(#outputs_ty) ),* );
+            #[allow(unreachable_code)]
+            #[allow(unused_imports)]
+            #[allow(unused_variables)]
+            #[allow(unused_assignments)]
+            #[allow(unused_mut)]
+            #[allow(non_snake_case)]
+            fn #dummy_name() {
+                use chandeliers_sem::traits::*;
+                let #actual_inputs: #expected_inputs_ty;
+                let outputs: #expected_outputs_ty;
+                let mut #dummy = <#name as Default>::default();
+                #actual_inputs = unimplemented!("Contructing a dummy value");
+                let tmp = #dummy.step(#actual_inputs);
+                outputs = tmp;
             }
         });
     }
