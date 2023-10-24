@@ -18,7 +18,7 @@ error[E0277]: the trait bound `not_impl_step: chandeliers_sem::stepping::Step` i
    |
    = help: the trait `chandeliers_sem::stepping::Step` is implemented for `wrong_step_sig`
 note: required by a bound in `DummyStep`
-  --> $CHANDELIERS_SEM/src/stepping.rs
+  --> $CARGO/chandeliers-sem-0.2.0/src/stepping.rs
    |
    | pub trait DummyStep:
    |           --------- required by a bound in this trait
@@ -37,7 +37,7 @@ note: expected this to be `()`
 28 |     type Input = i64;
    |                  ^^^
 note: required by a bound in `DummyStep`
-  --> $CHANDELIERS_SEM/src/stepping.rs
+  --> $CARGO/chandeliers-sem-0.2.0/src/stepping.rs
    |
    | pub trait DummyStep:
    |           --------- required by a bound in this trait
@@ -56,7 +56,7 @@ note: expected this to be `bool`
 29 |     type Output = f64;
    |                   ^^^
 note: required by a bound in `DummyStep`
-  --> $CHANDELIERS_SEM/src/stepping.rs
+  --> $CARGO/chandeliers-sem-0.2.0/src/stepping.rs
    |
    | pub trait DummyStep:
    |           --------- required by a bound in this trait
