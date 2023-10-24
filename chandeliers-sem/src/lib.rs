@@ -18,7 +18,7 @@ pub mod candle;
 
 /// Stream traits.
 pub mod traits {
-    pub use crate::stepping::{DummyStep, Embed, Step, Trusted};
+    pub use crate::stepping::{Embed, Step, Trusted};
     pub use crate::time_travel::{Ago, Update};
 }
 
