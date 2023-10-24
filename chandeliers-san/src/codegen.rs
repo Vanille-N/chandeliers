@@ -131,7 +131,15 @@ impl ToTokens for decl::Node {
             .iter()
             .filter(|v| v.t.strictly_positive())
             .map(|v| v.as_ref().map(|_, v| v.name_of()));
-        let inputs_sep = inputs.t.iter();
+        let inputs_ty = inputs
+            .t
+            .iter()
+            .map(|sv| sv.as_ref().map(|_, v| v.base_type_of()));
+        let inputs_vs = inputs
+            .t
+            .iter()
+            .map(|sv| sv.as_ref().map(|_, v| v.name_of()));
+
         let outputs_ty = outputs
             .t
             .iter()
@@ -157,7 +165,7 @@ impl ToTokens for decl::Node {
             impl #name {
                 pub fn update_mut(
                     &mut self,
-                    #( #inputs_sep ),*
+                    #( #inputs_vs : chandeliers_sem::ty!(#inputs_ty) ),*
                 ) -> (
                     #( chandeliers_sem::ty!(#outputs_ty) ),*
                 ) {

@@ -17,3 +17,4 @@ trybuild = "1.0"
 
 [dev-dependencies]
 chandeliers-syn = { path = "../chandeliers-syn" }
+rand = "0.8.5"
