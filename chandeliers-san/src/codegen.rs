@@ -32,8 +32,17 @@ impl ToTokens for decl::Prog {
 impl ToTokens for decl::Decl {
     fn to_tokens(&self, toks: &mut TokenStream) {
         match self {
-            Self::ExtConst(_) => {}
-            Self::ExtNode(_) => {}
+            Self::ExtConst(c) => {
+                toks.extend(quote! {
+                    #[allow(non_upper_case_globals)]
+                    const #c ;
+                });
+            }
+            Self::ExtNode(n) => {
+                toks.extend(quote! {
+                    #n
+                });
+            }
             Self::Const(c) => {
                 toks.extend(quote! {
                     #[allow(non_upper_case_globals)]
@@ -58,6 +67,20 @@ impl ToTokens for decl::Const {
         let value = value.const_expr();
         toks.extend(quote! {
             #name : chandeliers_sem::ty_mapping!(#ty) = #value
+        });
+    }
+}
+
+/// Extern global constant: assert existence and typing.
+///
+/// There is no value to generate, we simply create a dummy const
+/// to assert that the one declared was found.
+impl ToTokens for decl::ExtConst {
+    fn to_tokens(&self, toks: &mut TokenStream) {
+        let Self { name, ty } = self;
+        let dummy_name = Ident::new(&format!("__const_must_exist_{}", name), name.span);
+        toks.extend(quote! {
+            #dummy_name : chandeliers_sem::ty_mapping!(#ty) = #name
         });
     }
 }
@@ -163,12 +186,13 @@ impl ToTokens for decl::Node {
 
             #[allow(non_snake_case)]
             impl #name {
-                pub fn update_mut(
+                pub fn step(
                     &mut self,
-                    #( #inputs_vs : chandeliers_sem::ty!(#inputs_ty) ),*
+                    __inputs: ( #( chandeliers_sem::ty!(#inputs_ty) ),* ),
                 ) -> (
                     #( chandeliers_sem::ty!(#outputs_ty) ),*
                 ) {
+                    let ( #( #inputs_vs ),* ) = __inputs;
                     #( #stmts ; )*
                     chandeliers_sem::tick!(self);
                     #( chandeliers_sem::update!(self, #pos_inputs_use ); )*
@@ -176,6 +200,35 @@ impl ToTokens for decl::Node {
                     #( chandeliers_sem::update!(self, #pos_locals_use ); )*
                     ( #( #outputs_vs ),* )
                 }
+            }
+        });
+    }
+}
+
+/// Extern node declaration: assert that it implements the right trait.
+impl ToTokens for decl::ExtNode {
+    fn to_tokens(&self, toks: &mut TokenStream) {
+        let Self {
+            name,
+            inputs,
+            outputs,
+        } = self;
+
+        let name = name.as_ident();
+
+        let inputs_ty = inputs
+            .t
+            .iter()
+            .map(|sv| sv.as_ref().map(|_, v| v.base_type_of()));
+        let outputs_ty = outputs
+            .t
+            .iter()
+            .map(|sv| sv.as_ref().map(|_, v| v.base_type_of()));
+
+        toks.extend(quote_spanned! {name.span()=>
+            impl chandeliers_sem::traits::DummyStep for #name {
+                type Input = ( #( chandeliers_sem::ty_mapping!(#inputs_ty) ),* );
+                type Output = ( #( chandeliers_sem::ty_mapping!(#outputs_ty) ),* );
             }
         });
     }
