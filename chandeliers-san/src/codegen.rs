@@ -32,25 +32,10 @@ impl ToTokens for decl::Prog {
 impl ToTokens for decl::Decl {
     fn to_tokens(&self, toks: &mut TokenStream) {
         match self {
-            Self::ExtConst(c) => {
-                toks.extend(quote! {
-                    #c
-                });
-            }
-            Self::ExtNode(n) => {
-                toks.extend(quote! {
-                    #n
-                });
-            }
-            Self::Const(c) => {
-                toks.extend(quote! {
-                    #[allow(non_upper_case_globals)]
-                    const #c ;
-                });
-            }
-            Self::Node(n) => toks.extend(quote! {
-                #n
-            }),
+            Self::ExtConst(c) => toks.extend(quote!( #c )),
+            Self::ExtNode(n) => toks.extend(quote!( #n )),
+            Self::Const(c) => toks.extend(quote!( #c )),
+            Self::Node(n) => toks.extend(quote!( #n )),
         }
     }
 }
@@ -60,20 +45,27 @@ impl ToTokens for decl::Decl {
 /// This is straightforward generation of the components, apart from the
 /// need to eliminate all non-const expression constructors (functions, nodes
 /// later operator).
+/// Because the internals use sanitized names, we also create a publicly
+/// accessible alias.
 impl ToTokens for decl::Const {
     fn to_tokens(&self, toks: &mut TokenStream) {
         let Self { name, ty, value } = self;
+        let ext_name = Ident::new_raw(&format!("{}", name), name.span);
         let value = value.const_expr();
         toks.extend(quote! {
-            #name : chandeliers_sem::ty_mapping!(#ty) = #value
+            #[allow(non_upper_case_globals)]
+            const #name : chandeliers_sem::ty_mapping!(#ty) = #value ;
+            #[allow(non_upper_case_globals)]
+            const #ext_name : chandeliers_sem::ty_mapping!(#ty) = #name ;
         });
     }
 }
 
 /// Extern global constant: assert existence and typing.
 ///
-/// There is no value to generate, we simply create a dummy const
-/// to assert that the one declared was found.
+/// There is not really a value to generate, we simply create a dummy const
+/// to assert that the one declared was found. While we're at it,
+/// we create an alias of `G` into `__global_G` to avoid further collisions.
 ///
 /// The trick here to get a decent error message that
 /// - points to the right place, and also
@@ -91,16 +83,18 @@ impl ToTokens for decl::Const {
 impl ToTokens for decl::ExtConst {
     fn to_tokens(&self, toks: &mut TokenStream) {
         let Self { name, ty } = self;
-        let dummy_name = Ident::new(&format!("__ext_const_typecheck__{}", name), name.span);
+        let ext_name = Ident::new_raw(&format!("{}", name), name.span);
         let real = quote_spanned!(name.span=> real );
-        let expected = quote_spanned!(ty.span=> Type<chandeliers_sem::ty_mapping!(#ty)> );
+        let expected = quote_spanned!(ty.span=> chandeliers_sem::ty_mapping!(#ty) );
+        let expected_wrapped = quote_spanned!(ty.span=> Type<#expected> );
         toks.extend(quote! {
-            #[allow(non_snake_case)]
-            fn #dummy_name() {
+            #[allow(non_upper_case_globals)]
+            const #name: #expected = {
                 struct Type<T>(T);
-                let #real = Type(#name);
-                let expected: #expected = #real ;
-            }
+                let #real = Type(#ext_name);
+                let expected: #expected_wrapped = #real ;
+                expected.0
+            };
         });
     }
 }
@@ -153,7 +147,9 @@ impl ToTokens for decl::Node {
             stmts,
         } = self;
 
+        let ext_name = Ident::new_raw(&format!("{}", name), name.span);
         let name = name.as_ident();
+
         let pos_inputs_decl = inputs.t.iter().filter(|v| v.t.strictly_positive());
         let pos_outputs_decl = outputs.t.iter().filter(|v| v.t.strictly_positive());
         let pos_locals_decl = locals.t.iter().filter(|v| v.t.strictly_positive());
@@ -178,12 +174,21 @@ impl ToTokens for decl::Node {
             .t
             .iter()
             .map(|sv| sv.as_ref().map(|_, v| v.base_type_of()));
+        let inputs_ty_bis = inputs
+            .t
+            .iter()
+            .map(|sv| sv.as_ref().map(|_, v| v.base_type_of()));
+
         let inputs_vs = inputs
             .t
             .iter()
             .map(|sv| sv.as_ref().map(|_, v| v.name_of()));
 
         let outputs_ty = outputs
+            .t
+            .iter()
+            .map(|sv| sv.as_ref().map(|_, v| v.base_type_of()));
+        let outputs_ty_bis = outputs
             .t
             .iter()
             .map(|sv| sv.as_ref().map(|_, v| v.base_type_of()));
@@ -224,6 +229,23 @@ impl ToTokens for decl::Node {
                     ( #( #outputs_vs ),* )
                 }
             }
+
+            // And this is the wrapper impl visible to the outside
+            #[derive(Debug, Default)]
+            #[allow(non_camel_case_types)]
+            pub struct #ext_name { inner: #name }
+
+            impl #ext_name {
+                #[allow(unused_imports)]
+                pub fn step(
+                    &mut self,
+                    __inputs: ( #( chandeliers_sem::ty!(#inputs_ty_bis) ),* ),
+                ) -> (
+                    #( chandeliers_sem::ty!(#outputs_ty_bis) ),*
+                ) {
+                    self.inner.step(__inputs)
+                }
+            }
         });
     }
 }
@@ -245,7 +267,7 @@ impl ToTokens for decl::ExtNode {
             outputs,
         } = self;
 
-        let dummy_name = Ident::new(&format!("__ext_node_typecheck__{}", name), name.span);
+        let ext_name = Ident::new_raw(&format!("{}", name), name.span);
 
         let inputs_ty = inputs
             .t
@@ -262,20 +284,35 @@ impl ToTokens for decl::ExtNode {
         let expected_inputs_ty = quote_spanned! {inputs.span=>
             ( #( chandeliers_sem::ty!(#inputs_ty) ),* )
         };
-        let dummy = quote_spanned! {name.span=> dummy };
-        let actual_inputs = quote_spanned! {inputs.span=>
-            inputs
-        };
+        let actual_inputs = quote_spanned! {inputs.span=> __inputs };
 
         let name = name.as_ident();
+
         toks.extend(quote_spanned! {name.span()=>
+            #[derive(Debug, Default)]
+            #[allow(non_camel_case_types)]
+            pub struct #name { inner: #ext_name }
+
+            impl #name {
+                #[allow(unused_imports)]
+                pub fn step(
+                    &mut self,
+                    #actual_inputs: #expected_inputs_ty,
+                ) -> #expected_outputs_ty
+                {
+                    use chandeliers_sem::traits::Step;
+                    self.inner.step(#actual_inputs)
+                }
+            }
+
+            /*
             #[allow(unreachable_code)]
             #[allow(unused_imports)]
             #[allow(unused_variables)]
             #[allow(unused_assignments)]
             #[allow(unused_mut)]
             #[allow(non_snake_case)]
-            fn #dummy_name() {
+            fn #ext_name() {
                 use chandeliers_sem::traits::*;
                 // We lock in the constraints for the input types: type
                 // inference will assume that this is correct and won't propagate
@@ -296,13 +333,14 @@ impl ToTokens for decl::ExtNode {
                 // section of `quote_spanned!` above.
                 outputs = tmp;
             }
+            */
         });
     }
 }
 
 impl Sp<decl::NodeName> {
     fn as_ident(&self) -> Ident {
-        Ident::new_raw(&self.t.0.t, self.t.0.span)
+        Ident::new(&format!("__node_{}", &self.t.0.t), self.t.0.span)
     }
 }
 
@@ -314,7 +352,7 @@ impl decl::TyVar {
 
 impl ToTokens for Sp<expr::GlobalVar> {
     fn to_tokens(&self, toks: &mut TokenStream) {
-        let id = Ident::new_raw(&self.t.name.t, self.t.name.span);
+        let id = Ident::new(&format!("__global_{}", &self.t.name.t), self.t.name.span);
         toks.extend(quote!( #id ));
     }
 }

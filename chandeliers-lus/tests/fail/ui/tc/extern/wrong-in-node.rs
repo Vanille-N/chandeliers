@@ -1,7 +1,7 @@
 use chandeliers_sem::*;
 
 #[allow(non_camel_case_types)]
-#[derive(Default)]
+#[derive(Debug, Default)]
 struct wrong_step_sig {}
 impl chandeliers_sem::traits::Step for wrong_step_sig {
     type Input = i64;

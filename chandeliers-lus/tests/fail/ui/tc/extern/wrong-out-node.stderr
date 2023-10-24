@@ -2,7 +2,7 @@ error[E0308]: mismatched types
   --> tests/fail/ui/tc/extern/wrong-out-node.rs:15:17
    |
 15 |     extern node wrong_step_sig(i, j : int) returns (b: bool);
-   |                 ^^^^^^^^^^^^^^                      -------- expected due to this type
+   |                 ^^^^^^^^^^^^^^                      -------- expected `Nillable<bool>` because of return type
    |                 |
    |                 expected `Nillable<bool>`, found `Nillable<f64>`
    |
