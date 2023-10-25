@@ -13,8 +13,9 @@ use syntax::translate::SpanTranslate;
 
 #[proc_macro]
 pub fn decl(i: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    let run_uid: usize = rand::random();
     let prog = parse_macro_input!(i as Sp<syntax::ast::Prog>);
-    let prog = match prog.translate(()) {
+    let prog = match prog.translate(run_uid, ()) {
         Ok(prog) => prog,
         Err(e) => return e.into(),
     };

@@ -141,7 +141,6 @@ impl CheckPositive for expr::Expr {
                 rhs.check_positive(fork!(depths))?;
                 Ok(())
             }
-            Self::Builtin(b) => b.check_positive(depths),
             Self::Ifx { cond, yes, no } => {
                 cond.check_positive(fork!(depths))?;
                 yes.check_positive(fork!(depths))?;
@@ -168,14 +167,6 @@ impl<T: CheckPositive> CheckPositive for Tuple<T> {
             elem.check_positive(fork!(depths))?;
         }
         Ok(())
-    }
-}
-
-impl CheckPositive for expr::Builtin {
-    fn check_positive(&self, depths: VarsDepth<'_>) -> TokResult<()> {
-        match self {
-            Self::Float(arg) => arg.check_positive(depths),
-        }
     }
 }
 

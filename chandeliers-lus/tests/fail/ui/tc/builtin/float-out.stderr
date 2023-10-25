@@ -1,16 +1,16 @@
 error: Type mismatch between the left and right sides: expected a tuple (float, float), got a scalar float
- --> tests/fail/ui/tc/builtin/float-out.rs:5:9
+ --> tests/fail/ui/tc/builtin/float-out.rs:7:9
   |
-5 |         (x, y) = float(1);
-  |         ^^^^^^^^^^^^^^^^^
+7 |         (x, y) = float_of_int(1);
+  |         ^^^^^^^^^^^^^^^^^^^^^^^^
   |
 note: This element has type (float, float)
- --> tests/fail/ui/tc/builtin/float-out.rs:5:9
+ --> tests/fail/ui/tc/builtin/float-out.rs:7:9
   |
-5 |         (x, y) = float(1);
+7 |         (x, y) = float_of_int(1);
   |         ^^^^^
 note: While this element has type float
- --> tests/fail/ui/tc/builtin/float-out.rs:5:18
+ --> tests/fail/ui/tc/builtin/float-out.rs:7:18
   |
-5 |         (x, y) = float(1);
-  |                  ^^^^^^^^
+7 |         (x, y) = float_of_int(1);
+  |                  ^^^^^^^^^^^^^^^

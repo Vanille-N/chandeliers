@@ -1,5 +1,8 @@
 use chandeliers_lus as lustre;
-use chandeliers_sem::{assert_is, lit};
+
+#[cfg(test)]
+use chandeliers_sem::stepping::Trusted;
+use chandeliers_std::cast::float_of_int;
 
 /*
 lustre::decl! {
@@ -182,16 +185,18 @@ lustre::decl! {
 
 #[test]
 fn add_correct() {
-    use chandeliers_sem::*;
+    use chandeliers_sem::traits::*;
     let mut add = add::default();
-    assert_is!(add.update_mut(lit!(5), lit!(4)), lit!(9));
+    assert_eq!(add.step((5, 4).embed()).trusted(), 9);
 }
 
 lustre::decl! {
+    extern node float_of_int(i : int) returns (f : float);
+
     node test() returns ();
     var x : float;
     let
-        x = float(5);
+        x = float_of_int(5);
         assert x > 0.0;
     tel
 }
@@ -199,14 +204,16 @@ lustre::decl! {
 #[test]
 fn test_assertion() {
     let mut t = test::default();
-    t.update_mut();
+    t.step(());
 }
 
 lustre::decl! {
+    extern node float_of_int(i : int) returns (f : float);
+
     node failing() returns ();
     var x : float;
     let
-        x = float(5);
+        x = float_of_int(5);
         assert x <= 0.0;
     tel
 }
@@ -215,7 +222,7 @@ lustre::decl! {
 #[should_panic]
 fn failing_assertion() {
     let mut t = failing::default();
-    t.update_mut();
+    t.step(());
 }
 
 lustre::decl! {
@@ -265,6 +272,7 @@ lustre::decl! {
 lustre::decl! {
     const FIB0 : int = 0;
     const FIB1 : int = 1;
+
     node fib() returns (x : int);
     let
         x = FIB0 -> FIB1 -> pre x + pre pre x;
@@ -292,7 +300,7 @@ fn fib_behavior() {
     let mut fib = fib::default();
     let mut vals = vec![];
     for _ in 0..10 {
-        vals.push(fib.update_mut().unwrap());
+        vals.push(fib.step(()).trusted());
     }
     assert_eq!(&vals, &[0, 1, 1, 2, 3, 5, 8, 13, 21, 34]);
 }
@@ -301,8 +309,8 @@ fn fib_behavior() {
 fn counting_twice_behavior() {
     let mut count = counting_twice::default();
     for i in 0..10 {
-        let j = count.update_mut();
-        assert_is!(j, lit!(i));
+        let j = count.step(()).trusted();
+        assert_eq!(j, i);
     }
 }
 
@@ -310,13 +318,14 @@ fn counting_twice_behavior() {
 fn counting_late_behavior() {
     let mut count = counting_late::default();
     for i in 0..10 {
-        let j = count.update_mut();
+        let j = count.step(()).trusted();
         let actual_i = 0.max(i - 2);
-        assert_is!(j, lit!(actual_i));
+        assert_eq!(j, actual_i);
     }
 }
 
 mod random {
+    use chandeliers_sem::traits::*;
     use chandeliers_sem::*;
     //use rand::Rng;
 
@@ -325,8 +334,10 @@ mod random {
         //rng: rand::rngs::ThreadRng,
     }
 
-    impl RandomInt {
-        fn update_mut(&mut self) -> ty!(int) {
+    impl Step for RandomInt {
+        type Input = ();
+        type Output = i64;
+        fn step(&mut self, _: ()) -> ty!(int) {
             //lit!(self.rng.gen())
             lit!(4) // chosen by fair dice roll
         }
@@ -337,7 +348,7 @@ mod random {
 
         node sum(inc : int) returns (s : int);
         let
-            s = 0 fby (s + inc);
+            s = inc + (0 fby s);
         tel;
 
         node randsum() returns (r, s : int);
@@ -347,13 +358,14 @@ mod random {
         tel;
     }
 
-    fn main() {
+    #[test]
+    fn run() {
         let mut randsum = randsum::default();
         let mut sum = 0;
         for _ in 0..100 {
-            let (r, s) = randsum.update_mut();
-            sum += r.unwrap();
-            assert_eq!(sum, s.unwrap());
+            let (r, s) = randsum.step(()).trusted();
+            sum += r;
+            assert_eq!(sum, s);
         }
     }
 }

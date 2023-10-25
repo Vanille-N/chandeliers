@@ -203,7 +203,6 @@ impl TypeCheckExpr for Sp<ast::expr::Expr> {
                     op.accepts(left.is_primitive()?, right.is_primitive()?)?;
                     Ok(TyTuple::Single(Sp::new(TyBase::Bool, span)))
                 }
-                Expr::Builtin(f) => Ok(f.typecheck(ctx)?.t),
                 Expr::Later {
                     clk: _,
                     before,
@@ -242,7 +241,6 @@ impl TypeCheckExpr for Sp<ast::expr::Expr> {
                 Ok(())
             }
             Expr::UnOp { inner, .. } => inner.is_const(),
-            Expr::Builtin(b) => b.is_const(),
             Expr::CmpOp { lhs, rhs, .. } => {
                 lhs.is_const()?;
                 rhs.is_const()?;
@@ -263,40 +261,6 @@ impl TypeCheckExpr for Sp<ast::expr::Expr> {
                 Ok(())
             }
         }
-    }
-}
-
-/// Builtins have known number and types of arguments,
-/// and their types can be more flexible (e.g. `float` is input polymorphic).
-impl TypeCheckExpr for Sp<ast::expr::Builtin> {
-    fn typecheck(&self, ctx: &TyCtx) -> TcResult<Sp<TyTuple>> {
-        use ast::expr::Builtin;
-        fn aux(span: Span, builtin: &Builtin, ctx: &TyCtx) -> TcResult<TyTuple> {
-            match builtin {
-                Builtin::Float(e) => match e.typecheck(ctx)?.t {
-                    TyTuple::Single(_) => Ok(TyTuple::Single(Sp::new(TyBase::Float, span))),
-                    TyTuple::Multiple(m) => {
-                        let s = "Builtin float expects a single argument, not a tuple".to_string();
-                        Err(err::Basic {
-                            span: m.span,
-                            msg: s,
-                        }
-                        .into_err())
-                    }
-                },
-            }
-        }
-        self.as_ref()
-            .map(|span, builtin| aux(span, builtin, ctx))
-            .transpose()
-    }
-
-    fn is_const(&self) -> TcResult<()> {
-        Err(err::NotConst {
-            what: "Function calls are",
-            site: self.span,
-        }
-        .into_err())
     }
 }
 

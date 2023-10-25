@@ -233,6 +233,7 @@ impl ToTokens for decl::Node {
             // And this is the wrapper impl visible to the outside
             #[derive(Debug, Default)]
             #[allow(non_camel_case_types)]
+            #[allow(dead_code)]
             pub struct #ext_name { inner: #name }
 
             impl #ext_name {
@@ -291,6 +292,7 @@ impl ToTokens for decl::ExtNode {
         toks.extend(quote_spanned! {name.span()=>
             #[derive(Debug, Default)]
             #[allow(non_camel_case_types)]
+            #[allow(dead_code)]
             pub struct #name { inner: #ext_name }
 
             impl #name {
@@ -304,43 +306,16 @@ impl ToTokens for decl::ExtNode {
                     self.inner.step(#actual_inputs)
                 }
             }
-
-            /*
-            #[allow(unreachable_code)]
-            #[allow(unused_imports)]
-            #[allow(unused_variables)]
-            #[allow(unused_assignments)]
-            #[allow(unused_mut)]
-            #[allow(non_snake_case)]
-            fn #ext_name() {
-                use chandeliers_sem::traits::*;
-                // We lock in the constraints for the input types: type
-                // inference will assume that this is correct and won't propagate
-                // the fault elsewhere.
-                let #actual_inputs: #expected_inputs_ty;
-                // We do the same for outputs.
-                let outputs: #expected_outputs_ty;
-                // Then we assert that the type implements `Default`.
-                let mut #dummy = <#name as Default>::default();
-                // We then forge inputs and get outputs
-                // (this doesn't actually execute, of course)
-                #actual_inputs = unimplemented!("Contructing a dummy value");
-                let tmp = #dummy.step(#actual_inputs);
-                // Finally this asserts that the output types match.
-                // Because we did the declarations above, if there is an error
-                // here then the error message will get printed with a very
-                // well-controlled span that we were able to forge during the
-                // section of `quote_spanned!` above.
-                outputs = tmp;
-            }
-            */
         });
     }
 }
 
 impl Sp<decl::NodeName> {
     fn as_ident(&self) -> Ident {
-        Ident::new(&format!("__node_{}", &self.t.0.t), self.t.0.span)
+        Ident::new(
+            &format!("__{}__node_{}", self.t.run_uid, &self.t.repr.t),
+            self.t.repr.span,
+        )
     }
 }
 
@@ -352,14 +327,17 @@ impl decl::TyVar {
 
 impl ToTokens for Sp<expr::GlobalVar> {
     fn to_tokens(&self, toks: &mut TokenStream) {
-        let id = Ident::new(&format!("__global_{}", &self.t.name.t), self.t.name.span);
+        let id = Ident::new(
+            &format!("__{}__global_{}", self.t.run_uid, &self.t.repr.t),
+            self.t.repr.span,
+        );
         toks.extend(quote!( #id ));
     }
 }
 
 impl ToTokens for Sp<expr::LocalVar> {
     fn to_tokens(&self, toks: &mut TokenStream) {
-        let id = Ident::new(&format!("_local_{}", &self.t.name.t), self.t.name.span);
+        let id = Ident::new(&format!("__local_{}", &self.t.repr.t), self.t.repr.span);
         toks.extend(quote!( #id ));
     }
 }
@@ -417,9 +395,6 @@ impl expr::Expr {
                 quote!( #( #ts ),* )
             }
             Self::Later { .. } => unreachable!("Later is not valid in const contexts"),
-            Self::Builtin(_) => {
-                unreachable!("Builtins cannot be called in const contexts")
-            }
             Self::Ifx { cond, yes, no } => {
                 let cond = cond.const_expr();
                 let yes = yes.const_expr();
@@ -676,9 +651,6 @@ impl ToTokens for expr::Expr {
             Self::Later { clk, before, after } => {
                 quote!(chandeliers_sem::later!(self <~ #clk; #before, #after))
             }
-            Self::Builtin(b) => {
-                quote!( #b )
-            }
             Self::Ifx { cond, yes, no } => {
                 quote!(chandeliers_sem::ifx!((#cond) then { #yes } else { #no }))
             }
@@ -690,19 +662,6 @@ impl ToTokens for clock::Depth {
     fn to_tokens(&self, toks: &mut TokenStream) {
         let lit = syn::Lit::Int(syn::LitInt::new(&format!("{}", self.dt), self.span));
         toks.extend(quote!( #lit ));
-    }
-}
-
-/// Builtins should all have their own definition in Candle, there is no reason
-/// to have this function do anything more complicated than a single macro
-/// invocation.
-impl ToTokens for expr::Builtin {
-    fn to_tokens(&self, toks: &mut TokenStream) {
-        match self {
-            Self::Float(arg) => {
-                toks.extend(quote!(chandeliers_sem::float!(#arg)));
-            }
-        }
     }
 }
 

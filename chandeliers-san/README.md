@@ -2,6 +2,8 @@
 
 Translations and static analysis of Candle.
 
+---
+
 ## Purpose
 
 This crate provides an AST for the [Candle](https://crates.io/crates/chandeliers-sem)

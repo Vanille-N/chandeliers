@@ -2,6 +2,7 @@
 
 Semantics of the Candle language.
 
+---
 
 ## Candle
 

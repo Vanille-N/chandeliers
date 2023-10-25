@@ -397,24 +397,26 @@ pub mod expr {
     /// A local variable.
     #[derive(Debug, Clone, PartialEq, Eq, Hash)]
     pub struct LocalVar {
-        pub name: Sp<String>,
+        pub repr: Sp<String>,
+        pub run_uid: usize,
     }
 
     /// A global constant.
     #[derive(Debug, Clone, PartialEq, Eq, Hash)]
     pub struct GlobalVar {
-        pub name: Sp<String>,
+        pub repr: Sp<String>,
+        pub run_uid: usize,
     }
 
     impl fmt::Display for LocalVar {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-            write!(f, "{}", self.name)
+            write!(f, "{}", self.repr)
         }
     }
 
     impl fmt::Display for GlobalVar {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-            write!(f, "{}", self.name)
+            write!(f, "{}", self.repr)
         }
     }
 
@@ -533,20 +535,6 @@ pub mod expr {
         }
     }
 
-    /// A primitive builtin function.
-    #[derive(Debug, Clone)]
-    pub enum Builtin {
-        Float(Box<Sp<Expr>>),
-    }
-
-    impl fmt::Display for Builtin {
-        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-            match self {
-                Self::Float(e) => write!(f, "(float)({e})"),
-            }
-        }
-    }
-
     /// An expression.
     #[derive(Debug, Clone)]
     pub enum Expr {
@@ -577,8 +565,6 @@ pub mod expr {
             before: Box<Sp<Expr>>,
             after: Box<Sp<Expr>>,
         },
-        /// A builtin (`float`)
-        Builtin(Sp<Builtin>),
         /// A conditional expression `if b then x else y`
         Ifx {
             cond: Box<Sp<Expr>>,
@@ -597,7 +583,6 @@ pub mod expr {
                 Self::UnOp { op, inner } => write!(f, "({op} {inner})"),
                 Self::CmpOp { op, lhs, rhs } => write!(f, "({lhs} {op} {rhs})"),
                 Self::Later { clk, before, after } => write!(f, "({before} ->{clk} {after})"),
-                Self::Builtin(primitive) => write!(f, "{primitive}"),
                 Self::Ifx { cond, yes, no } => write!(f, "if {cond} {{ {yes} }} else {{ {no} }}"),
             }
         }
@@ -672,11 +657,14 @@ pub mod decl {
 
     /// A node name (either for a declaration or for an invocation)
     #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-    pub struct NodeName(pub Sp<String>);
+    pub struct NodeName {
+        pub repr: Sp<String>,
+        pub run_uid: usize,
+    }
 
     impl fmt::Display for NodeName {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-            write!(f, "{}", self.0)
+            write!(f, "{}", self.repr)
         }
     }
 

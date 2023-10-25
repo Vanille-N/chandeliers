@@ -24,6 +24,7 @@ use chandeliers_san::ast::{Sp, SpanEnd};
 
 /// Impl `SpanEnd` for structs.
 ///
+/// Example:
 /// ```skip
 /// #[derive(syn_derive::Parse)]
 /// struct Addition {
@@ -45,6 +46,7 @@ macro_rules! span_end_on_field {
 
 /// Impl `SpanEnd` for enums.
 ///
+/// Example:
 /// ```skip
 /// #[derive(syn_derive::Parse)]
 /// enum Operator {

@@ -1,9 +1,13 @@
+use chandeliers_std::cast::float_of_int;
+
 chandeliers_lus::decl! {
+    extern node float_of_int(i : int) returns (f : float);
+
     node fn(unsafe : int) returns (return : float);
     var trait : bool;
     let
         trait = true fby (not trait);
-        return = if trait then float(unsafe) else (float(unsafe) + 0.0 fby return);
+        return = if trait then float_of_int(unsafe) else (float_of_int(unsafe) + 0.0 fby return);
     tel;
 
     const as : int = 0;

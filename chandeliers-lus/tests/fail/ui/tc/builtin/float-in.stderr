@@ -1,5 +1,5 @@
-error: Builtin function `float` expects exactly one argument
- --> tests/fail/ui/tc/builtin/float-in.rs:5:13
+error: Block #0 expects 1 arguments but 2 were given
+ --> tests/fail/ui/tc/builtin/float-in.rs:7:13
   |
-5 |         x = float(1, 2);
-  |             ^^^^^^^^^^^
+7 |         x = float_of_int(1, 2);
+  |             ^^^^^^^^^^^^^^^^^^

@@ -238,8 +238,8 @@ impl Depends for decl::ExtNode {
 /// A `NodeName` is a leaf element.
 impl Depends for decl::NodeName {
     type Output = Reference;
-    provide_this!(|this: &Self| Reference::FunName(this.0.clone()));
-    require_this!(|this: &Self| Reference::FunName(this.0.clone()));
+    provide_this!(|this: &Self| Reference::FunName(this.repr.clone()));
+    require_this!(|this: &Self| Reference::FunName(this.repr.clone()));
 }
 
 /// Statement recurses differently in both methods.
@@ -284,7 +284,6 @@ impl Depends for expr::Expr {
         Self::CmpOp { lhs, rhs, .. } => lhs, rhs;
         Self::UnOp { inner, .. } => inner;
         Self::Later { before, after, .. } => before, after;
-        Self::Builtin(_) => ;
         Self::Ifx { cond, yes, no } => cond, yes, no;
     }
 }
@@ -292,15 +291,15 @@ impl Depends for expr::Expr {
 /// `LocalVar` is a leaf.
 impl Depends for expr::LocalVar {
     type Output = Reference;
-    provide_this!(|this: &Self| Reference::LocalVarName(this.name.clone()));
-    require_this!(|this: &Self| Reference::LocalVarName(this.name.clone()));
+    provide_this!(|this: &Self| Reference::LocalVarName(this.repr.clone()));
+    require_this!(|this: &Self| Reference::LocalVarName(this.repr.clone()));
 }
 
 /// `GlobalVar` is a leaf.
 impl Depends for expr::GlobalVar {
     type Output = Reference;
-    provide_this!(|this: &Self| Reference::GlobalVarName(this.name.clone()));
-    require_this!(|this: &Self| Reference::GlobalVarName(this.name.clone()));
+    provide_this!(|this: &Self| Reference::GlobalVarName(this.repr.clone()));
+    require_this!(|this: &Self| Reference::GlobalVarName(this.repr.clone()));
 }
 
 /// `Reference` is a wrapper.
