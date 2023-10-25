@@ -144,7 +144,10 @@ where
             format!("{} not valid in const contexts", self.what),
             self.site.try_span(),
         ));
-        v.push((format!("You must put this definition inside a node"), None));
+        v.push((
+            String::from("You must put this definition inside a node"),
+            None,
+        ));
         v
     }
 }
@@ -169,7 +172,7 @@ where
         let mut v = vec![];
         v.push((
             format!(
-                "Binary operator {} expects arguments of {}",
+                "Binary operator `{}` expects arguments of {}",
                 self.oper, self.expect
             ),
             self.site.try_span(),
@@ -204,7 +207,7 @@ where
         let mut v = vec![];
         v.push((
             format!(
-                "Unary operator {} expects an argument of {}",
+                "Unary operator `{}` expects an argument of {}",
                 self.oper, self.expect
             ),
             self.site.try_span(),
@@ -339,6 +342,112 @@ where
         v.push((
             String::from("used here within its own definition"),
             self.usage.try_span(),
+        ));
+        v
+    }
+}
+
+pub struct NotPositive<Var, Site> {
+    pub var: Var,
+    pub site: Site,
+    pub available_depth: usize,
+    pub attempted_depth: usize,
+}
+impl<Var, Site> IntoError for NotPositive<Var, Site>
+where
+    Var: Display,
+    Site: TrySpan,
+{
+    fn into_err(self) -> Error {
+        let mut v = vec![];
+        v.push((
+            format!("Variable {} is not positive at this depth", self.var),
+            self.site.try_span(),
+        ));
+        v.push((
+            format!(
+                "tried to reach {} steps into the past, with only {} available",
+                self.attempted_depth, self.available_depth
+            ),
+            None,
+        ));
+        v.push((
+            String::from("Maybe add a `->` in front of the expression to increase the depth ?"),
+            None,
+        ));
+        v
+    }
+}
+
+pub struct EmptyTuple<Site> {
+    pub site: Site,
+}
+impl<Site> IntoError for EmptyTuple<Site>
+where
+    Site: TrySpan,
+{
+    fn into_err(self) -> Error {
+        let mut v = vec![];
+        v.push((
+            String::from("A tuple should have at least one element"),
+            self.site.try_span(),
+        ));
+        v
+    }
+}
+
+pub struct UnhandledLitType<Site> {
+    pub site: Site,
+}
+impl<Site> IntoError for UnhandledLitType<Site>
+where
+    Site: TrySpan,
+{
+    fn into_err(self) -> Error {
+        let mut v = vec![];
+        v.push((
+            String::from("Lustre only accepts literals of type int, float, or bool"),
+            self.site.try_span(),
+        ));
+        v
+    }
+}
+
+pub struct CmpNotAssociative<First, Oper1, Second, Oper2, Third, Site> {
+    pub oper1: Oper1,
+    pub first: First,
+    pub site: Site,
+    pub second: Second,
+    pub third: Third,
+    pub oper2: Oper2,
+}
+impl<First, Oper1, Second, Oper2, Third, Site> IntoError
+    for CmpNotAssociative<First, Oper1, Second, Oper2, Third, Site>
+where
+    Oper1: Display,
+    Oper2: Display,
+    First: Display,
+    Second: Display,
+    Third: Display,
+    Site: TrySpan,
+{
+    fn into_err(self) -> Error {
+        let mut v = vec![];
+        let Self {
+            first,
+            oper1,
+            second,
+            oper2,
+            third,
+            site,
+        } = &self;
+        v.push((
+            format!("Comparison operator {oper1} is not associative"),
+            site.try_span(),
+        ));
+        v.push((
+            format!("Maybe replace `{first} {oper1} {second} {oper2} {third}` with `{first} {oper1} {second} and {second} {oper2} {third}` ?"),
+            None,
         ));
         v
     }

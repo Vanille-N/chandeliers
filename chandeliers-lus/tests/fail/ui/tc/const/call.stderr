@@ -1,5 +1,7 @@
-error: Expression #0 is not const: const expressions must not contain any function calls
+error: Function calls are not valid in const contexts
  --> tests/fail/ui/tc/const/call.rs:2:5
   |
 2 |     const X : float = float(5);
   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: You must put this definition inside a node

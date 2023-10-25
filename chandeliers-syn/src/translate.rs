@@ -339,10 +339,11 @@ impl Translate for lus::Const {
         let mut ectx = ExprCtx::default();
         let value = self.value.translate(run_uid, ectx.view())?;
         if !ectx.stmts.is_empty() || !ectx.blocks.is_empty() {
-            let s = format!("Expression {value} is not const: const expressions must not contain any function calls");
-            return Err(quote_spanned! {span=>
-                compile_error!(#s);
-            });
+            return Err(err::NotConst {
+                site: span,
+                what: &value,
+            }
+            .into_err());
         }
         Ok(candle::decl::Const { name, ty, value })
     }
@@ -396,7 +397,8 @@ impl Translate for lus::Decls {
                         candle::ty::Stream {
                             base: Sp::new(ty, span),
                             depth: candle::clock::Depth {
-                                // FIXME: don't forget to change this by depth propagation
+                                // Putting in a dummy value 0 for `dt`, don't forget to update
+                                // it by depth propagation in the positivity check...
                                 dt: 0,
                                 span,
                             },
@@ -634,21 +636,38 @@ impl Translate for lus::expr::CmpExpr {
                 return first.flat_translate(run_uid, ctx);
             }
         };
-        // We must not have a third element.
-        if it.next().is_some() {
-            return Err(quote_spanned! {span=>
-                compile_error!("Comparisons are not associative");
-            });
-        }
-
         let Pair::Punctuated(lhs, op) = first else {
-            unreachable!()
+            unreachable!("We know that there is a second")
         };
-        let Pair::End(rhs) = second else {
-            unreachable!()
-        };
-        let op = op.translate(run_uid, span, ())?;
         let lhs = Box::new(lhs.translate(run_uid, fork!(ctx))?);
+        let op = op.translate(run_uid, span, ())?;
+        // We must not have a third element.
+        if let Some(third) = it.next() {
+            // We're going to throw this path anyway, we might as well
+            // make destructive changes to get a better error message.
+            let Pair::Punctuated(second, oper2) = second else {
+                unreachable!()
+            };
+            let second = second.translate(run_uid, fork!(ctx))?;
+            let oper2 = oper2.translate(run_uid, span, ())?;
+            let third = match third {
+                Pair::Punctuated(third, _) => third,
+                Pair::End(third) => third,
+            };
+            let third = third.translate(run_uid, fork!(ctx))?;
+            return Err(err::CmpNotAssociative {
+                site: span,
+                first: lhs,
+                oper1: op,
+                oper2,
+                second,
+                third,
+            }
+            .into_err());
+        }
+        let Pair::End(rhs) = second else {
+            unreachable!("We know there is no third")
+        };
         let rhs = Box::new(rhs.translate(run_uid, ctx)?);
         Ok(CandleExpr::CmpOp { op, lhs, rhs })
     }
@@ -875,9 +894,7 @@ impl Translate for lus::expr::ParenExpr {
             es.push(e.translate(run_uid, fork!(ctx))?);
         }
         match es.len() {
-            0 => Err(quote_spanned! {span=>
-                compile_error!("Tuple should have at least one element");
-            }),
+            0 => Err(err::EmptyTuple { site: span }.into_err()),
             1 => Ok(es.into_iter().next().expect("ParenExpr cannot be empty").t),
             _ => Ok(CandleExpr::Tuple(Sp::new(es, span))),
         }
@@ -981,11 +998,7 @@ impl Translate for lus::expr::LitExpr {
             Lit::Float(f) => {
                 candle::expr::Lit::Float(f.base10_parse().expect("Failed to parse Float"))
             }
-            _ => {
-                return Err(quote_spanned! {span=>
-                    compile_error!("Lustre only accepts bool/int/float literals");
-                })
-            }
+            _ => return Err(err::UnhandledLitType { site: span }.into_err()),
         };
         Ok(CandleExpr::Lit(Sp::new(lit, span)))
     }

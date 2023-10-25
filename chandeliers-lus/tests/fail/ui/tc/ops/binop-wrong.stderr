@@ -1,4 +1,4 @@
-error: Binary operator + expects arguments of type int or float, found bool
+error: Binary operator `+` expects arguments of type int or float, found bool
  --> tests/fail/ui/tc/ops/binop-wrong.rs:2:22
   |
 2 |     const B : bool = true + true;
@@ -15,7 +15,7 @@ note: The right-hand-side is found to be of type bool
 2 |     const B : bool = true + true;
   |                             ^^^^
 
-error: Binary operator % expects arguments of type int, found float
+error: Binary operator `%` expects arguments of type int, found float
  --> tests/fail/ui/tc/ops/binop-wrong.rs:6:23
   |
 6 |     const R : float = 0.1 % 0.5;
@@ -32,7 +32,7 @@ note: The right-hand-side is found to be of type float
 6 |     const R : float = 0.1 % 0.5;
   |                             ^^^
 
-error: Binary operator & expects arguments of type int or bool, found float
+error: Binary operator `and` expects arguments of type int or bool, found float
   --> tests/fail/ui/tc/ops/binop-wrong.rs:10:23
    |
 10 |     const F : float = 0.1 and 0.4;

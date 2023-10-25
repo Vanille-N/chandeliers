@@ -29,6 +29,7 @@ dependencies = [
 name = "chandeliers-lus"
 version = "0.2.1"
 dependencies = [
+ "chandeliers-err",
  "chandeliers-san",
  "chandeliers-sem",
  "chandeliers-std",
@@ -70,6 +71,7 @@ dependencies = [
 name = "chandeliers-syn"
 version = "0.2.1"
 dependencies = [
+ "chandeliers-err",
  "chandeliers-san",
  "proc-macro2",
  "quote",

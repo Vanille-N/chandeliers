@@ -7,10 +7,9 @@
 
 use std::collections::HashMap;
 
-use proc_macro2::TokenStream;
-use quote::quote_spanned;
+use chandeliers_err::{self as err, IntoError};
 
-type TokResult<T> = Result<T, TokenStream>;
+type TokResult<T> = Result<T, err::Error>;
 
 use crate::ast::*;
 
@@ -188,10 +187,13 @@ impl CheckPositive for expr::Reference {
                     depths.update(&v.t.var.t, v.t.depth.dt);
                     Ok(())
                 } else {
-                    let s = format!("Variable {} is not positive at this depth ({} steps into the past at depth {})", v.t.var, v.t.depth.dt, depths.current);
-                    Err(quote_spanned! {v.span=>
-                        compile_error!(#s);
-                    })
+                    Err(err::NotPositive {
+                        var: &v.t.var,
+                        site: v.span,
+                        available_depth: depths.current,
+                        attempted_depth: v.t.depth.dt,
+                    }
+                    .into_err())
                 }
             }
         }

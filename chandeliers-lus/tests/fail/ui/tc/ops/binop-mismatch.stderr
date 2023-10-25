@@ -1,4 +1,4 @@
-error: Binary operator + expects arguments of the same type
+error: Binary operator `+` expects arguments of the same type
  --> tests/fail/ui/tc/ops/binop-mismatch.rs:2:21
   |
 2 |     const N : int = 5 + 0.1;
@@ -15,7 +15,7 @@ note: The right-hand-side is found to be of type float
 2 |     const N : int = 5 + 0.1;
   |                         ^^^
 
-error: Binary operator + expects arguments of the same type
+error: Binary operator `+` expects arguments of the same type
  --> tests/fail/ui/tc/ops/binop-mismatch.rs:8:13
   |
 8 |         o = i + 1 + 4 + 0.5;
@@ -32,7 +32,7 @@ note: The right-hand-side is found to be of type float
 8 |         o = i + 1 + 4 + 0.5;
   |                         ^^^
 
-error: Binary operator == expects arguments of the same type
+error: Binary operator `=` expects arguments of the same type
   --> tests/fail/ui/tc/ops/binop-mismatch.rs:13:23
    |
 13 |     const B : bool = (1 + 1 = (true or false))

@@ -488,8 +488,8 @@ pub mod expr {
                 Self::Sub => write!(f, "-"),
                 Self::Div => write!(f, "/"),
                 Self::Rem => write!(f, "%"),
-                Self::BitAnd => write!(f, "&"),
-                Self::BitOr => write!(f, "|"),
+                Self::BitAnd => write!(f, "and"),
+                Self::BitOr => write!(f, "or"),
                 Self::BitXor => write!(f, "^"),
             }
         }
@@ -506,7 +506,7 @@ pub mod expr {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
             match self {
                 Self::Neg => write!(f, "-"),
-                Self::Not => write!(f, "!"),
+                Self::Not => write!(f, "not"),
             }
         }
     }
@@ -529,8 +529,8 @@ pub mod expr {
                 Self::Ge => write!(f, ">="),
                 Self::Lt => write!(f, "<"),
                 Self::Gt => write!(f, ">"),
-                Self::Eq => write!(f, "=="),
-                Self::Ne => write!(f, "!="),
+                Self::Eq => write!(f, "="),
+                Self::Ne => write!(f, "<>"),
             }
         }
     }
