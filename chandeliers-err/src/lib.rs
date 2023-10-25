@@ -53,23 +53,23 @@ where
     Right: Display + TrySpan,
 {
     fn into_err(self) -> Error {
-        let mut v = vec![];
-        v.push((
-            format!(
-                "Type mismatch between the left and right sides: {}",
-                self.msg
+        vec![
+            (
+                format!(
+                    "Type mismatch between the left and right sides: {}",
+                    self.msg
+                ),
+                self.source.try_span(),
             ),
-            self.source.try_span(),
-        ));
-        v.push((
-            format!("This element has type {}", self.left),
-            self.left.try_span(),
-        ));
-        v.push((
-            format!("While this element has type {}", self.right),
-            self.right.try_span(),
-        ));
-        v
+            (
+                format!("This element has type {}", self.left),
+                self.left.try_span(),
+            ),
+            (
+                format!("While this element has type {}", self.right),
+                self.right.try_span(),
+            ),
+        ]
     }
 }
 
@@ -111,20 +111,20 @@ where
             suggest2.join(", ")
         };
 
-        let mut v = vec![];
-        v.push((
-            format!("Variable {} not found in the context.", self.var),
-            self.var.try_span(),
-        ));
-        v.push((
-            format!("Perhaps you meant one of the local variables: {}", suggest1),
-            None,
-        ));
-        v.push((
-            format!("or one of the global variables: {}", suggest2),
-            None,
-        ));
-        v
+        vec![
+            (
+                format!("Variable {} not found in the context.", self.var),
+                self.var.try_span(),
+            ),
+            (
+                format!("Perhaps you meant one of the local variables: {}", suggest1),
+                None,
+            ),
+            (
+                format!("or one of the global variables: {}", suggest2),
+                None,
+            ),
+        ]
     }
 }
 
@@ -139,16 +139,16 @@ where
     Site: TrySpan,
 {
     fn into_err(self) -> Error {
-        let mut v = vec![];
-        v.push((
-            format!("{} not valid in const contexts", self.what),
-            self.site.try_span(),
-        ));
-        v.push((
-            String::from("You must put this definition inside a node"),
-            None,
-        ));
-        v
+        vec![
+            (
+                format!("{} not valid in const contexts", self.what),
+                self.site.try_span(),
+            ),
+            (
+                String::from("You must put this definition inside a node"),
+                None,
+            ),
+        ]
     }
 }
 
@@ -169,23 +169,23 @@ where
     Right: Display + TrySpan,
 {
     fn into_err(self) -> Vec<(String, Option<Span>)> {
-        let mut v = vec![];
-        v.push((
-            format!(
-                "Binary operator `{}` expects arguments of {}",
-                self.oper, self.expect
+        vec![
+            (
+                format!(
+                    "Binary operator `{}` expects arguments of {}",
+                    self.oper, self.expect
+                ),
+                self.site.try_span(),
             ),
-            self.site.try_span(),
-        ));
-        v.push((
-            format!("The left-hand-side is found to be of type {}", self.left),
-            self.left.try_span(),
-        ));
-        v.push((
-            format!("The right-hand-side is found to be of type {}", self.right),
-            self.right.try_span(),
-        ));
-        v
+            (
+                format!("The left-hand-side is found to be of type {}", self.left),
+                self.left.try_span(),
+            ),
+            (
+                format!("The right-hand-side is found to be of type {}", self.right),
+                self.right.try_span(),
+            ),
+        ]
     }
 }
 
@@ -204,19 +204,19 @@ where
     Inner: Display + TrySpan,
 {
     fn into_err(self) -> Error {
-        let mut v = vec![];
-        v.push((
-            format!(
-                "Unary operator `{}` expects an argument of {}",
-                self.oper, self.expect
+        vec![
+            (
+                format!(
+                    "Unary operator `{}` expects an argument of {}",
+                    self.oper, self.expect
+                ),
+                self.site.try_span(),
             ),
-            self.site.try_span(),
-        ));
-        v.push((
-            format!("The inner value is found to be of type {}", self.inner),
-            self.inner.try_span(),
-        ));
-        v
+            (
+                format!("The inner value is found to be of type {}", self.inner),
+                self.inner.try_span(),
+            ),
+        ]
     }
 }
 
@@ -233,16 +233,16 @@ where
     Inner: Display + TrySpan,
 {
     fn into_err(self) -> Error {
-        let mut v = vec![];
-        v.push((
-            format!("{} should be of type bool", self.actual),
-            self.site.try_span(),
-        ));
-        v.push((
-            format!("The argument is found to be of type {}", self.inner),
-            self.inner.try_span(),
-        ));
-        v
+        vec![
+            (
+                format!("{} should be of type bool", self.actual),
+                self.site.try_span(),
+            ),
+            (
+                format!("The argument is found to be of type {}", self.inner),
+                self.inner.try_span(),
+            ),
+        ]
     }
 }
 
@@ -287,19 +287,19 @@ where
     PriorSite: TrySpan,
 {
     fn into_err(self) -> Error {
-        let mut v = vec![];
-        v.push((
-            format!(
-                "Attempt to redefine {}, when {} already defines it",
-                self.unit, self.prior
+        vec![
+            (
+                format!(
+                    "Attempt to redefine {}, when {} already defines it",
+                    self.unit, self.prior
+                ),
+                self.new_site.try_span(),
             ),
-            self.new_site.try_span(),
-        ));
-        v.push((
-            String::from("Already defined here"),
-            self.prior_site.try_span(),
-        ));
-        v
+            (
+                String::from("Already defined here"),
+                self.prior_site.try_span(),
+            ),
+        ]
     }
 }
 
@@ -312,12 +312,10 @@ where
     Unit: Display + TrySpan,
 {
     fn into_err(self) -> Error {
-        let mut v = vec![];
-        v.push((
+        vec![(
             format!("No definition provided for {} which is required", self.unit),
             self.unit.try_span(),
-        ));
-        v
+        )]
     }
 }
 
@@ -334,16 +332,16 @@ where
     Site2: TrySpan,
 {
     fn into_err(self) -> Error {
-        let mut v = vec![];
-        v.push((
-            format!("{} depends on itself", self.unit),
-            self.def_site.try_span(),
-        ));
-        v.push((
-            String::from("used here within its own definition"),
-            self.usage.try_span(),
-        ));
-        v
+        vec![
+            (
+                format!("{} depends on itself", self.unit),
+                self.def_site.try_span(),
+            ),
+            (
+                String::from("used here within its own definition"),
+                self.usage.try_span(),
+            ),
+        ]
     }
 }
 
@@ -359,40 +357,23 @@ where
     Site: TrySpan,
 {
     fn into_err(self) -> Error {
-        let mut v = vec![];
-        v.push((
-            format!("Variable {} is not positive at this depth", self.var),
-            self.site.try_span(),
-        ));
-        v.push((
-            format!(
-                "tried to reach {} steps into the past, with only {} available",
-                self.attempted_depth, self.available_depth
+        vec![
+            (
+                format!("Variable {} is not positive at this depth", self.var),
+                self.site.try_span(),
             ),
-            None,
-        ));
-        v.push((
-            String::from("Maybe add a `->` in front of the expression to increase the depth ?"),
-            None,
-        ));
-        v
-    }
-}
-
-pub struct EmptyTuple<Site> {
-    pub site: Site,
-}
-impl<Site> IntoError for EmptyTuple<Site>
-where
-    Site: TrySpan,
-{
-    fn into_err(self) -> Error {
-        let mut v = vec![];
-        v.push((
-            String::from("A tuple should have at least one element"),
-            self.site.try_span(),
-        ));
-        v
+            (
+                format!(
+                    "tried to reach {} steps into the past, with only {} available",
+                    self.attempted_depth, self.available_depth
+                ),
+                None,
+            ),
+            (
+                String::from("Maybe add a `->` in front of the expression to increase the depth ?"),
+                None,
+            ),
+        ]
     }
 }
 
@@ -404,12 +385,10 @@ where
     Site: TrySpan,
 {
     fn into_err(self) -> Error {
-        let mut v = vec![];
-        v.push((
+        vec![(
             String::from("Lustre only accepts literals of type int, float, or bool"),
             self.site.try_span(),
-        ));
-        v
+        )]
     }
 }
 
@@ -432,7 +411,6 @@ where
     Site: TrySpan,
 {
     fn into_err(self) -> Error {
-        let mut v = vec![];
         let Self {
             first,
             oper1,
@@ -441,14 +419,12 @@ where
             third,
             site,
         } = &self;
-        v.push((
+        vec![(
             format!("Comparison operator {oper1} is not associative"),
             site.try_span(),
-        ));
-        v.push((
+        ),(
             format!("Maybe replace `{first} {oper1} {second} {oper2} {third}` with `{first} {oper1} {second} and {second} {oper2} {third}` ?"),
             None,
-        ));
-        v
+        )]
     }
 }

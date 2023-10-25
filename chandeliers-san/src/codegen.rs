@@ -564,24 +564,15 @@ impl ToTokens for stmt::Statement {
                     let #target = #source
                 });
             }
-            Self::Substep {
-                clk,
-                id,
-                args,
-                nbret,
-            } => {
+            Self::Substep { clk, id, args } => {
                 let id_lit = syn::LitInt::new(&format!("{}", id.t.id), id.span);
                 let args = args.t.iter();
-                let mut nbret_stars = Vec::new();
-                for _ in 0..nbret.t.expect("Needs to know how many values are returned") {
-                    nbret_stars.push(quote!(*));
-                }
                 toks.extend(quote! {
                     let #id = chandeliers_sem::substep!(
                         self <~ #clk;
                         #id_lit => {
                             #( #args , )*
-                        }| #( #nbret_stars )*
+                        }
                     )
                 });
             }

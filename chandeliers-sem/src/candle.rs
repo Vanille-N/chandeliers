@@ -311,7 +311,7 @@ macro_rules! later {
 
 /// Invocation of subnodes. [side-effects: only call once for each node id]
 ///
-/// Usage: `substep!(self <~ $dt; $id => { ... }|****)` (expression)
+/// Usage: `substep!(self <~ $dt; $id => { ... })` (expression)
 /// Assumption: `self` has a `__clock` field.
 /// Assumption: `self` has a tuple field `__nodes` of which the `$id`'th component
 ///             has a method `step` of the correct arity, input and output types.
@@ -321,22 +321,16 @@ macro_rules! later {
 /// the `{ ... }`) and gives the return value of said method.
 /// This computation will not be performed if the clock is not at least `$dt`,
 /// allowing delayed execution of subnodes.
-///
-/// The '|****' part of the invocation tells Candle what the size of the
-/// tuple returned by the node is, so that it may generate uninitialized
-/// values of the right size if needed. There should be exactly as many
-/// "*" as elements in the output tuple, otherwise you will get an
-/// "if arms with incompatible type" error.
 #[macro_export]
 macro_rules! substep {
-    ($this:ident <~ $dt:expr ; $id:tt => { $( $arg:expr, )* } | $($sz:tt)* ) => {
+    ($this:ident <~ $dt:expr ; $id:tt => { $( $arg:expr, )* } ) => {
         if $this.__clock >= $dt {
             $this.__nodes.$id
                 .step(
                     ( $( $arg ),* )
                 )
         } else {
-            ( $( $crate::nil!( $sz ) ),* )
+            $crate::nillable::AllNil::auto_size()
         }
     }
 }
@@ -350,11 +344,11 @@ macro_rules! substep {
 /// A `Nil` test condition contaminates the entire expression.
 #[macro_export]
 macro_rules! ifx {
-    ( ( $b:expr ) then { $yes:expr } else { $no:expr }) => {
+    ( ( $b:expr ) then { $yes:expr } else { $no:expr } ) => {
         match $b {
             $crate::nillable::Defined(true) => $yes,
             $crate::nillable::Defined(false) => $no,
-            $crate::nillable::Nil => $crate::nil!(),
+            $crate::nillable::Nil => $crate::nillable::AllNil::auto_size(),
         }
     };
 }
@@ -391,7 +385,7 @@ macro_rules! nillable_cmp_ord {
         match $lhs.cmp($rhs) {
             Some(std::cmp::Ordering::$ord) => $crate::lit!($res),
             Some(_) => $crate::lit!(!$res),
-            None => $crate::nil!(),
+            None => $crate::nillable::AllNil::auto_size(),
         }
     };
 }
@@ -404,7 +398,7 @@ macro_rules! nillable_cmp_eq {
         match $lhs.eq($rhs) {
             Some(true) => $crate::lit!($equal),
             Some(false) => $crate::lit!(!$equal),
-            None => $crate::nil!(),
+            None => $crate::nillable::AllNil::auto_size(),
         }
     };
 }

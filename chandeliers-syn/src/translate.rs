@@ -880,7 +880,6 @@ impl Translate for lus::expr::ParenExpr {
             es.push(e.translate(run_uid, fork!(ctx))?);
         }
         match es.len() {
-            0 => Err(err::EmptyTuple { site: span }.into_err()),
             1 => Ok(es.into_iter().next().expect("ParenExpr cannot be empty").t),
             _ => Ok(CandleExpr::Tuple(Sp::new(es, span))),
         }
@@ -913,7 +912,6 @@ impl Translate for lus::expr::CallExpr {
                 },
                 id,
                 args: Sp::new(es, args_span),
-                nbret: Sp::new(None, span),
             },
             span,
         );

@@ -70,7 +70,7 @@ impl Step for cumul_avg {
                 var!(self <~ 0; x),
                 later!(self <~ 0; lit!(0.0), var!(self <~ 1; avg)),
                 binop!(/; lit!(1.0), float!(var!(self <~ 0; n))),
-            }|*
+            }
         );
         tick!(self);
         update!(self, avg);

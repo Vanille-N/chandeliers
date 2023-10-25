@@ -192,7 +192,56 @@ where
     }
 }
 
-pub trait AutoSizedNil {
-    type Output;
-    fn auto_size() -> Self::Output;
+pub trait AllNil {
+    fn auto_size() -> Self;
+}
+
+impl<T> AllNil for Nillable<T> {
+    fn auto_size() -> Self {
+        Nil
+    }
+}
+
+macro_rules! all_nil_for_tuple {
+    ( ( $( $T:ty ),* ) with $($decl:tt)*) => {
+        impl$($decl)* AllNil for ( $( $T, )* )
+        where $( $T : AllNil ),*
+        {
+            #[allow(clippy::unused_unit)]
+            fn auto_size() -> Self {
+                ( $( <$T as AllNil>::auto_size(), )* )
+            }
+        }
+    }
+}
+all_nil_for_tuple!(() with);
+all_nil_for_tuple!((T0) with <T0>);
+all_nil_for_tuple!((T0, T1) with <T0, T1>);
+all_nil_for_tuple!((T0, T1, T2) with <T0, T1, T2>);
+all_nil_for_tuple!((T0, T1, T2, T3) with <T0, T1, T2, T3>);
+all_nil_for_tuple!((T0, T1, T2, T3, T4) with <T0, T1, T2, T3, T4>);
+all_nil_for_tuple!((T0, T1, T2, T3, T4, T5) with <T0, T1, T2, T3, T4, T5>);
+all_nil_for_tuple!((T0, T1, T2, T3, T4, T5, T6) with <T0, T1, T2, T3, T4, T5, T6>);
+all_nil_for_tuple!((T0, T1, T2, T3, T4, T5, T6, T7) with <T0, T1, T2, T3, T4, T5, T6, T7>);
+all_nil_for_tuple!((T0, T1, T2, T3, T4, T5, T6, T7, T8) with <T0, T1, T2, T3, T4, T5, T6, T7, T8>);
+all_nil_for_tuple!((T0, T1, T2, T3, T4, T5, T6, T7, T8, T9) with <T0, T1, T2, T3, T4, T5, T6, T7, T8, T9>);
+all_nil_for_tuple!((T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, T10) with <T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, T10>);
+
+#[test]
+fn nil_of_size() {
+    let _: Nillable<i64> = AllNil::auto_size();
+    let _: (Nillable<i64>, Nillable<f64>) = AllNil::auto_size();
+    let _: () = AllNil::auto_size();
+    let _: (
+        ((Nillable<i64>,),),
+        Nillable<f64>,
+        Nillable<f64>,
+        Nillable<f64>,
+        Nillable<f64>,
+    ) = AllNil::auto_size();
+    let _ = if true {
+        Defined(1)
+    } else {
+        AllNil::auto_size()
+    };
 }

@@ -583,7 +583,9 @@ pub mod expr {
                 Self::UnOp { op, inner } => write!(f, "({op} {inner})"),
                 Self::CmpOp { op, lhs, rhs } => write!(f, "({lhs} {op} {rhs})"),
                 Self::Later { clk, before, after } => write!(f, "({before} ->{clk} {after})"),
-                Self::Ifx { cond, yes, no } => write!(f, "if {cond} {{ {yes} }} else {{ {no} }}"),
+                Self::Ifx { cond, yes, no } => {
+                    write!(f, "if {cond} {{ {yes} }} else {{ {no} }}")
+                }
             }
         }
     }
@@ -626,7 +628,6 @@ pub mod stmt {
             clk: clock::Depth,
             id: Sp<expr::NodeId>,
             args: Sp<Tuple<Sp<expr::Expr>>>,
-            nbret: Sp<Option<usize>>,
         },
         /// Print debug information.
         Trace {

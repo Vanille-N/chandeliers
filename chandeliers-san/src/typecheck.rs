@@ -127,20 +127,10 @@ impl TypeCheckStmt for Sp<ast::stmt::Statement> {
                 t.is_bool("The argument of assert", self.span)?;
                 Ok(Sp::new((), self.span))
             }
-            Statement::Substep {
-                clk: _,
-                id,
-                args,
-                ref mut nbret,
-            } => {
+            Statement::Substep { clk: _, id, args } => {
                 let Some(expected_tys) = ctx.nodes_in.get(&id.t) else {
                     unreachable!("Substep is malformed: {id} is not a block");
                 };
-                // Here we find out the length of the tuple returned by the
-                // node so that we can generate an `else` branch with the
-                // correct size.
-                let out_len = ctx.nodes_out.get(&id.t).unwrap().t.len();
-                nbret.t = Some(out_len);
                 if expected_tys.t.len() != args.t.len() {
                     let s = format!(
                         "Block {} expects {} arguments but {} were given",
