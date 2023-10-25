@@ -37,7 +37,7 @@
 //!
 //! The hierarchy of expressions exists only for parsing purposes to express
 //! the precedence of operators, and in Candle there is no longer any notion
-//! of `AtomicExpr` or `ExprHierarchy`.
+//! of `AtomicExpr`, all exressions are at the same level.
 //! Candle has much fewer expression types (`Expr`) than the Lustre parsing
 //! AST (`MulExpr`, `AddExpr`, `PreExpr`, `AtomicExpr`, ...), and this is
 //! reflected in the translation that needs to create much more `Box`es
@@ -119,11 +119,12 @@ use std::collections::HashSet;
 use super::ast as lus;
 use super::translate::candle::Sp;
 
+use chandeliers_err::{self as err, IntoError};
 use chandeliers_san::ast as candle;
-use proc_macro2::{Span, TokenStream};
-use quote::quote_spanned;
 
-pub type TrResult<T> = Result<T, TokenStream>;
+use proc_macro2::Span;
+
+pub type TrResult<T> = Result<T, err::Error>;
 
 type CandleExpr = candle::expr::Expr;
 
@@ -341,7 +342,7 @@ impl Translate for lus::Const {
         if !ectx.stmts.is_empty() || !ectx.blocks.is_empty() {
             return Err(err::NotConst {
                 site: span,
-                what: &value,
+                what: "Function calls are",
             }
             .into_err());
         }
@@ -515,21 +516,6 @@ impl Translate for lus::TargetExprTuple {
             Ok(candle::stmt::VarTuple::Multiple(Sp::new(vs, span)))
         } else {
             Ok(vs.into_iter().next().unwrap().t)
-        }
-    }
-}
-
-impl<X, Y> Translate for lus::expr::ExprHierarchy<X, Y>
-where
-    X: Translate,
-    for<'i> Y: Translate<Ctx<'i> = X::Ctx<'i>, Output = X::Output>,
-{
-    type Ctx<'i> = X::Ctx<'i>;
-    type Output = X::Output;
-    fn translate(self, run_uid: usize, span: Span, ctx: Self::Ctx<'_>) -> TrResult<Self::Output> {
-        match self {
-            Self::Here(x) => x.translate(run_uid, span, ctx),
-            Self::Below(y) => y.translate(run_uid, span, ctx),
         }
     }
 }

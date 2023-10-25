@@ -1,39 +1,37 @@
 #![feature(proc_macro_diagnostic)]
 
-use quote::ToTokens;
-use syn::parse_macro_input;
-
+use chandeliers_err as err;
 use chandeliers_san as sanitizer;
 use chandeliers_syn as syntax;
 
 use sanitizer::ast::Sp;
-use sanitizer::causality::Causality;
-use sanitizer::positivity::MakePositive;
-use syntax::translate::SpanTranslate;
 
 #[proc_macro]
 pub fn decl(i: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    let run_uid: usize = rand::random();
+    use quote::ToTokens;
+    use syn::parse_macro_input;
     let prog = parse_macro_input!(i as Sp<syntax::ast::Prog>);
-    let prog = match prog.translate(run_uid, ()) {
-        Ok(prog) => prog,
-        Err(e) => return e.into(),
-    };
-    let mut prog = match prog.causality() {
+    let prog = match prog_pipeline(prog) {
         Ok(prog) => prog,
         Err(e) => return emit(e).into(),
     };
-    match prog.typecheck() {
-        Ok(()) => {}
-        Err(e) => return emit(e).into(),
-    }
-    match prog.make_positive() {
-        Ok(()) => {}
-        Err(e) => return e.into(),
-    }
     let mut toks = proc_macro2::TokenStream::new();
     prog.to_tokens(&mut toks);
     toks.into()
+}
+
+fn prog_pipeline(
+    prog: Sp<syntax::ast::Prog>,
+) -> Result<Sp<sanitizer::ast::decl::Prog>, err::Error> {
+    use sanitizer::causality::Causality;
+    use sanitizer::positivity::MakePositive;
+    use syntax::translate::SpanTranslate;
+    let run_uid: usize = rand::random();
+    let prog = prog.translate(run_uid, ())?;
+    let mut prog = prog.causality()?;
+    prog.typecheck()?;
+    prog.make_positive()?;
+    Ok(prog)
 }
 
 macro_rules! compiling {

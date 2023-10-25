@@ -15,28 +15,18 @@ each() {
     done
 }
 
-cargo-test() {
-    cargo test
-}
-
-cargo-update() {
-    cargo update
-}
-
 version-bump() {
     sed -Ei 's/^version = ".*"$/version = "'"$1"'"/' Cargo.toml
     sed -Ei 's/^(chandeliers-.*)version = ".*"(.*)/\1version = "'"$1"'"\2/' Cargo.toml
 }
 
-cargo-publish() {
-    cargo publish
+do-cargo() {
+    cargo "$@"
 }
 
 main() {
     case "$1" in
-        ("test") each cargo-test;;
-        ("update") each cargo-update;;
-        ("publish") each cargo-publish;;
+        ("check"|"build"|"test"|"update"|"publish"|"clippy"|"fmt") each do-cargo "$@";;
         ("bump") each version-bump "$2";;
         ("help"|*)
             echo "Submodule manager for the Chandeliers project"
@@ -44,10 +34,8 @@ main() {
             echo ""
             echo "Usage: $0 CMD [ARGS]"
             echo "with CMD among"
-            echo "    test           execute 'cargo test' in each submodule"
-            echo "    update         execute 'cargo update' in each submodule"
-            echo "    bump x.y.z     bump all crates chandeliers-* to version x.y.z"
-            echo "    publish        publish all to crates.io"
+            echo "    bump x.y.z                   bump all crates chandeliers-* to version x.y.z"
+            echo "    test, update, publish,...    passed directly to cargo"
     esac
 }
 

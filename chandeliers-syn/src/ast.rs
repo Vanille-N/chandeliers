@@ -406,52 +406,6 @@ pub mod expr {
 
     use super::*;
 
-    #[allow(private_bounds)]
-    #[derive(syn_derive::Parse)]
-    enum ExprHierarchyParser<Here, Below>
-    where
-        Here: Parse + Hint,
-        Below: Parse,
-    {
-        #[parse(peek_func = Here::hint)]
-        Here(Here),
-        Below(Below),
-    }
-
-    /// A helper for constructing expressions that are defined by
-    /// an `enum` of several cases.
-    pub enum ExprHierarchy<Here, Below> {
-        Here(Here),
-        Below(Below),
-    }
-
-    impl<Here, Below> Parse for ExprHierarchy<Here, Below>
-    where
-        Here: Parse + Hint,
-        Below: Parse,
-    {
-        fn parse(input: ParseStream) -> Result<Self> {
-            let x: ExprHierarchyParser<Here, Below> = input.parse()?;
-            Ok(match x {
-                ExprHierarchyParser::Here(t) => ExprHierarchy::Here(t),
-                ExprHierarchyParser::Below(t) => ExprHierarchy::Below(t),
-            })
-        }
-    }
-
-    impl<X, Y> SpanEnd for ExprHierarchy<X, Y>
-    where
-        X: SpanEnd,
-        Y: SpanEnd,
-    {
-        fn span_end(&self) -> Option<Span> {
-            match self {
-                Self::Here(x) => x.span_end(),
-                Self::Below(y) => y.span_end(),
-            }
-        }
-    }
-
     /// A literal.
     ///
     /// ```lus
