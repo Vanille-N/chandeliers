@@ -428,9 +428,10 @@ pub mod expr {
     }
 
     /// A subnode.
-    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+    #[derive(Debug, Clone, PartialEq, Eq, Hash)]
     pub struct NodeId {
         pub id: Sp<usize>,
+        pub repr: Sp<String>,
     }
 
     impl fmt::Display for ClockVar {
@@ -441,7 +442,7 @@ pub mod expr {
 
     impl fmt::Display for NodeId {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-            write!(f, "#{}", self.id)
+            write!(f, "{} (#{})", self.repr, self.id)
         }
     }
 

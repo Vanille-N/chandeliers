@@ -577,8 +577,9 @@ impl Sp<ast::decl::Node> {
             };
             let id = ast::expr::NodeId {
                 id: Sp::new(id, blk.span),
+                repr: blk.t.repr.clone(),
             };
-            ctx.nodes_in.insert(id, i.clone());
+            ctx.nodes_in.insert(id.clone(), i.clone());
             ctx.nodes_out.insert(id, o.clone());
         }
         for st in &mut self.t.stmts {

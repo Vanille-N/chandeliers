@@ -28,6 +28,7 @@ main() {
     case "$1" in
         ("check"|"build"|"test"|"update"|"publish"|"clippy"|"fmt") each do-cargo "$@";;
         ("bump") each version-bump "$2";;
+        ("bless") shift; TRYBUILD=overwrite each do-cargo test "$@";;
         ("help"|*)
             echo "Submodule manager for the Chandeliers project"
             echo "Author: Neven <vanille@crans.org>"

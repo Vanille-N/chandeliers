@@ -899,6 +899,7 @@ impl Translate for lus::expr::CallExpr {
         let id = Sp::new(
             candle::expr::NodeId {
                 id: Sp::new(ctx.blocks.len(), span),
+                repr: repr.clone(),
             },
             span,
         );
@@ -910,7 +911,7 @@ impl Translate for lus::expr::CallExpr {
                     dt: ctx.depth,
                     span,
                 },
-                id,
+                id: id.clone(),
                 args: Sp::new(es, args_span),
             },
             span,
