@@ -16,12 +16,12 @@ syn = "2.0"
 quote = "1.0"
 proc-macro2 = "1.0"
 trybuild = "1.0"
-chandeliers-syn = { path = "../chandeliers-syn", version = "0.2" }
-chandeliers-san = { path = "../chandeliers-san", version = "0.2" }
-chandeliers-sem = { path = "../chandeliers-sem", version = "0.2" }
+chandeliers-syn = { path = "../chandeliers-syn", version = "0.2.1" }
+chandeliers-san = { path = "../chandeliers-san", version = "0.2.1" }
+chandeliers-sem = { path = "../chandeliers-sem", version = "0.2.1" }
 rand = "0.8.5"
 
 [dev-dependencies]
-chandeliers-syn = { path = "../chandeliers-syn", version = "0.2" }
-chandeliers-std = { path = "../chandeliers-std" }
+chandeliers-syn = { path = "../chandeliers-syn", version = "0.2.1" }
+chandeliers-std = { path = "../chandeliers-std", version = "0.2.1" }
 rand = "0.8.5"

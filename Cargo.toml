@@ -1,12 +1,12 @@
 [package]
 name = "chandeliers"
-version = "0.1.0"
+version = "0.2.1"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-chandeliers-lus = { path = "chandeliers-lus", version = "0.2" }
-chandeliers-sem = { path = "chandeliers-sem", version = "0.2" }
-chandeliers-std = { path = "chandeliers-std", version = "0.2" }
+chandeliers-lus = { path = "chandeliers-lus", version = "0.2.1" }
+chandeliers-sem = { path = "chandeliers-sem", version = "0.2.1" }
+chandeliers-std = { path = "chandeliers-std", version = "0.2.1" }
 

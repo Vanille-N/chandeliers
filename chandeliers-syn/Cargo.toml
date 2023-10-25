@@ -15,4 +15,4 @@ syn = { version = "2.0", features = ["full"] }
 quote = "1.0"
 proc-macro2 = "1.0"
 syn_derive = "0.1.7"
-chandeliers-san = { path = "../chandeliers-san", version =  "0.2" }
+chandeliers-san = { path = "../chandeliers-san", version = "0.2.1" }
