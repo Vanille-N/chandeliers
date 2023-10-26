@@ -1,0 +1,66 @@
+error[E0428]: the name `X` is defined multiple times
+ --> tests/fail/ui/tc/extern/dupdef.rs:6:1
+  |
+2 | chandeliers_lus::decl! {
+  | ---------------------- previous definition of the value `X` here
+...
+6 | chandeliers_lus::decl! {
+  | ^^^^^^^^^^^^^^^^^^^^^^ `X` redefined here
+  |
+  = note: `X` must be defined only once in the value namespace of this module
+  = note: this error originates in the macro `chandeliers_lus::decl` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0428]: the name `foo` is defined multiple times
+  --> tests/fail/ui/tc/extern/dupdef.rs:15:1
+   |
+10 | chandeliers_lus::decl! {
+   | ---------------------- previous definition of the type `foo` here
+...
+15 | chandeliers_lus::decl! {
+   | ^^^^^^^^^^^^^^^^^^^^^^ `foo` redefined here
+   |
+   = note: `foo` must be defined only once in the type namespace of this module
+   = note: this error originates in the macro `chandeliers_lus::decl` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0119]: conflicting implementations of trait `Debug` for type `foo`
+  --> tests/fail/ui/tc/extern/dupdef.rs:15:1
+   |
+10 | / chandeliers_lus::decl! {
+11 | |     node foo() returns ();
+   | |____________- first implementation here
+...
+15 | / chandeliers_lus::decl! {
+16 | |     node foo() returns ();
+   | |____________^ conflicting implementation for `foo`
+   |
+   = note: this error originates in the derive macro `Debug` which comes from the expansion of the macro `chandeliers_lus::decl` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0119]: conflicting implementations of trait `Default` for type `foo`
+  --> tests/fail/ui/tc/extern/dupdef.rs:15:1
+   |
+10 | / chandeliers_lus::decl! {
+11 | |     node foo() returns ();
+   | |____________- first implementation here
+...
+15 | / chandeliers_lus::decl! {
+16 | |     node foo() returns ();
+   | |____________^ conflicting implementation for `foo`
+   |
+   = note: this error originates in the derive macro `Default` which comes from the expansion of the macro `chandeliers_lus::decl` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0592]: duplicate definitions with name `step`
+  --> tests/fail/ui/tc/extern/dupdef.rs:10:1
+   |
+10 | / chandeliers_lus::decl! {
+11 | |     node foo() returns ();
+12 | |     let tel
+13 | | }
+   | |_^ duplicate definitions for `step`
+14 |
+15 | / chandeliers_lus::decl! {
+16 | |     node foo() returns ();
+17 | |     let tel
+18 | | }
+   | |_- other definition for `step`
+   |
+   = note: this error originates in the macro `chandeliers_lus::decl` (in Nightly builds, run with -Z macro-backtrace for more info)

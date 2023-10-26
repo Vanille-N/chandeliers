@@ -1,3 +1,4 @@
+// FIXME: better error
 chandeliers_lus::decl! {
     const X: int = 0;
 }
