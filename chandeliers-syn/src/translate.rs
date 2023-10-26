@@ -542,28 +542,158 @@ impl Translate for lus::expr::IfExpr {
     }
 }
 
+/// Helpers to resolve associativity.
+///
+/// The parsing AST has associativity that the analysis AST does not:
+/// - `+` and `-`, `*` and `/` and `%`, `or`, `and` are left associative,
+/// - `fby`, `->` are right associative,
+/// - `<` and `>` and `<=` and `>=` and `<>` and `=` are not associative,
+/// but all are parsed as a `Punctuated<_, _>`.
+///
+/// This module offers functions that resolve associativity (or the absence
+/// of associativity) to transform e.g.
+/// `Punctuated [ (a, +), (b, +), (c, -), (d, +), (e, -), (f) ]`
+/// into
+/// `Bin { Bin { Bin { Bin { Bin { a, +, b }, +, c }, -, d }, +, e }, -, f }`
+///
+/// This translation is done here as generically as possible, including
+/// differentiating between `Accum` and `Item` even though they will eventually
+/// both be instanciated with `Expr`, to guarantee the absence of errors.
+mod assoc {
+    use super::{Sp, TrResult};
+    use std::fmt::Display;
+    use syn::punctuated::{Pair, Punctuated};
+
+    /// Descriptor for a translation.
+    ///
+    /// `label`: text to print if there is an error. Typically the name of the type
+    /// being translated.
+    ///
+    /// `convert`: how to embed the type of elements in expressions.
+    /// `compose`: how to combine two expressions into one.
+    pub struct Descr<Label, Convert, Compose> {
+        pub label: Label,
+        pub convert: Convert,
+        pub compose: Compose,
+    }
+
+    impl<Label, Convert, Compose> Descr<Label, Convert, Compose>
+    where
+        Label: Display,
+    {
+        /// Build the tree of left associative operations from a flat representation.
+        ///
+        /// Notice the type of `Compose`: the accumulator is to the left.
+        pub fn left_associative<Elem, Punct, Accum, Item>(
+            &mut self,
+            elems: Punctuated<Sp<Elem>, Punct>,
+        ) -> TrResult<Accum>
+        where
+            Convert: FnMut(Sp<Elem>, usize) -> TrResult<Sp<Item>>,
+            Compose: FnMut(Sp<Accum>, Punct, usize, Sp<Item>) -> Accum,
+            Item: Into<Accum>,
+        {
+            // We always assume that there is a trailing _element_, not a trailing punctuation.
+            assert!(
+                !elems.trailing_punct(),
+                "Bug in the parser: {} should not accept trailing punctuation",
+                self.label
+            );
+            let mut pairs = elems.into_pairs().enumerate();
+            let mut oper: Punct;
+            let mut accum: Sp<Accum>;
+            // If the first element is a `Punctuated` we can initialize
+            // our accumulator. Otherwise this is a transparent expression
+            // and we just defer directly to the translation for the inner type.
+            let (depth, fst) = pairs.next().unwrap();
+            match fst {
+                Pair::Punctuated(elem, punct) => {
+                    accum = (self.convert)(elem, depth)?.map(|_, i| i.into());
+                    oper = punct;
+                }
+                Pair::End(elem) => {
+                    return Ok((self.convert)(elem, depth)?.t.into());
+                }
+            }
+            // Looping case.
+            for (depth, pair) in pairs {
+                match pair {
+                    // One more element: add it to the accumulator and record
+                    // the punctuation to be used in the next iteration.
+                    Pair::Punctuated(elem, punct) => {
+                        let expr = (self.convert)(elem, depth)?;
+                        let span = expr.span.join(accum.span).unwrap();
+                        accum = Sp::new((self.compose)(accum, oper, depth, expr), span);
+                        oper = punct;
+                    }
+                    // End: combine now then return the accumulator.
+                    Pair::End(elem) => {
+                        let expr = (self.convert)(elem, depth)?;
+                        return Ok((self.compose)(accum, oper, depth, expr));
+                    }
+                }
+            }
+            unreachable!("Must encounter a Pair::End")
+        }
+
+        /// Build the tree of right associative operations from a flat representation.
+        ///
+        /// Notice the type of `Compose`: the accumulator is to the right.
+        pub fn right_associative<Elem, Punct, Accum, Item>(
+            &mut self,
+            elems: Punctuated<Sp<Elem>, Punct>,
+        ) -> TrResult<Accum>
+        where
+            Convert: FnMut(Sp<Elem>, usize) -> TrResult<Sp<Item>>,
+            Compose: FnMut(Sp<Item>, Punct, usize, Sp<Accum>) -> Accum,
+            Item: Into<Accum>,
+        {
+            // We always assume that there is a trailing _element_, not a trailing punctuation.
+            assert!(
+                !elems.trailing_punct(),
+                "Bug in the parser: {} should not accept trailing punctuation",
+                self.label
+            );
+            let mut pairs = elems.into_pairs().enumerate().rev();
+            let mut accum: Sp<Accum>;
+            // Because we've reversed the iterator, the first element is always
+            // and `End`.
+            let (depth, last) = pairs.next().unwrap();
+            let Pair::End(elem) = last else {
+                unreachable!()
+            };
+            accum = (self.convert)(elem, depth)?.map(|_, i| i.into());
+            // Looping case.
+            // WARNING: contrary to the left associative case, `End` is not
+            // the end! In fact `End` is unreachable because it has already
+            // been seen in the handling of `last`.
+            for (depth, pair) in pairs {
+                let Pair::Punctuated(elem, punct) = pair else {
+                    unreachable!()
+                };
+                let expr = (self.convert)(elem, depth)?;
+                let span = expr.span.join(accum.span).unwrap();
+                accum = Sp::new((self.compose)(expr, punct, depth, accum), span);
+            }
+            Ok(accum.t)
+        }
+    }
+}
+
 impl Translate for lus::expr::OrExpr {
     type Ctx<'i> = ExprCtxView<'i>;
     type Output = CandleExpr;
     fn translate(self, run_uid: usize, _span: Span, ctx: Self::Ctx<'_>) -> TrResult<CandleExpr> {
-        let mut it = self.items.into_iter();
-        let mut or = it
-            .next()
-            .expect("OrExpr should have at least one member")
-            .translate(run_uid, fork!(ctx))?;
-        for e in it {
-            let e = e.translate(run_uid, fork!(ctx))?;
-            let span = e.span.join(or.span).expect("Faulty span");
-            or = Sp::new(
-                CandleExpr::BinOp {
-                    op: candle::expr::BinOp::BitOr,
-                    lhs: Box::new(or),
-                    rhs: Box::new(e),
-                },
-                span,
-            );
+        assoc::Descr {
+            label: "OrExpr",
+            convert: |elem: Sp<lus::expr::AndExpr>, _depth| elem.translate(run_uid, fork!(ctx)),
+            compose: |lhs, _op, _depth, rhs| CandleExpr::BinOp {
+                op: candle::expr::BinOp::BitOr,
+                lhs: Box::new(lhs),
+                rhs: Box::new(rhs),
+            },
         }
-        Ok(or.t)
+        .left_associative(self.items)
     }
 }
 
@@ -571,24 +701,16 @@ impl Translate for lus::expr::AndExpr {
     type Ctx<'i> = ExprCtxView<'i>;
     type Output = CandleExpr;
     fn translate(self, run_uid: usize, _span: Span, ctx: Self::Ctx<'_>) -> TrResult<CandleExpr> {
-        let mut it = self.items.into_iter();
-        let mut and = it
-            .next()
-            .expect("AndExpr should have at least one member")
-            .translate(run_uid, fork!(ctx))?;
-        for e in it {
-            let e = e.translate(run_uid, fork!(ctx))?;
-            let span = e.span.join(and.span).expect("Faulty span");
-            and = Sp::new(
-                CandleExpr::BinOp {
-                    op: candle::expr::BinOp::BitAnd,
-                    lhs: Box::new(and),
-                    rhs: Box::new(e),
-                },
-                span,
-            );
+        assoc::Descr {
+            label: "AndExpr",
+            convert: |elem: Sp<lus::expr::CmpExpr>, _depth| elem.translate(run_uid, fork!(ctx)),
+            compose: |lhs, _op, _depth, rhs| CandleExpr::BinOp {
+                op: candle::expr::BinOp::BitAnd,
+                lhs: Box::new(lhs),
+                rhs: Box::new(rhs),
+            },
         }
-        Ok(and.t)
+        .left_associative(self.items)
     }
 }
 
@@ -681,25 +803,23 @@ impl Translate for lus::expr::FbyExpr {
     type Ctx<'i> = ExprCtxView<'i>;
     type Output = CandleExpr;
     fn translate(self, run_uid: usize, _span: Span, ctx: Self::Ctx<'_>) -> TrResult<CandleExpr> {
-        let mut it = self.items.into_iter().enumerate().rev();
-        let (extra_depth, fby) = it.next().expect("FbyExpr should have at least one member");
-        let mut fby = fby.translate(run_uid, fork!(ctx).bump(extra_depth))?;
-        for (d, e) in it {
-            let e = e.translate(run_uid, fork!(ctx).bump(d))?;
-            let span = fby.span.join(e.span).expect("Faulty span");
-            fby = Sp::new(
+        assoc::Descr {
+            label: "FbyExpr",
+            convert: |elem: Sp<lus::expr::ThenExpr>, depth| {
+                elem.translate(run_uid, fork!(ctx).bump(depth))
+            },
+            compose: |before: Sp<CandleExpr>, _op, depth, after: Sp<CandleExpr>| {
                 CandleExpr::Later {
                     clk: candle::clock::Depth {
-                        dt: ctx.depth + d,
-                        span,
+                        dt: ctx.depth + depth,
+                        span: before.span.join(after.span).expect("Faulty span"),
                     },
-                    before: Box::new(e),
-                    after: Box::new(fby),
-                },
-                span,
-            );
+                    before: Box::new(before),
+                    after: Box::new(after),
+                }
+            },
         }
-        Ok(fby.t)
+        .right_associative(self.items)
     }
 }
 
@@ -715,25 +835,25 @@ impl Translate for lus::expr::ThenExpr {
     type Ctx<'i> = ExprCtxView<'i>;
     type Output = CandleExpr;
     fn translate(self, run_uid: usize, _span: Span, ctx: Self::Ctx<'_>) -> TrResult<CandleExpr> {
-        let mut it = self.items.into_iter().enumerate().rev();
-        let (_, then) = it.next().expect("ThenExpr should have at least one member");
-        let mut then = then.translate(run_uid, fork!(ctx))?;
-        for (d, e) in it {
-            let e = e.translate(run_uid, fork!(ctx))?;
-            let span = then.span.join(e.span).expect("Faulty span");
-            then = Sp::new(
+        // This looks similar to `FbyExpr`, but notice how we aren't using `depth`
+        // in the same way.
+        assoc::Descr {
+            label: "ThenExpr",
+            convert: |elem: Sp<lus::expr::OrExpr>, _depth| {
+                elem.translate(run_uid, fork!(ctx) /* DO NOT BUMP */)
+            },
+            compose: |before: Sp<CandleExpr>, _op, depth, after: Sp<CandleExpr>| {
                 CandleExpr::Later {
                     clk: candle::clock::Depth {
-                        span,
-                        dt: ctx.depth + d,
+                        dt: ctx.depth + depth,
+                        span: before.span.join(after.span).expect("Faulty span"),
                     },
-                    before: Box::new(e),
-                    after: Box::new(then),
-                },
-                span,
-            );
+                    before: Box::new(before),
+                    after: Box::new(after),
+                }
+            },
         }
-        Ok(then.t)
+        .right_associative(self.items)
     }
 }
 
@@ -741,61 +861,37 @@ impl Translate for lus::expr::AddExpr {
     type Ctx<'i> = ExprCtxView<'i>;
     type Output = CandleExpr;
     fn translate(self, run_uid: usize, _span: Span, ctx: Self::Ctx<'_>) -> TrResult<CandleExpr> {
-        use syn::punctuated::Pair;
-        assert!(!self.items.trailing_punct());
-
-        let mut its = self.items.into_pairs();
-        let mut lhs;
-        let mut op;
-        match its.next().expect("AddExpr should have at least one member") {
-            Pair::Punctuated(e, o) => {
-                lhs = e.translate(run_uid, fork!(ctx))?;
-                op = o.translate()?;
-            }
-            Pair::End(e) => {
-                return e.flat_translate(run_uid, ctx);
-            }
+        // Back to normal left assaciative stuff that doesn't care about the depth,
+        // but this time we have to handle the fact that there are multiple possible operators.
+        assoc::Descr {
+            label: "AddExpr",
+            convert: |elem: Sp<lus::expr::MulExpr>, _depth| elem.translate(run_uid, fork!(ctx)),
+            compose: |lhs, op: lus::expr::AddOp, _depth, rhs| CandleExpr::BinOp {
+                op: op.translate(),
+                lhs: Box::new(lhs),
+                rhs: Box::new(rhs),
+            },
         }
-        for it in its {
-            match it {
-                Pair::Punctuated(e, o) => {
-                    let rhs = e.translate(run_uid, fork!(ctx))?;
-                    let span = lhs.span.join(rhs.span).expect("Faulty span");
-                    lhs = Sp::new(
-                        CandleExpr::BinOp {
-                            op,
-                            lhs: Box::new(lhs),
-                            rhs: Box::new(rhs),
-                        },
-                        span,
-                    );
-                    op = o.translate()?;
-                }
-                Pair::End(e) => {
-                    let rhs = e.translate(run_uid, fork!(ctx))?;
-                    let span = lhs.span.join(rhs.span).expect("Faulty span");
-                    lhs = Sp::new(
-                        CandleExpr::BinOp {
-                            op,
-                            lhs: Box::new(lhs),
-                            rhs: Box::new(rhs),
-                        },
-                        span,
-                    );
-                    break;
-                }
-            }
-        }
-        Ok(lhs.t)
+        .left_associative(self.items)
     }
 }
 
 impl lus::expr::AddOp {
-    fn translate(self) -> TrResult<candle::expr::BinOp> {
-        Ok(match self {
+    fn translate(self) -> candle::expr::BinOp {
+        match self {
             Self::Add(_) => candle::expr::BinOp::Add,
             Self::Sub(_) => candle::expr::BinOp::Sub,
-        })
+        }
+    }
+}
+
+impl lus::expr::MulOp {
+    fn translate(self) -> candle::expr::BinOp {
+        match self {
+            Self::Mul(_) => candle::expr::BinOp::Mul,
+            Self::Div(_) => candle::expr::BinOp::Div,
+            Self::Rem(_) => candle::expr::BinOp::Rem,
+        }
     }
 }
 
@@ -803,52 +899,16 @@ impl Translate for lus::expr::MulExpr {
     type Ctx<'i> = ExprCtxView<'i>;
     type Output = CandleExpr;
     fn translate(self, run_uid: usize, _span: Span, ctx: Self::Ctx<'_>) -> TrResult<CandleExpr> {
-        use syn::punctuated::Pair;
-        assert!(!self.items.trailing_punct());
-
-        let mut its = self.items.into_pairs();
-        let mut lhs;
-        let mut op;
-        match its.next().expect("MulExpr should have at least one member") {
-            Pair::Punctuated(e, o) => {
-                lhs = e.translate(run_uid, fork!(ctx))?;
-                op = o.translate()?;
-            }
-            Pair::End(e) => {
-                return e.flat_translate(run_uid, fork!(ctx));
-            }
+        assoc::Descr {
+            label: "MulExpr",
+            convert: |elem: Sp<lus::expr::ClockExpr>, _depth| elem.translate(run_uid, fork!(ctx)),
+            compose: |lhs, op: lus::expr::MulOp, _depth, rhs| CandleExpr::BinOp {
+                op: op.translate(),
+                lhs: Box::new(lhs),
+                rhs: Box::new(rhs),
+            },
         }
-        for it in its {
-            match it {
-                Pair::Punctuated(e, o) => {
-                    let rhs = e.translate(run_uid, fork!(ctx))?;
-                    let span = lhs.span.join(rhs.span).expect("Faulty span");
-                    lhs = Sp::new(
-                        CandleExpr::BinOp {
-                            op,
-                            lhs: Box::new(lhs),
-                            rhs: Box::new(rhs),
-                        },
-                        span,
-                    );
-                    op = o.translate()?;
-                }
-                Pair::End(e) => {
-                    let rhs = e.translate(run_uid, fork!(ctx))?;
-                    let span = lhs.span.join(rhs.span).expect("Faulty span");
-                    lhs = Sp::new(
-                        CandleExpr::BinOp {
-                            op,
-                            lhs: Box::new(lhs),
-                            rhs: Box::new(rhs),
-                        },
-                        span,
-                    );
-                    break;
-                }
-            }
-        }
-        Ok(lhs.t)
+        .left_associative(self.items)
     }
 }
 
@@ -866,16 +926,6 @@ impl Translate for lus::expr::ClockExpr {
             unimplemented!("Translate for ClockExpr");
         };
         e.flat_translate(run_uid, ctx)
-    }
-}
-
-impl lus::expr::MulOp {
-    fn translate(self) -> TrResult<candle::expr::BinOp> {
-        Ok(match self {
-            Self::Mul(_) => candle::expr::BinOp::Mul,
-            Self::Div(_) => candle::expr::BinOp::Div,
-            Self::Rem(_) => candle::expr::BinOp::Rem,
-        })
     }
 }
 
