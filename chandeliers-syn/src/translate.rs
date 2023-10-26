@@ -416,9 +416,9 @@ impl Translate for lus::Type {
     type Ctx<'i> = ();
     type Output = candle::ty::TyBase;
     fn translate(self, run_uid: usize, _span: Span, _: ()) -> TrResult<Self::Output> {
-        if !matches!(self.clock.t, lus::TypeClock::None) {
-            unimplemented!("Translate for ClockType");
-        }
+        //if !matches!(self.clock.t, lus::TypeClock::None) {
+        //    unimplemented!("Translate for ClockType");
+        //}
         self.base.flat_translate(run_uid, ())
     }
 }
@@ -901,7 +901,7 @@ impl Translate for lus::expr::MulExpr {
     fn translate(self, run_uid: usize, _span: Span, ctx: Self::Ctx<'_>) -> TrResult<CandleExpr> {
         assoc::Descr {
             label: "MulExpr",
-            convert: |elem: Sp<lus::expr::ClockExpr>, _depth| elem.translate(run_uid, fork!(ctx)),
+            convert: |elem: Sp<lus::expr::/*ClockExpr*/PositiveExpr>, _depth| elem.translate(run_uid, fork!(ctx)),
             compose: |lhs, op: lus::expr::MulOp, _depth, rhs| CandleExpr::BinOp {
                 op: op.translate(),
                 lhs: Box::new(lhs),
@@ -912,6 +912,7 @@ impl Translate for lus::expr::MulExpr {
     }
 }
 
+/*
 impl Translate for lus::expr::ClockExpr {
     type Ctx<'i> = ExprCtxView<'i>;
     type Output = CandleExpr;
@@ -928,6 +929,7 @@ impl Translate for lus::expr::ClockExpr {
         e.flat_translate(run_uid, ctx)
     }
 }
+*/
 
 impl Translate for lus::expr::NegExpr {
     type Ctx<'i> = ExprCtxView<'i>;
