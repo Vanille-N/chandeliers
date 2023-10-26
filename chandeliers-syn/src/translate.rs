@@ -416,6 +416,9 @@ impl Translate for lus::Type {
     type Ctx<'i> = ();
     type Output = candle::ty::TyBase;
     fn translate(self, run_uid: usize, _span: Span, _: ()) -> TrResult<Self::Output> {
+        if !matches!(self.clock.t, lus::TypeClock::None) {
+            unimplemented!("Translate for ClockType");
+        }
         self.base.flat_translate(run_uid, ())
     }
 }
@@ -849,6 +852,23 @@ impl Translate for lus::expr::MulExpr {
     }
 }
 
+impl Translate for lus::expr::ClockExpr {
+    type Ctx<'i> = ExprCtxView<'i>;
+    type Output = CandleExpr;
+    fn translate(self, run_uid: usize, _span: Span, ctx: Self::Ctx<'_>) -> TrResult<CandleExpr> {
+        use syn::punctuated::Pair;
+        assert!(!self.items.trailing_punct());
+        let mut its = self.items.into_pairs();
+        let Pair::End(e) = its
+            .next()
+            .expect("ClockExpr should have at least one member")
+        else {
+            unimplemented!("Translate for ClockExpr");
+        };
+        e.flat_translate(run_uid, ctx)
+    }
+}
+
 impl lus::expr::MulOp {
     fn translate(self) -> TrResult<candle::expr::BinOp> {
         Ok(match self {
@@ -929,14 +949,25 @@ impl Translate for lus::expr::AtomicExpr {
     type Output = CandleExpr;
     fn translate(self, run_uid: usize, span: Span, ctx: Self::Ctx<'_>) -> TrResult<CandleExpr> {
         match self {
-            Self::If(i) => i.translate(run_uid, span, ctx),
             Self::Lit(l) => l.translate(run_uid, span, ctx),
             Self::Call(c) => c.translate(run_uid, span, ctx),
             Self::Var(v) => v.translate(run_uid, span, ctx),
             Self::Paren(p) => p.translate(run_uid, span, ctx),
+        }
+    }
+}
+
+impl Translate for lus::expr::PositiveExpr {
+    type Ctx<'i> = ExprCtxView<'i>;
+    type Output = CandleExpr;
+    fn translate(self, run_uid: usize, span: Span, ctx: Self::Ctx<'_>) -> TrResult<CandleExpr> {
+        match self {
+            Self::If(i) => i.translate(run_uid, span, ctx),
+            Self::Merge(_m) => unimplemented!("Translate for Merge"),
             Self::Pre(p) => p.translate(run_uid, span, ctx),
             Self::Neg(n) => n.translate(run_uid, span, ctx),
             Self::Not(n) => n.translate(run_uid, span, ctx),
+            Self::Atomic(a) => a.translate(run_uid, span, ctx),
         }
     }
 }

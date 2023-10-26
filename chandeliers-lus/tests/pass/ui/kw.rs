@@ -7,7 +7,7 @@ chandeliers_lus::decl! {
     var trait : bool;
     let
         trait = true fby (not trait);
-        return = if trait then float_of_int(unsafe) else (float_of_int(unsafe) + 0.0 fby return) end;
+        return = if trait then float_of_int(unsafe) else (float_of_int(unsafe) + 0.0 fby return);
     tel;
 
     const as : int = 0;

@@ -167,9 +167,12 @@ where
 /// one step is what makes it computationally feasible at all to have
 /// most implementors of `SpanEnd` recurse into one field without blowing up
 /// the stack of Rustc.
-impl<T> SpanEnd for Sp<T> {
+impl<T> SpanEnd for Sp<T>
+where
+    T: SpanEnd,
+{
     fn span_end(&self) -> Option<Span> {
-        Some(self.span)
+        self.t.span_end()
     }
 }
 

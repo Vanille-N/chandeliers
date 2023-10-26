@@ -3,7 +3,7 @@ use chandeliers_sem::traits::*;
 chandeliers_lus::decl! {
     node incr (tic: bool) returns (cpt: int);
     let
-      cpt = (0 -> pre cpt) + if tic then 1 else 0 end;
+      cpt = (0 -> pre cpt) + if tic then 1 else 0;
     tel;
 
     node check (x: bool) returns (ok: bool);

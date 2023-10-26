@@ -35,10 +35,11 @@ use chandeliers_san::ast::{Sp, SpanEnd};
 /// span_end_on_field!(Addition.rhs);
 /// ```
 macro_rules! span_end_on_field {
-    ($ty:ident . $field:ident) => {
+    ($ty:ident . $field:ident $( or $alt:ident )?) => {
         impl SpanEnd for $ty {
             fn span_end(&self) -> Option<Span> {
                 self.$field.span_end()
+                    $( .or_else(|| self.$alt.span_end()) )?
             }
         }
     };
@@ -111,7 +112,6 @@ pub mod kw {
     custom_keyword!(returns);
     custom_keyword!(var);
     custom_keyword!(tel);
-    custom_keyword!(end);
 
     custom_keyword!(fby);
     custom_keyword!(and);
@@ -119,13 +119,16 @@ pub mod kw {
     custom_keyword!(or);
     custom_keyword!(not);
     custom_keyword!(then);
+
+    custom_keyword!(when);
+    custom_keyword!(whenot);
+    custom_keyword!(merge);
 }
 
 span_end_from_spanned!(kw::int);
 span_end_from_spanned!(kw::bool);
 span_end_from_spanned!(kw::float);
 span_end_from_spanned!(kw::tel);
-span_end_from_spanned!(kw::end);
 
 /// Extra punctuation defined by Lustre.
 pub mod punct {
@@ -169,7 +172,7 @@ impl Parse for LusIdent {
                 match inner.to_string().as_str() {
                     "true" | "false" | "fby" | "if" | "then" | "else" | "or" | "and" | "not"
                     | "pre" | "node" | "const" | "extern" | "returns" | "var" | "let" | "tel"
-                    | "assert" | "end" => Err(syn::Error::new(
+                    | "assert" | "when" | "whenot" | "merge" => Err(syn::Error::new(
                         inner.span(),
                         "expected identifier, found keyword reserved by Lustre",
                     )),
@@ -226,10 +229,39 @@ span_end_by_match! {
 }
 
 #[derive(syn_derive::Parse)]
+pub struct WhenClock {
+    _when: kw::when,
+    clock: Sp<expr::AtomicExpr>,
+}
+span_end_on_field!(WhenClock.clock);
+
+#[derive(syn_derive::Parse)]
+pub struct WhenotClock {
+    _when: kw::whenot,
+    clock: Sp<expr::AtomicExpr>,
+}
+span_end_on_field!(WhenotClock.clock);
+
+#[derive(syn_derive::Parse)]
+pub enum TypeClock {
+    #[parse(peek = kw::when)]
+    When(Sp<WhenClock>),
+    #[parse(peek = kw::whenot)]
+    Whenot(Sp<WhenotClock>),
+    None,
+}
+span_end_by_match! {
+    TypeClock.
+        When(c) => c;
+        Whenot(c) => c;
+}
+
+#[derive(syn_derive::Parse)]
 pub struct Type {
     pub base: Sp<BaseType>,
+    pub clock: Sp<TypeClock>,
 }
-span_end_on_field!(Type.base);
+span_end_on_field!(Type.clock or base);
 
 /// A comma-separated list of idents.
 ///
@@ -430,8 +462,8 @@ pub mod expr {
 
     /// An expression that is atomically parseable.
     ///
-    /// It must not have any associativity and must always consume
-    /// at least one token immediately.
+    /// It must not have any associativity, must always consume
+    /// at least one token immediately, and its end must be unambiguous.
     ///
     /// ```lus
     /// (a + b, c)
@@ -457,16 +489,8 @@ pub mod expr {
     /// ```
     #[derive(syn_derive::Parse)]
     pub enum AtomicExpr {
-        #[parse(peek_func = IfExpr::hint)]
-        If(IfExpr),
         #[parse(peek_func = ParenExpr::hint)]
         Paren(ParenExpr),
-        #[parse(peek_func = PreExpr::hint)]
-        Pre(PreExpr),
-        #[parse(peek_func = NegExpr::hint)]
-        Neg(NegExpr),
-        #[parse(peek_func = NotExpr::hint)]
-        Not(NotExpr),
         #[parse(peek_func = CallExpr::hint)]
         Call(CallExpr),
         #[parse(peek_func = LitExpr::hint)]
@@ -475,15 +499,35 @@ pub mod expr {
     }
     span_end_by_match! {
         AtomicExpr.
-            If(i) => i;
             Paren(p) => p;
-            Pre(p) => p;
-            Neg(n) => n;
-            Not(n) => n;
             Call(c) => c;
             Lit(l) => l;
             Var(v) => v;
 
+    }
+
+    /// An expression that consumes at least one token immediately.
+    #[derive(syn_derive::Parse)]
+    pub enum PositiveExpr {
+        #[parse(peek_func = IfExpr::hint)]
+        If(IfExpr),
+        #[parse(peek_func = MergeExpr::hint)]
+        Merge(MergeExpr),
+        #[parse(peek_func = PreExpr::hint)]
+        Pre(PreExpr),
+        #[parse(peek_func = NegExpr::hint)]
+        Neg(NegExpr),
+        #[parse(peek_func = NotExpr::hint)]
+        Not(NotExpr),
+        Atomic(AtomicExpr),
+    }
+    span_end_by_match! {
+        PositiveExpr.
+            If(i) => i;
+            Pre(p) => p;
+            Neg(n) => n;
+            Not(n) => n;
+            Atomic(a) => a;
     }
 
     /// A variable.
@@ -568,7 +612,7 @@ pub mod expr {
     #[derive(syn_derive::Parse)]
     pub struct PreExpr {
         pub _pre: kw::pre,
-        pub inner: Sp<Box<AtomicExpr>>,
+        pub inner: Sp<Box<PositiveExpr>>,
     }
     span_end_on_field!(PreExpr.inner);
     impl Hint for PreExpr {
@@ -587,7 +631,7 @@ pub mod expr {
     #[derive(syn_derive::Parse)]
     pub struct NegExpr {
         pub _neg: Token![-],
-        pub inner: Sp<Box<AtomicExpr>>,
+        pub inner: Sp<Box<PositiveExpr>>,
     }
     span_end_on_field!(NegExpr.inner);
     impl Hint for NegExpr {
@@ -606,7 +650,7 @@ pub mod expr {
     #[derive(syn_derive::Parse)]
     pub struct NotExpr {
         pub _not: kw::not,
-        pub inner: Sp<Box<AtomicExpr>>,
+        pub inner: Sp<Box<PositiveExpr>>,
     }
     span_end_on_field!(NotExpr.inner);
     impl Hint for NotExpr {
@@ -660,11 +704,28 @@ pub mod expr {
         Eq(Token![=]),
     }
 
-    /// A multiplicative expression as a `MulOp`-separated list of atomic expressions.
+    /// Clock operators: `when` and `whenot`.
+    #[derive(syn_derive::Parse)]
+    pub enum ClockOp {
+        #[parse(peek = kw::when)]
+        When(kw::when),
+        #[parse(peek = kw::whenot)]
+        Whenot(kw::whenot),
+    }
+
+    /// A clocked expression as a `ClockOp`-separated list of atomic expressions.
+    #[derive(syn_derive::Parse)]
+    pub struct ClockExpr {
+        #[parse(punctuated_parse_separated_nonempty_costly)]
+        pub items: Punctuated<Sp<PositiveExpr>, ClockOp>,
+    }
+    span_end_on_field!(ClockExpr.items);
+
+    /// A multiplicative expression as a `MulOp`-separated list of clocked expressions.
     #[derive(syn_derive::Parse)]
     pub struct MulExpr {
         #[parse(punctuated_parse_separated_nonempty_costly)]
-        pub items: Punctuated<Sp<AtomicExpr>, MulOp>,
+        pub items: Punctuated<Sp<ClockExpr>, MulOp>,
     }
     span_end_on_field!(MulExpr.items);
 
@@ -735,14 +796,36 @@ pub mod expr {
         pub yes: Sp<Expr>,
         pub _else: Token![else],
         pub no: Sp<Expr>,
-        pub _end: kw::end,
     }
     impl Hint for IfExpr {
         fn hint(s: ParseStream) -> bool {
             s.peek(Token![if])
         }
     }
-    span_end_on_field!(IfExpr._end);
+    span_end_on_field!(IfExpr.no);
+
+    /// A merge of two clocks.
+    ///
+    /// ```lus
+    /// merge b on off
+    /// ^^^^^_merge
+    ///       ^clk
+    ///         ^^on
+    ///            ^^^off
+    /// ```
+    #[derive(syn_derive::Parse)]
+    pub struct MergeExpr {
+        pub _merge: kw::merge,
+        pub clk: Sp<Box<AtomicExpr>>,
+        pub on: Sp<Box<AtomicExpr>>,
+        pub off: Sp<Box<AtomicExpr>>,
+    }
+    impl Hint for MergeExpr {
+        fn hint(s: ParseStream) -> bool {
+            s.peek(kw::merge)
+        }
+    }
+    span_end_on_field!(MergeExpr.off);
 
     /// Any expression.
     pub struct Expr {

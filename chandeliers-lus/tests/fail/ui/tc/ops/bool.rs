@@ -1,7 +1,7 @@
 chandeliers_lus::decl! {
     node foo(i : int) returns (b : bool);
     let
-        b = if i then 0 else 1 end;
+        b = if i then 0 else 1;
     tel
 }
 
