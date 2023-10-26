@@ -111,6 +111,7 @@ pub mod kw {
     custom_keyword!(returns);
     custom_keyword!(var);
     custom_keyword!(tel);
+    custom_keyword!(end);
 
     custom_keyword!(fby);
     custom_keyword!(and);
@@ -124,6 +125,7 @@ span_end_from_spanned!(kw::int);
 span_end_from_spanned!(kw::bool);
 span_end_from_spanned!(kw::float);
 span_end_from_spanned!(kw::tel);
+span_end_from_spanned!(kw::end);
 
 /// Extra punctuation defined by Lustre.
 pub mod punct {
@@ -167,7 +169,7 @@ impl Parse for LusIdent {
                 match inner.to_string().as_str() {
                     "true" | "false" | "fby" | "if" | "then" | "else" | "or" | "and" | "not"
                     | "pre" | "node" | "const" | "extern" | "returns" | "var" | "let" | "tel"
-                    | "assert" => Err(syn::Error::new(
+                    | "assert" | "end" => Err(syn::Error::new(
                         inner.span(),
                         "expected identifier, found keyword reserved by Lustre",
                     )),
@@ -733,13 +735,14 @@ pub mod expr {
         pub yes: Sp<Expr>,
         pub _else: Token![else],
         pub no: Sp<Expr>,
+        pub _end: kw::end,
     }
     impl Hint for IfExpr {
         fn hint(s: ParseStream) -> bool {
             s.peek(Token![if])
         }
     }
-    span_end_on_field!(IfExpr.no);
+    span_end_on_field!(IfExpr._end);
 
     /// Any expression.
     pub struct Expr {

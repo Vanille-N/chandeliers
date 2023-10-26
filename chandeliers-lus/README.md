@@ -37,7 +37,7 @@ chandeliers_lus::decl! {
 chandeliers_lus::decl! {
     node selector(left, right : float; switch : bool) returns (out : float);
     let
-        out = if switch then left else right;
+        out = if switch then left else right end;
     tel;
 }
 ```
@@ -136,11 +136,12 @@ of `extern node`s not produced by a `decl` block needs to be verified.
 ### Notable limitations and differences with standard Lustre
 
 For various reasons -- including limited control over Rust syntax, and parser efficiency --
-some Lustre programs may not be supported directly.
+some Lustre programs may not be supported directly and require minor syntax adjustments.
 Here are some that you may run into if you try to copy-paste Lustre code too eagerly:
 - `node` definitions are required to end with a trailing `;`,
 - tuple unpacking `(x, y, z) = foo()` requires the surrounding `(...)`,
 - a few Rust reserved keywords (`self`, `super`, `move`, ...) cannot be used as identifiers,
 - only Rust-style comments are available, i.e. `//` for line comments and `/* ... */` for block
-  comments.
+  comments,
+- the `if` construct requires and `end` so that parsing is not ambiguous.
 

@@ -9,7 +9,7 @@ chandeliers_lus::decl! {
       n2 = 0 -> pre (0 -> pre (n1 + 2));
       b1 = false -> true;
       b2 = false -> pre b1;
-      OK = if b1 and b2 then n1 = n2 else true;
+      OK = if b1 and b2 then n1 = n2 else true end;
     tel
 }
 
