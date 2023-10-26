@@ -10,7 +10,7 @@ CRATES=( \
 )
 
 each() {
-    for crate in ${IN[@]}; do
+    for crate in "${CRATES[@]}"; do
         ( cd $crate && echo ">>> Submodule '$crate'" && $@ )
     done
 }
@@ -27,12 +27,16 @@ do-cargo() {
 main() {
     case "$1" in
         ("check"|"build"|"test"|"update"|"clippy"|"fmt")
-            IN=( ${CRATES[@]} . ) each do-cargo "$@";;
+            each do-cargo "$@"
+            do-cargo "$@"
+            ;;
         ("publish")
-            IN=( ${CRATES[@]} ) each do-cargo "$@";;
+            each do-cargo "$@"
+            ;;
         ("bump")
-            IN=( ${CRATES[@]} . ) each version-bump "$2";;
-        ("bless") shift; TRYBUILD=overwrite VALUES=( ${CRATES[@]} . ) each do-cargo test "$@";;
+            each version-bump "$2"
+            ;;
+        ("bless") shift; TRYBUILD=overwrite IN=( ${CRATES[@]} . ) each do-cargo test "$@";;
         ("help"|*)
             echo "Submodule manager for the Chandeliers project"
             echo "Author: Neven <vanille@crans.org>"
