@@ -677,6 +677,7 @@ pub mod decl {
     pub struct NodeOptions {
         pub trace: bool,
         pub export: bool,
+        pub main: Option<usize>,
     }
 
     #[derive(Debug, Clone)]

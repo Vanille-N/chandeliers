@@ -315,6 +315,20 @@ impl ToTokens for decl::Node {
             #ext_annotated_declaration
             #ext_step_impl
         });
+
+        if let Some(nb_iter) = options.main {
+            toks.extend(quote! {
+                fn main() {
+                    use ::chandeliers_sem::traits::*;
+                    let mut sys = #ext_name::default();
+                    let mut i = 1;
+                    while i != #nb_iter {
+                        sys.step(());
+                        i += 1;
+                    }
+                }
+            });
+        }
     }
 }
 

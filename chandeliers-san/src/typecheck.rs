@@ -554,6 +554,23 @@ impl Sp<ast::decl::Node> {
         extvar: &HashMap<ast::expr::GlobalVar, WithDefSite<TyBase>>,
     ) -> TcResult<()> {
         let mut ctx = TyCtx::from_ext(extvar);
+        // FIXME: prettify
+        if self.t.options.main.is_some() {
+            if !self.t.inputs.t.is_empty() {
+                return Err(err::Basic {
+                    msg: "Node declared as main should not have any inputs".to_string(),
+                    span: self.t.inputs.span,
+                }
+                .into_err());
+            }
+            if !self.t.outputs.t.is_empty() {
+                return Err(err::Basic {
+                    msg: "Node declared as main should not have any outputs".to_string(),
+                    span: self.t.inputs.span,
+                }
+                .into_err());
+            }
+        }
         // These are all the extra variables that we provide in addition
         // to `extvar`.
         for vs in &[&self.t.inputs, &self.t.outputs, &self.t.locals] {

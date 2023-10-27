@@ -54,6 +54,7 @@ compiling!(pass_syn with pass in pass/syn/);
 compiling!(pass_std with pass in pass/std/);
 compiling!(pass_fromslides with pass in pass/fromslides/);
 compiling!(pass_given with pass in pass/given/);
+compiling!(pass_options with pass in pass/options/);
 
 fn emit(elements: Vec<(String, Option<proc_macro2::Span>)>) -> proc_macro2::TokenStream {
     let mut elements = elements.into_iter();

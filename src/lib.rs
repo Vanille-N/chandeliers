@@ -339,11 +339,21 @@ chandeliers_lus::decl! {
 }
 
 #[test]
-fn main() {
+fn test_count1() {
     use chandeliers_sem::traits::*;
     let mut count1 = count1::default();
     for _ in 0..10 {
         let _ = count1.step(());
     }
     panic!()
+}
+
+chandeliers_lus::decl! {
+    #[main]
+    node foo() returns ();
+    var n : int;
+    let
+        n = 0 fby n + 1;
+        assert n < 10;
+    tel;
 }

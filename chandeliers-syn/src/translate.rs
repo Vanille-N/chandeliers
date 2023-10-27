@@ -195,6 +195,7 @@ type CandleExpr = candle::expr::Expr;
 pub struct DeclOptions {
     trace: bool,
     export: bool,
+    main: Option<usize>,
 }
 
 impl Default for DeclOptions {
@@ -202,6 +203,7 @@ impl Default for DeclOptions {
         Self {
             trace: false,
             export: false,
+            main: None,
         }
     }
 }
@@ -209,20 +211,33 @@ impl Default for DeclOptions {
 impl DeclOptions {
     fn for_const(self) -> TrResult<candle::decl::ConstOptions> {
         /* FIXME: errors */
-        let Self { trace: _, export } = self;
+        let Self {
+            trace: _,
+            export,
+            main: _,
+        } = self;
         Ok(candle::decl::ConstOptions { export })
     }
 
     fn for_node(self) -> TrResult<candle::decl::NodeOptions> {
-        let Self { trace, export } = self;
+        let Self {
+            trace,
+            export,
+            main,
+        } = self;
         /* FIXME: errors */
-        Ok(candle::decl::NodeOptions { trace, export })
+        Ok(candle::decl::NodeOptions {
+            trace,
+            export,
+            main,
+        })
     }
 
     fn with(mut self, attr: Sp<lus::Attribute>) -> TrResult<Self> {
         match attr.t.attr.t.action.t.inner.to_string().as_str() {
             "trace" => self.trace = true,
             "export" => self.export = true,
+            "main" => self.main = Some(100), // FIXME
             _ => unimplemented!("Unknown attribute"),
         }
         Ok(self)
