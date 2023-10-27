@@ -54,9 +54,9 @@ impl ToTokens for decl::Const {
         let value = value.const_expr();
         toks.extend(quote! {
             #[allow(non_upper_case_globals)]
-            const #name : chandeliers_sem::ty_mapping!(#ty) = #value ;
+            const #name : ::chandeliers_sem::ty_mapping!(#ty) = #value ;
             #[allow(non_upper_case_globals)]
-            const #ext_name : chandeliers_sem::ty_mapping!(#ty) = #name ;
+            const #ext_name : ::chandeliers_sem::ty_mapping!(#ty) = #name ;
         });
     }
 }
@@ -85,7 +85,7 @@ impl ToTokens for decl::ExtConst {
         let Self { name, ty } = self;
         let ext_name = Ident::new_raw(&format!("{}", name), name.span);
         let real = quote_spanned!(name.span=> real );
-        let expected = quote_spanned!(ty.span=> chandeliers_sem::ty_mapping!(#ty) );
+        let expected = quote_spanned!(ty.span=> ::chandeliers_sem::ty_mapping!(#ty) );
         let expected_wrapped = quote_spanned!(ty.span=> Type<#expected> );
         toks.extend(quote! {
             #[allow(non_upper_case_globals)]
@@ -215,23 +215,23 @@ impl ToTokens for decl::Node {
 
             #[allow(non_snake_case)]
             // FIXME: this should me an `impl Step for #name`
-            impl chandeliers_sem::traits::Step for #name {
-                type Input = ( #( chandeliers_sem::ty_mapping!(#inputs_ty_3) ),* );
-                type Output = ( #( chandeliers_sem::ty_mapping!(#outputs_ty_3) ),* );
+            impl ::chandeliers_sem::traits::Step for #name {
+                type Input = ( #( ::chandeliers_sem::ty_mapping!(#inputs_ty_3) ),* );
+                type Output = ( #( ::chandeliers_sem::ty_mapping!(#outputs_ty_3) ),* );
                 fn step(
                     &mut self,
-                    __inputs: ( #( chandeliers_sem::ty!(#inputs_ty_1) ),* ),
+                    __inputs: ( #( ::chandeliers_sem::ty!(#inputs_ty_1) ),* ),
                 ) -> (
-                    #( chandeliers_sem::ty!(#outputs_ty_1) ),*
+                    #( ::chandeliers_sem::ty!(#outputs_ty_1) ),*
                 ) {
                     let ( #( #inputs_vs ),* ) = __inputs;
                     // Actual body
                     #( #stmts ; )*
                     // Finish by incrementing the clock and updating the streams.
-                    chandeliers_sem::tick!(self);
-                    #( chandeliers_sem::update!(self, #pos_inputs_use ); )*
-                    #( chandeliers_sem::update!(self, #pos_outputs_use ); )*
-                    #( chandeliers_sem::update!(self, #pos_locals_use ); )*
+                    ::chandeliers_sem::tick!(self);
+                    #( ::chandeliers_sem::update!(self, #pos_inputs_use ); )*
+                    #( ::chandeliers_sem::update!(self, #pos_outputs_use ); )*
+                    #( ::chandeliers_sem::update!(self, #pos_locals_use ); )*
                     ( #( #outputs_vs ),* )
                 }
             }
@@ -242,15 +242,15 @@ impl ToTokens for decl::Node {
             #[allow(dead_code)]
             pub struct #ext_name { inner: #name }
 
-            impl chandeliers_sem::traits::Step for #ext_name {
-                type Input = ( #( chandeliers_sem::ty_mapping!(#inputs_ty_4) ),* );
-                type Output = ( #( chandeliers_sem::ty_mapping!(#outputs_ty_4) ),* );
+            impl ::chandeliers_sem::traits::Step for #ext_name {
+                type Input = ( #( ::chandeliers_sem::ty_mapping!(#inputs_ty_4) ),* );
+                type Output = ( #( ::chandeliers_sem::ty_mapping!(#outputs_ty_4) ),* );
                 #[allow(unused_imports)]
                 fn step(
                     &mut self,
-                    __inputs: ( #( chandeliers_sem::ty!(#inputs_ty_2) ),* ),
+                    __inputs: ( #( ::chandeliers_sem::ty!(#inputs_ty_2) ),* ),
                 ) -> (
-                    #( chandeliers_sem::ty!(#outputs_ty_2) ),*
+                    #( ::chandeliers_sem::ty!(#outputs_ty_2) ),*
                 ) {
                     self.inner.step(__inputs)
                 }
@@ -288,10 +288,10 @@ impl ToTokens for decl::ExtNode {
             .map(|sv| sv.as_ref().map(|_, v| v.base_type_of()));
 
         let expected_outputs_ty = quote_spanned! {outputs.span=>
-            ( #( chandeliers_sem::ty!(#outputs_ty) ),* )
+            ( #( ::chandeliers_sem::ty!(#outputs_ty) ),* )
         };
         let expected_inputs_ty = quote_spanned! {inputs.span=>
-            ( #( chandeliers_sem::ty!(#inputs_ty) ),* )
+            ( #( ::chandeliers_sem::ty!(#inputs_ty) ),* )
         };
         let actual_inputs = quote_spanned! {inputs.span=> __inputs };
 
@@ -310,7 +310,7 @@ impl ToTokens for decl::ExtNode {
                     #actual_inputs: #expected_inputs_ty,
                 ) -> #expected_outputs_ty
                 {
-                    use chandeliers_sem::traits::Step;
+                    use ::chandeliers_sem::traits::Step;
                     self.inner.step(#actual_inputs)
                 }
             }
@@ -488,7 +488,7 @@ impl ToTokens for expr::Reference {
             }
             Self::Global(v) => {
                 toks.extend(quote! {
-                    chandeliers_sem::lit!(#v)
+                    ::chandeliers_sem::lit!(#v)
                 });
             }
         }
@@ -511,7 +511,7 @@ impl ToTokens for expr::ClockVar {
     fn to_tokens(&self, toks: &mut TokenStream) {
         let Self { var, depth } = self;
         toks.extend(quote! {
-            chandeliers_sem::var!(self <~ #depth; #var)
+            ::chandeliers_sem::var!(self <~ #depth; #var)
         });
     }
 }
@@ -520,7 +520,7 @@ impl ToTokens for decl::TyVar {
     fn to_tokens(&self, toks: &mut TokenStream) {
         let Self { name, ty } = self;
         toks.extend(quote! {
-            #name : chandeliers_sem::ty!(#ty)
+            #name : ::chandeliers_sem::ty!(#ty)
         });
     }
 }
@@ -575,7 +575,7 @@ impl ToTokens for stmt::Statement {
             Self::Substep { clk, id, args } => {
                 let id_lit = syn::LitInt::new(&format!("{}", id.t.id), id.span);
                 toks.extend(quote! {
-                    let #id = chandeliers_sem::substep!(
+                    let #id = ::chandeliers_sem::substep!(
                         self <~ #clk;
                         #id_lit => {
                             #args
@@ -589,7 +589,7 @@ impl ToTokens for stmt::Statement {
             Self::Assert(e) => {
                 let s = format!("{}", &e);
                 toks.extend(quote! {
-                    chandeliers_sem::truth!(#e, #s);
+                    ::chandeliers_sem::truth!(#e, #s);
                 })
             }
         }
@@ -628,7 +628,7 @@ impl ToTokens for expr::Expr {
         toks.extend(match self {
             Self::Lit(l) => {
                 let l = l.const_lit();
-                quote!(chandeliers_sem::lit!(#l))
+                quote!(::chandeliers_sem::lit!(#l))
             }
             Self::Reference(refer) => {
                 quote!( #refer )
@@ -638,19 +638,19 @@ impl ToTokens for expr::Expr {
                 quote!( ( #( #elems ),* ) )
             }
             Self::BinOp { op, lhs, rhs } => {
-                quote!(chandeliers_sem::binop!(#op; #lhs, #rhs))
+                quote!(::chandeliers_sem::binop!(#op; #lhs, #rhs))
             }
             Self::UnOp { op, inner } => {
-                quote!(chandeliers_sem::unop!(#op; #inner))
+                quote!(::chandeliers_sem::unop!(#op; #inner))
             }
             Self::CmpOp { op, lhs, rhs } => {
-                quote!(chandeliers_sem::cmp!(#op; #lhs, #rhs))
+                quote!(::chandeliers_sem::cmp!(#op; #lhs, #rhs))
             }
             Self::Later { clk, before, after } => {
-                quote!(chandeliers_sem::later!(self <~ #clk; #before, #after))
+                quote!(::chandeliers_sem::later!(self <~ #clk; #before, #after))
             }
             Self::Ifx { cond, yes, no } => {
-                quote!(chandeliers_sem::ifx!((#cond) then { #yes } else { #no }))
+                quote!(::chandeliers_sem::ifx!((#cond) then { #yes } else { #no }))
             }
         })
     }
