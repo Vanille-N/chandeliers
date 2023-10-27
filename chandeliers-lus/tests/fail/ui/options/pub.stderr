@@ -1,0 +1,23 @@
+error[E0603]: struct `private` is private
+  --> tests/fail/ui/options/pub.rs:19:10
+   |
+19 | use vis::private;
+   |          ^^^^^^^ private struct
+   |
+note: the struct `private` is defined here
+  --> tests/fail/ui/options/pub.rs:5:14
+   |
+5  |         node private() returns ();
+   |              ^^^^^^^
+
+error[E0603]: constant `PRIVATE` is private
+  --> tests/fail/ui/options/pub.rs:20:10
+   |
+20 | use vis::PRIVATE;
+   |          ^^^^^^^ private constant
+   |
+note: the constant `PRIVATE` is defined here
+  --> tests/fail/ui/options/pub.rs:8:15
+   |
+8  |         const PRIVATE: int = 0;
+   |               ^^^^^^^

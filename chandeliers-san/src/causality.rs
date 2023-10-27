@@ -65,6 +65,7 @@ impl Causality for ast::decl::Node {
             locals,
             blocks,
             stmts,
+            options,
         } = self;
         let mut g = Graph::default();
         for i in inputs.t.iter() {
@@ -91,6 +92,7 @@ impl Causality for ast::decl::Node {
             locals,
             blocks,
             stmts,
+            options,
         })
     }
 }

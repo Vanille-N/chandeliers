@@ -4,15 +4,6 @@ use chandeliers_lus as lustre;
 use chandeliers_sem::traits::*;
 use chandeliers_std::cast::float_of_int;
 
-/*
-lustre::decl! {
-    node test(x, y, z : bool; w : int;) returns ()
-    var s, t : float;
-    let
-        x = 0
-    tel
-}
-
 lustre::decl! {
     node full_add(a, b, c : bool) returns (s, co : bool);
     let
@@ -30,6 +21,7 @@ lustre::decl! {
 }
 
 lustre::decl! {
+    extern node half_add(a, b : bool) returns (s, co : bool);
     node full_add_h(a, b, c : bool) returns (s, co : bool);
     var s1, c1, c2 : bool;
     let
@@ -40,56 +32,12 @@ lustre::decl! {
 }
 
 lustre::decl! {
-    (* This is a comment *)
+    /* This is a comment */
+    // This too
 }
 
-fn foo() {
-    let mut x: i64;
-    {lustre::asst_target! {
-        x = 1
-    }}
-
-    let mut (x, y, z): (i64, i64, i64);
-    {lustre::asst_target! {
-        (x, y, z) = (1, 2, 3)
-    }}
-
-    let mut (s, (t, (u, v))): (i64, (i64, (i64, i64)));
-    {lustre::asst_target! {
-        (s, (t, (u, v))) = (1, (2, (3, 4)))
-    }}
-
-}
-*/
-
-#[test]
-fn main() {
-    /*
-    let _ = lustre::expr!(x);
-    let _ = lustre::expr!(42);
-    let _ = lustre::expr!((42, 0, 5));
-    let _ = lustre::expr!(s * t * u * v * w * x * y * z);
-    let _ = lustre::expr!(s - t + u - v + w - x + y + z);
-    let _ = lustre::expr!((s - t + u - (v + w)) - (x + y + z));
-    let _ = lustre::expr!(s * t / u - v + w * x * y + z);
-    let _ = lustre::expr!(f(x));
-    let _ = lustre::expr!(f(x, g(y), h(i(j()))));
-    let _ = lustre::expr!(x -> y -> z);
-    let _ = lustre::expr!(pre pre x);
-    let _ = lustre::expr!(-x);
-    let _ = lustre::expr!(not not x = y);
-    let _ = lustre::expr!(x and y and z);
-    let _ = lustre::expr!(x or y or z);
-    */
-}
-
-//       -----------forbid--------->
-//       ---alert-->     ---deny--->
-// Nothing         Warning         Error
-//       <--allow---    <-tolerate--
-//       <----------ignore----------
-
-/* Works
+const W: i64 = 0;
+const Z: i64 = 42;
 lustre::decl! {
     const A : int = B + Z;
     const B : int = Z;
@@ -99,19 +47,19 @@ lustre::decl! {
     const E : int = W + Z;
     extern const Z : int;
 }
-*/
 
 /*
 lustre::decl! {
-    const B : int = A + 1;
-    const C : int = B + A;
-    const A : int = 3;
+    const B2 : int = A2 + 1;
+    const C2 : int = B2 + A2;
+    const A2 : int = 3;
 
     node foo(a : int; f : float) returns (b : bool);
     var m, n : int;
     let
-        a = A;
-        n = 1 + bar(1.0);
+        n = 1 + bar(1.0) + A2;
+        m = bar(0.2) + bar(1.3);
+        b = n < m;
     tel;
     extern node bar(i : float) returns (n : int);
 }
@@ -368,4 +316,34 @@ mod random {
             assert_eq!(sum, s);
         }
     }
+}
+
+/*
+chandeliers_lus::decl! {
+    extern node bar(i : int) returns (o : int);
+    node foo(i : int) returns (o : int);
+    let o = bar(i); tel;
+}
+
+chandeliers_lus::decl! {
+    extern node foo(i : int) returns (o : int);
+    node bar(i : int) returns (o : int);
+    let o = foo(i); tel;
+}
+*/
+
+chandeliers_lus::decl! {
+    #[trace]
+    node count1() returns (n : int);
+    let n = 0 fby n + 1; tel
+}
+
+#[test]
+fn main() {
+    use chandeliers_sem::traits::*;
+    let mut count1 = count1::default();
+    for _ in 0..10 {
+        let _ = count1.step(());
+    }
+    panic!()
 }

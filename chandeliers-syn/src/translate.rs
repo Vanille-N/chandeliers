@@ -192,6 +192,43 @@ pub type TrResult<T> = Result<T, err::Error>;
 
 type CandleExpr = candle::expr::Expr;
 
+pub struct DeclOptions {
+    trace: bool,
+    export: bool,
+}
+
+impl Default for DeclOptions {
+    fn default() -> Self {
+        Self {
+            trace: false,
+            export: false,
+        }
+    }
+}
+
+impl DeclOptions {
+    fn for_const(self) -> TrResult<candle::decl::ConstOptions> {
+        /* FIXME: errors */
+        let Self { trace: _, export } = self;
+        Ok(candle::decl::ConstOptions { export })
+    }
+
+    fn for_node(self) -> TrResult<candle::decl::NodeOptions> {
+        let Self { trace, export } = self;
+        /* FIXME: errors */
+        Ok(candle::decl::NodeOptions { trace, export })
+    }
+
+    fn with(mut self, attr: Sp<lus::Attribute>) -> TrResult<Self> {
+        match attr.t.attr.t.action.t.inner.to_string().as_str() {
+            "trace" => self.trace = true,
+            "export" => self.export = true,
+            _ => unimplemented!("Unknown attribute"),
+        }
+        Ok(self)
+    }
+}
+
 pub trait Translate {
     type Output;
     type Ctx<'i>;
@@ -246,31 +283,42 @@ impl Translate for lus::Prog {
     fn translate(self, run_uid: usize, _span: Span, _: ()) -> TrResult<candle::decl::Prog> {
         let mut decls = Vec::new();
         for decl in self.decls.into_iter() {
-            decls.push(decl.translate(run_uid, ())?);
+            decls.push(decl.translate(run_uid, DeclOptions::default())?);
         }
         Ok(candle::decl::Prog { decls })
     }
 }
 
 impl Translate for lus::AttrDecl {
-    type Ctx<'i> = ();
+    type Ctx<'i> = DeclOptions;
     type Output = candle::decl::Decl;
-    fn translate(self, run_uid: usize, _span: Span, _: ()) -> TrResult<candle::decl::Decl> {
+    fn translate(
+        self,
+        run_uid: usize,
+        _span: Span,
+        options: DeclOptions,
+    ) -> TrResult<candle::decl::Decl> {
         match self {
-            // FIXME: attributes are ignored for now.
-            Self::Tagged(_, n) => n.flat_translate(run_uid, ()),
-            Self::Node(n) => n.flat_translate(run_uid, ()),
+            Self::Tagged(attr, n) => n.flat_translate(run_uid, options.with(attr)?),
+            Self::Node(n) => n.flat_translate(run_uid, options),
         }
     }
 }
 
 impl Translate for lus::Decl {
-    type Ctx<'i> = ();
+    type Ctx<'i> = DeclOptions;
     type Output = candle::decl::Decl;
-    fn translate(self, run_uid: usize, _span: Span, _: ()) -> TrResult<candle::decl::Decl> {
+    fn translate(
+        self,
+        run_uid: usize,
+        _span: Span,
+        options: DeclOptions,
+    ) -> TrResult<candle::decl::Decl> {
         Ok(match self {
-            Self::Const(c) => candle::decl::Decl::Const(c.translate(run_uid, ())?),
-            Self::Node(n) => candle::decl::Decl::Node(n.translate(run_uid, ())?),
+            Self::Const(c) => {
+                candle::decl::Decl::Const(c.translate(run_uid, options.for_const()?)?)
+            }
+            Self::Node(n) => candle::decl::Decl::Node(n.translate(run_uid, options.for_node()?)?),
             Self::Extern(e) => e.flat_translate(run_uid, ())?,
         })
     }
@@ -379,9 +427,14 @@ macro_rules! fork {
 }
 
 impl Translate for lus::Node {
-    type Ctx<'i> = ();
+    type Ctx<'i> = candle::decl::NodeOptions;
     type Output = candle::decl::Node;
-    fn translate(self, run_uid: usize, _span: Span, _: ()) -> TrResult<Self::Output> {
+    fn translate(
+        self,
+        run_uid: usize,
+        _span: Span,
+        options: candle::decl::NodeOptions,
+    ) -> TrResult<Self::Output> {
         let name = self.name.map(|span, name| candle::decl::NodeName {
             repr: Sp::new(name.to_string(), span),
             run_uid,
@@ -401,6 +454,7 @@ impl Translate for lus::Node {
         }
         let ExprCtx { blocks, stmts, .. } = ectx;
         Ok(candle::decl::Node {
+            options,
             name,
             inputs,
             outputs,
@@ -412,9 +466,14 @@ impl Translate for lus::Node {
 }
 
 impl Translate for lus::Const {
-    type Ctx<'i> = ();
+    type Ctx<'i> = candle::decl::ConstOptions;
     type Output = candle::decl::Const;
-    fn translate(self, run_uid: usize, span: Span, _: ()) -> TrResult<candle::decl::Const> {
+    fn translate(
+        self,
+        run_uid: usize,
+        span: Span,
+        options: candle::decl::ConstOptions,
+    ) -> TrResult<candle::decl::Const> {
         let name = self.name.map(|span, name| candle::expr::GlobalVar {
             repr: Sp::new(name.to_string(), span),
             run_uid,
@@ -429,7 +488,12 @@ impl Translate for lus::Const {
             }
             .into_err());
         }
-        Ok(candle::decl::Const { name, ty, value })
+        Ok(candle::decl::Const {
+            options,
+            name,
+            ty,
+            value,
+        })
     }
 }
 

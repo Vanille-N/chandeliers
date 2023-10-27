@@ -1097,14 +1097,9 @@ span_end_by_match! {
 #[derive(syn_derive::Parse)]
 pub struct AttrDef {
     // FIXME
-    _action: Sp<LusIdent>,
-    #[syn(parenthesized)]
-    _paren: Paren,
-    #[syn(in = _paren)]
-    #[parse(Punctuated::parse_separated_nonempty)]
-    values: Punctuated<Sp<AttrArg>, Token![,]>,
+    pub action: Sp<LusIdent>,
 }
-span_end_on_field!(AttrDef.values);
+span_end_on_field!(AttrDef.action);
 
 #[derive(syn_derive::Parse)]
 pub struct Attribute {
@@ -1112,7 +1107,7 @@ pub struct Attribute {
     #[syn(bracketed)]
     _brack: Bracket,
     #[syn(in = _brack)]
-    attr: Sp<AttrDef>,
+    pub attr: Sp<AttrDef>,
 }
 span_end_on_field!(Attribute.attr);
 

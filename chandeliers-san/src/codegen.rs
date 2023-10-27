@@ -49,14 +49,31 @@ impl ToTokens for decl::Decl {
 /// accessible alias.
 impl ToTokens for decl::Const {
     fn to_tokens(&self, toks: &mut TokenStream) {
-        let Self { name, ty, value } = self;
+        let Self {
+            name,
+            options,
+            ty,
+            value,
+        } = self;
+        let span = name.span;
         let ext_name = Ident::new_raw(&format!("{}", name), name.span);
         let value = value.const_expr();
+        let pub_qualifier = if options.export {
+            quote!(pub)
+        } else {
+            quote!()
+        };
+
+        let declaration = quote_spanned! {span=>
+            #pub_qualifier const #ext_name : ::chandeliers_sem::ty_mapping!(#ty) = #name ;
+        };
+
         toks.extend(quote! {
             #[allow(non_upper_case_globals)]
             const #name : ::chandeliers_sem::ty_mapping!(#ty) = #value ;
+
             #[allow(non_upper_case_globals)]
-            const #ext_name : ::chandeliers_sem::ty_mapping!(#ty) = #name ;
+            #declaration
         });
     }
 }
@@ -145,8 +162,10 @@ impl ToTokens for decl::Node {
             locals,
             blocks,
             stmts,
+            options,
         } = self;
 
+        let name_span = name.span;
         let ext_name = Ident::new_raw(&format!("{}", name), name.span);
         let name = name.as_ident();
 
@@ -181,10 +200,14 @@ impl ToTokens for decl::Node {
         let inputs_ty_3 = inputs_ty();
         let inputs_ty_4 = inputs_ty();
 
-        let inputs_vs = inputs
-            .t
-            .iter()
-            .map(|sv| sv.as_ref().map(|_, v| v.name_of()));
+        let inputs_vs = || {
+            inputs
+                .t
+                .iter()
+                .map(|sv| sv.as_ref().map(|_, v| v.name_of()))
+        };
+        let inputs_vs_1 = inputs_vs();
+        let inputs_vs_2 = inputs_vs();
 
         let outputs_ty = || {
             outputs
@@ -196,52 +219,48 @@ impl ToTokens for decl::Node {
         let outputs_ty_2 = outputs_ty();
         let outputs_ty_3 = outputs_ty();
         let outputs_ty_4 = outputs_ty();
-        let outputs_vs = outputs
-            .t
-            .iter()
-            .map(|sv| sv.as_ref().map(|_, v| v.name_of()));
+        let outputs_vs = || {
+            outputs
+                .t
+                .iter()
+                .map(|sv| sv.as_ref().map(|_, v| v.name_of()))
+        };
+        let outputs_vs_1 = outputs_vs();
+        let outputs_vs_2 = outputs_vs();
 
-        toks.extend(quote! {
-            #[derive(Debug, Default)]
-            #[allow(non_camel_case_types)]
-            #[allow(non_snake_case)]
-            pub struct #name {
-                __clock: usize,
-                #( #pos_inputs_decl , )*
-                #( #pos_outputs_decl , )*
-                #( #pos_locals_decl , )*
-                __nodes: ( #( #blocks , )* ),
+        let pub_qualifier = if options.export {
+            quote!(pub)
+        } else {
+            quote!()
+        };
+
+        let trace_pre = if options.trace {
+            quote! {
+                println!("{:?} -> {}", (#(#inputs_vs_1),*), stringify!(#ext_name));
             }
+        } else {
+            quote!()
+        };
 
-            #[allow(non_snake_case)]
-            // FIXME: this should me an `impl Step for #name`
-            impl ::chandeliers_sem::traits::Step for #name {
-                type Input = ( #( ::chandeliers_sem::ty_mapping!(#inputs_ty_3) ),* );
-                type Output = ( #( ::chandeliers_sem::ty_mapping!(#outputs_ty_3) ),* );
-                fn step(
-                    &mut self,
-                    __inputs: ( #( ::chandeliers_sem::ty!(#inputs_ty_1) ),* ),
-                ) -> (
-                    #( ::chandeliers_sem::ty!(#outputs_ty_1) ),*
-                ) {
-                    let ( #( #inputs_vs ),* ) = __inputs;
-                    // Actual body
-                    #( #stmts ; )*
-                    // Finish by incrementing the clock and updating the streams.
-                    ::chandeliers_sem::tick!(self);
-                    #( ::chandeliers_sem::update!(self, #pos_inputs_use ); )*
-                    #( ::chandeliers_sem::update!(self, #pos_outputs_use ); )*
-                    #( ::chandeliers_sem::update!(self, #pos_locals_use ); )*
-                    ( #( #outputs_vs ),* )
-                }
+        let trace_post = if options.trace {
+            quote! {
+                println!("{} -> {:?}", stringify!(#ext_name), (#(#outputs_vs_1),*));
             }
+        } else {
+            quote!()
+        };
+        let ext_declaration = quote_spanned! {name_span=>
+            #pub_qualifier struct #ext_name { inner: #name }
+        };
 
-            // And this is the wrapper impl visible to the outside
+        let ext_annotated_declaration = quote_spanned! {name_span=>
             #[derive(Debug, Default)]
             #[allow(non_camel_case_types)]
             #[allow(dead_code)]
-            pub struct #ext_name { inner: #name }
+            #ext_declaration
+        };
 
+        let ext_step_impl = quote_spanned! {name_span=>
             impl ::chandeliers_sem::traits::Step for #ext_name {
                 type Input = ( #( ::chandeliers_sem::ty_mapping!(#inputs_ty_4) ),* );
                 type Output = ( #( ::chandeliers_sem::ty_mapping!(#outputs_ty_4) ),* );
@@ -255,6 +274,46 @@ impl ToTokens for decl::Node {
                     self.inner.step(__inputs)
                 }
             }
+        };
+
+        toks.extend(quote! {
+            #[derive(Debug, Default)]
+            #[allow(non_camel_case_types)]
+            #[allow(non_snake_case)]
+            #pub_qualifier struct #name {
+                __clock: usize,
+                #( #pos_inputs_decl , )*
+                #( #pos_outputs_decl , )*
+                #( #pos_locals_decl , )*
+                __nodes: ( #( #blocks , )* ),
+            }
+
+            #[allow(non_snake_case)]
+            impl ::chandeliers_sem::traits::Step for #name {
+                type Input = ( #( ::chandeliers_sem::ty_mapping!(#inputs_ty_3) ),* );
+                type Output = ( #( ::chandeliers_sem::ty_mapping!(#outputs_ty_3) ),* );
+                fn step(
+                    &mut self,
+                    __inputs: ( #( ::chandeliers_sem::ty!(#inputs_ty_1) ),* ),
+                ) -> (
+                    #( ::chandeliers_sem::ty!(#outputs_ty_1) ),*
+                ) {
+                    let ( #( #inputs_vs_2 ),* ) = __inputs;
+                    #trace_pre
+                    // Actual body
+                    #( #stmts ; )*
+                    // Finish by incrementing the clock and updating the streams.
+                    ::chandeliers_sem::tick!(self);
+                    #( ::chandeliers_sem::update!(self, #pos_inputs_use ); )*
+                    #( ::chandeliers_sem::update!(self, #pos_outputs_use ); )*
+                    #( ::chandeliers_sem::update!(self, #pos_locals_use ); )*
+                    #trace_post
+                    ( #( #outputs_vs_2 ),* )
+                }
+            }
+
+            #ext_annotated_declaration
+            #ext_step_impl
         });
     }
 }
@@ -301,7 +360,7 @@ impl ToTokens for decl::ExtNode {
             #[derive(Debug, Default)]
             #[allow(non_camel_case_types)]
             #[allow(dead_code)]
-            pub struct #name { inner: #ext_name }
+            struct #name { inner: #ext_name }
 
             impl #name {
                 #[allow(unused_imports)]

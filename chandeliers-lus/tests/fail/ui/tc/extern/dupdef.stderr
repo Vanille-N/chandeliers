@@ -1,62 +1,52 @@
 error[E0428]: the name `X` is defined multiple times
- --> tests/fail/ui/tc/extern/dupdef.rs:6:1
+ --> tests/fail/ui/tc/extern/dupdef.rs:7:11
   |
-2 | chandeliers_lus::decl! {
-  | ---------------------- previous definition of the value `X` here
+3 |     const X: int = 0;
+  |           - previous definition of the value `X` here
 ...
-6 | chandeliers_lus::decl! {
-  | ^^^^^^^^^^^^^^^^^^^^^^ `X` redefined here
+7 |     const X: int = 0;
+  |           ^ `X` redefined here
   |
   = note: `X` must be defined only once in the value namespace of this module
-  = note: this error originates in the macro `chandeliers_lus::decl` (in Nightly builds, run with -Z macro-backtrace for more info)
 
 error[E0428]: the name `foo` is defined multiple times
-  --> tests/fail/ui/tc/extern/dupdef.rs:15:1
+  --> tests/fail/ui/tc/extern/dupdef.rs:16:10
    |
-10 | chandeliers_lus::decl! {
-   | ---------------------- previous definition of the type `foo` here
+11 |     node foo() returns ();
+   |          --- previous definition of the type `foo` here
 ...
-15 | chandeliers_lus::decl! {
-   | ^^^^^^^^^^^^^^^^^^^^^^ `foo` redefined here
+16 |     node foo() returns ();
+   |          ^^^ `foo` redefined here
    |
    = note: `foo` must be defined only once in the type namespace of this module
-   = note: this error originates in the macro `chandeliers_lus::decl` (in Nightly builds, run with -Z macro-backtrace for more info)
 
 error[E0119]: conflicting implementations of trait `Debug` for type `foo`
-  --> tests/fail/ui/tc/extern/dupdef.rs:15:1
+  --> tests/fail/ui/tc/extern/dupdef.rs:16:10
    |
-10 | / chandeliers_lus::decl! {
-11 | |     node foo() returns ();
-   | |____________- first implementation here
+11 |     node foo() returns ();
+   |          --- first implementation here
 ...
-15 | / chandeliers_lus::decl! {
-16 | |     node foo() returns ();
-   | |____________^ conflicting implementation for `foo`
+16 |     node foo() returns ();
+   |          ^^^ conflicting implementation for `foo`
    |
-   = note: this error originates in the derive macro `Debug` which comes from the expansion of the macro `chandeliers_lus::decl` (in Nightly builds, run with -Z macro-backtrace for more info)
+   = note: this error originates in the derive macro `Debug` (in Nightly builds, run with -Z macro-backtrace for more info)
 
 error[E0119]: conflicting implementations of trait `Default` for type `foo`
-  --> tests/fail/ui/tc/extern/dupdef.rs:15:1
+  --> tests/fail/ui/tc/extern/dupdef.rs:16:10
    |
-10 | / chandeliers_lus::decl! {
-11 | |     node foo() returns ();
-   | |____________- first implementation here
+11 |     node foo() returns ();
+   |          --- first implementation here
 ...
-15 | / chandeliers_lus::decl! {
-16 | |     node foo() returns ();
-   | |____________^ conflicting implementation for `foo`
+16 |     node foo() returns ();
+   |          ^^^ conflicting implementation for `foo`
    |
-   = note: this error originates in the derive macro `Default` which comes from the expansion of the macro `chandeliers_lus::decl` (in Nightly builds, run with -Z macro-backtrace for more info)
+   = note: this error originates in the derive macro `Default` (in Nightly builds, run with -Z macro-backtrace for more info)
 
 error[E0119]: conflicting implementations of trait `chandeliers_sem::stepping::Step` for type `foo`
-  --> tests/fail/ui/tc/extern/dupdef.rs:15:1
+  --> tests/fail/ui/tc/extern/dupdef.rs:16:10
    |
-10 | / chandeliers_lus::decl! {
-11 | |     node foo() returns ();
-   | |____________- first implementation here
+11 |     node foo() returns ();
+   |          --- first implementation here
 ...
-15 | / chandeliers_lus::decl! {
-16 | |     node foo() returns ();
-   | |____________^ conflicting implementation for `foo`
-   |
-   = note: this error originates in the macro `chandeliers_lus::decl` (in Nightly builds, run with -Z macro-backtrace for more info)
+16 |     node foo() returns ();
+   |          ^^^ conflicting implementation for `foo`

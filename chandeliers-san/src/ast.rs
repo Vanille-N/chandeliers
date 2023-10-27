@@ -673,10 +673,22 @@ pub mod decl {
         }
     }
 
+    #[derive(Debug, Clone)]
+    pub struct NodeOptions {
+        pub trace: bool,
+        pub export: bool,
+    }
+
+    #[derive(Debug, Clone)]
+    pub struct ConstOptions {
+        pub export: bool,
+    }
+
     /// A node declaration.
     #[derive(Debug, Clone)]
     pub struct Node {
         pub name: Sp<NodeName>,
+        pub options: NodeOptions,
         /// Input and output variables.
         pub inputs: Sp<Tuple<Sp<TyVar>>>,
         pub outputs: Sp<Tuple<Sp<TyVar>>>,
@@ -691,6 +703,7 @@ pub mod decl {
     #[derive(Debug, Clone)]
     pub struct Const {
         pub name: Sp<expr::GlobalVar>,
+        pub options: ConstOptions,
         pub ty: Sp<TyBase>,
         pub value: Sp<expr::Expr>,
     }
