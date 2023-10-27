@@ -49,7 +49,44 @@
 //!
 //! Relevant `impl`s: `AddExpr`, `OrExpr`, `AndExpr`, `FbyExpr`, `MulExpr`.
 //!
-//! FIXME.
+//! The parser cannot handle associativity, and instead associative expressions
+//! are returned as a flat vector. For example `1 + 2 + 3 + 4` is parsed as a
+//! vector of pairs `[Pair(1, +), Pair(2, +), Pair(3, +), End(4)]`, and we
+//! want to resolve it into
+//! ```skip
+//! Bin {
+//!     lhs: Bin {
+//!         lhs: Bin {
+//!             lhs: 1,
+//!             op: +,
+//!             rhs: 2,
+//!         },
+//!         op: +,
+//!         rhs: 3,
+//!     },
+//!     op: +,
+//!     rhs: 4,
+//! }
+//! ```
+//! Symetrically, `1 fby 2 fby 3 fby 4` is parsed as
+//! `[Pair(1, fby), Pair(2, fby), Pair(3, fby), End(4)]` and should be resolved as
+//! ```skip
+//! Fby {
+//!     depth: 0,
+//!     before: 1,
+//!     after: Fby {
+//!         depth: 1,
+//!         before: 2,
+//!         after: Fby {
+//!             depth: 2,
+//!             before: 3,
+//!             after: 4,
+//!         },
+//!     },
+//! }
+//! ```
+//! To this end we provide helpers in `assoc` to efficiently handle binary associative
+//! operators.
 //!
 //!
 //!
@@ -57,15 +94,42 @@
 //!
 //! Relevant `impl`: `CmpExpr`.
 //!
-//! FIXME.
+//! A complementary problem to the above issue is the fact that comparisons are not
+//! associative, but the parser accepts them as such. `1 <= 2 < 3 <> 4` is parsed
+//! as `[Pair(1, <=), Pair(2, <), Pair(3, <>), End(4)]` but must be rejected on
+//! the account of `<=` not being associative with `<`.
 //!
 //!
 //!
 //! # Size-1 tuple flattening
 //!
-//! Relevant `impl`s: `TargetExprTuple`, `TargetExpr`.
+//! Relevant `impl`s: `TargetExprTuple`, `TargetExpr`, `CallExpr`.
 //!
-//! FIXME.
+//! For Lustre we adapt and generalize the convention of Rust on what is a tuple
+//! or simply a parenthesized expression, and where trailing commas are allowed.
+//!
+//! For tuples, we employ exactly the Rust convention, where
+//! - `()`, `(())`, `((()))`, ... are all equal to the unit tuple,
+//! - `1`, `(1)`, `((1))`, ... are all equal to the integer `1`,
+//! - `(1, 2)`, `(1, 2,)`, `((1), (2))`, `((1, 2))`, ... are all tuples with two elements of `int`
+//!   (i.e. up to one trailing comma and an unlimited amount of surrounding parentheses are allowed),
+//! - however, specifically for size 1, a trailing comma changes the meaning:
+//!   - `(1) <> (1,)` (left is of type `int`, right is of type `(int)` a 1-element tuple)
+//!   - `(()) <> ((),)` (left is of type `unit`, right is a size-1 tuple containing `unit`)
+//!
+//! For function calls however we differ slightly from Rust, because the arguments of
+//! a function are not a `Tuple<Expr>` but a plain `Expr` that just might happen to
+//! contain a tuple. This has the following notable consequences:
+//! - A node defined with `node foo(_, _, _ : int)` may accept interchangeably
+//!   - `foo(1, 2, 3)`,
+//!   - `foo((1, 2, 3))`,
+//!   - or even `foo(bar())` if `node bar returns(_, _, _ : int)`.
+//! - A node without any arguments can be given one unit argument
+//!   - `node count() returns (n : int)` can accept `count(())`
+//! - trailing commas are allowed except when the size is exactly one:
+//!   - `foo(1, 2, 3,) = foo(1, 2, 3)`
+//!   - `foo(1) <> foo(1,)`
+//!   - `foo(()) <> foo((),)`
 //!
 //!
 //!
@@ -140,6 +204,9 @@ pub trait SpanTranslate {
     fn translate(self, run_uid: usize, ctx: Self::Ctx<'_>) -> TrResult<Sp<Self::Output>>;
     fn flat_translate(self, run_uid: usize, ctx: Self::Ctx<'_>) -> TrResult<Self::Output>;
 }
+
+/// `Sp<_>` is transparently translatable, but it makes its span available to the inner translation
+/// function.
 impl<T> SpanTranslate for Sp<T>
 where
     T: Translate,
@@ -158,6 +225,10 @@ where
     }
 }
 
+/// `Box<_>` is transparently translatable, *and it consumes the `Box<_>`*.
+///
+/// The output is not wrapped by default because the parsing AST and the analysis
+/// AST require boxes in different places.
 impl<T> Translate for Box<T>
 where
     T: Translate,
@@ -186,6 +257,7 @@ impl Translate for lus::AttrDecl {
     type Output = candle::decl::Decl;
     fn translate(self, run_uid: usize, _span: Span, _: ()) -> TrResult<candle::decl::Decl> {
         match self {
+            // FIXME: attributes are ignored for now.
             Self::Tagged(_, n) => n.flat_translate(run_uid, ()),
             Self::Node(n) => n.flat_translate(run_uid, ()),
         }
@@ -246,6 +318,10 @@ impl Translate for lus::ExtNode {
     }
 }
 
+/// Helper to construct an expression.
+///
+/// This exists to extract additional information as a byproduct of constructing
+/// the expression.
 #[derive(Default)]
 struct ExprCtx {
     blocks: Vec<Sp<candle::decl::NodeName>>,
@@ -253,6 +329,9 @@ struct ExprCtx {
     shadow_glob: HashSet<String>,
 }
 
+/// Accessor for `ExprCtx`.
+/// This is not `Copy` or even `Clone`, so if you need to duplicate it
+/// you should use the `fork!` macro that will reborrow a fresh copy.
 pub struct ExprCtxView<'i> {
     blocks: &'i mut Vec<Sp<candle::decl::NodeName>>,
     stmts: &'i mut Vec<Sp<candle::stmt::Statement>>,
@@ -261,6 +340,7 @@ pub struct ExprCtxView<'i> {
 }
 
 impl ExprCtx {
+    /// Create a new accessor`
     fn view(&mut self) -> ExprCtxView<'_> {
         ExprCtxView {
             blocks: &mut self.blocks,
@@ -272,6 +352,8 @@ impl ExprCtx {
 }
 
 impl ExprCtxView<'_> {
+    /// Increase the depth of the analysis. This affects the temporal operators
+    /// `pre`, `fby`, and `->`.
     fn bump(self, n: usize) -> Self {
         Self {
             depth: self.depth + n,
@@ -279,6 +361,7 @@ impl ExprCtxView<'_> {
         }
     }
 
+    /// Increase the depth by 1.
     fn incr(self) -> Self {
         self.bump(1)
     }

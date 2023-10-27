@@ -149,6 +149,7 @@ macro_rules! present_ty {
 /// ty_mapping!(bool) ~ bool
 /// ty_mapping!(T) ~ T
 /// ```
+#[doc(hidden)]
 #[macro_export]
 macro_rules! ty_mapping {
     ( float ) => {
@@ -317,7 +318,7 @@ macro_rules! later {
 ///             has a method `step` of the correct arity, input and output types.
 ///
 /// This advances the `$id`'th subnode by one step by providing it with the arguments to
-/// its `step` method (provide the comma-separated list of arguments between
+/// its `step` method (provide the expression that serves as arguments between
 /// the `{ ... }`) and gives the return value of said method.
 /// This computation will not be performed if the clock is not at least `$dt`,
 /// allowing delayed execution of subnodes.

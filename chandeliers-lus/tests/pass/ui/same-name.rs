@@ -5,6 +5,7 @@ chandeliers_lus::decl! {
 }
 
 fn main() {
+    use chandeliers_sem::traits::*;
     assert_eq!(X, 0);
     let mut x = X::default();
     assert_eq!(x.step(()).unwrap(), 1);

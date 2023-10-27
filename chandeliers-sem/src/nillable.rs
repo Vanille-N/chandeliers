@@ -192,6 +192,13 @@ where
     }
 }
 
+/// A trait to generate a tuple of `Nil` of the right arity.
+///
+/// In any place where a `(Nillable<_>, Nillable<_>, ...)` is expected,
+/// (including nested components), you can use `AllNil::auto_size()`
+/// to get a default value.
+///
+/// Implementations are currently provided for tuples of length up to 10.
 pub trait AllNil {
     fn auto_size() -> Self;
 }

@@ -48,19 +48,15 @@ error[E0119]: conflicting implementations of trait `Default` for type `foo`
    |
    = note: this error originates in the derive macro `Default` which comes from the expansion of the macro `chandeliers_lus::decl` (in Nightly builds, run with -Z macro-backtrace for more info)
 
-error[E0592]: duplicate definitions with name `step`
-  --> tests/fail/ui/tc/extern/dupdef.rs:10:1
+error[E0119]: conflicting implementations of trait `chandeliers_sem::stepping::Step` for type `foo`
+  --> tests/fail/ui/tc/extern/dupdef.rs:15:1
    |
 10 | / chandeliers_lus::decl! {
 11 | |     node foo() returns ();
-12 | |     let tel
-13 | | }
-   | |_^ duplicate definitions for `step`
-14 |
+   | |____________- first implementation here
+...
 15 | / chandeliers_lus::decl! {
 16 | |     node foo() returns ();
-17 | |     let tel
-18 | | }
-   | |_- other definition for `step`
+   | |____________^ conflicting implementation for `foo`
    |
    = note: this error originates in the macro `chandeliers_lus::decl` (in Nightly builds, run with -Z macro-backtrace for more info)

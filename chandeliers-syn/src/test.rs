@@ -93,10 +93,8 @@ fn expr() {
     success!(parse_as!(Expr, "0"));
     success!(parse_as!(Expr, "5476"));
     success!(parse_as!(Expr, "3.1415"));
-    /*FIXME*/
-    success!(parse_as!(Expr, "\"abc\""));
-    /*FIXME*/
-    success!(parse_as!(Expr, "'x'"));
+    success!(parse_as!(Expr, "\"abc\"")); // Accepted by the parser, rejected during typecheck
+    success!(parse_as!(Expr, "'x'")); // Accepted by the parser, rejected during typecheck
     success!(parse_as!(Expr, "x"));
     success!(parse_as!(Expr, "(x)"));
     success!(parse_as!(Expr, "((x))"));

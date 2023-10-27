@@ -475,15 +475,6 @@ pub mod expr {
     /// (a + b, c)
     /// ^^^^^^^^^^Paren
     ///
-    /// pre x
-    /// ^^^^^Pre
-    ///
-    /// -x
-    /// ^^Neg
-    ///
-    /// not x
-    /// ^^^^^Not
-    ///
     /// f(x, y)
     /// ^^^^^^^Call
     ///
@@ -513,6 +504,23 @@ pub mod expr {
     }
 
     /// An expression that consumes at least one token immediately.
+    ///
+    /// ```skip
+    /// pre x
+    /// ^^^^^Pre
+    ///
+    /// -x
+    /// ^^Neg
+    ///
+    /// not x
+    /// ^^^^^Not
+    ///
+    /// if b then y else n
+    /// ^^^^^^^^^^^^^^^^^^If
+    ///
+    /// merge b on off
+    /// ^^^^^^^^^^^^^^Merge
+    /// ```
     #[derive(syn_derive::Parse)]
     pub enum PositiveExpr {
         #[parse(peek_func = IfExpr::hint)]
@@ -556,9 +564,12 @@ pub mod expr {
     /// ```lus
     /// foo(x, y, z)
     /// ^^^fun
-    ///    ^_paren
-    ///     ^^^^^^^args
+    ///    ^^^^^^^^^args
     /// ```
+    ///
+    /// Notice how the arguments are a `ParenExpr` and not a
+    /// `Punctuated<Expr, Token![,]>`: this is to accomodate some identifications
+    /// between `foo(())` and `foo()` at the translation level.
     #[derive(syn_derive::Parse)]
     pub struct CallExpr {
         pub fun: Sp<LusIdent>,

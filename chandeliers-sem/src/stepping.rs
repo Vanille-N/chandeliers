@@ -9,11 +9,19 @@
 
 use crate::nillable::*;
 
+/// Generalized conversion from a `T` to a `Nillable<T>`.
+///
+/// This distributes the `Nillable` to each element in the case of tuples.
+/// Implementations are currently provided for tuples of length up to 10.
 pub trait Embed {
     type Target;
     fn embed(self) -> Self::Target;
 }
 
+/// Generalized conversion from a `Nillable<T>` to a `T`.
+///
+/// This distributes the `unwrap` to each element in the case of tuples.
+/// Implementations are currently provided for tuples of length up to 10.
 pub trait Trusted {
     type Target;
     fn trusted(self) -> Self::Target;
@@ -98,6 +106,15 @@ fn embed_trusted_inverse() {
     assert_eq!((3, 4, true, 7), (3, 4, true, 7).embed().trusted());
 }
 
+/// Trait that represents a Lustre node.
+///
+/// Typically `Input` will be a tuple type of `T_i` if the node expects a tuple
+/// of `Nillable<T_i>`, and `Output` will be a tuple of `U_i` if the node outputs
+/// a tuple of `Nillable<U_i>`.
+///
+/// This interfaces well with the other traits `Embed` and `Trusted` in that
+/// a node call will usually look like
+/// `let (o1, o2) = n.step((i1, i2, i3).embed()).trusted();`
 pub trait Step {
     type Input: Embed;
     type Output: Embed;

@@ -1,7 +1,7 @@
 use chandeliers_lus as lustre;
 
 #[cfg(test)]
-use chandeliers_sem::stepping::Trusted;
+use chandeliers_sem::traits::*;
 use chandeliers_std::cast::float_of_int;
 
 /*

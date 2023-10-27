@@ -11,6 +11,7 @@ chandeliers_lus::decl! {
 }
 
 fn main() {
+    use chandeliers_sem::traits::*;
     let mut a = assoc::default();
     a.step(());
 }

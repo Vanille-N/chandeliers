@@ -116,8 +116,8 @@ impl ToTokens for decl::ExtConst {
 ///     __nodes: (block1, block2, ...),
 /// }
 ///
-/// impl MyNode {
-///     fn update_mut(&mut self, i1: ty!(int), i2: ty!(int)) -> (ty!(float), ty!(float)) {
+/// impl Step for MyNode {
+///     fn step(&mut self, inputs: (ty!(int), ty!(int))) -> (ty!(float), ty!(float)) {
 ///         let ... = ...;
 ///         // other statements go here
 ///         // including stepsof subnodes
@@ -170,28 +170,32 @@ impl ToTokens for decl::Node {
             .iter()
             .filter(|v| v.t.strictly_positive())
             .map(|v| v.as_ref().map(|_, v| v.name_of()));
-        let inputs_ty = inputs
-            .t
-            .iter()
-            .map(|sv| sv.as_ref().map(|_, v| v.base_type_of()));
-        let inputs_ty_bis = inputs
-            .t
-            .iter()
-            .map(|sv| sv.as_ref().map(|_, v| v.base_type_of()));
+        let inputs_ty = || {
+            inputs
+                .t
+                .iter()
+                .map(|sv| sv.as_ref().map(|_, v| v.base_type_of()))
+        };
+        let inputs_ty_1 = inputs_ty();
+        let inputs_ty_2 = inputs_ty();
+        let inputs_ty_3 = inputs_ty();
+        let inputs_ty_4 = inputs_ty();
 
         let inputs_vs = inputs
             .t
             .iter()
             .map(|sv| sv.as_ref().map(|_, v| v.name_of()));
 
-        let outputs_ty = outputs
-            .t
-            .iter()
-            .map(|sv| sv.as_ref().map(|_, v| v.base_type_of()));
-        let outputs_ty_bis = outputs
-            .t
-            .iter()
-            .map(|sv| sv.as_ref().map(|_, v| v.base_type_of()));
+        let outputs_ty = || {
+            outputs
+                .t
+                .iter()
+                .map(|sv| sv.as_ref().map(|_, v| v.base_type_of()))
+        };
+        let outputs_ty_1 = outputs_ty();
+        let outputs_ty_2 = outputs_ty();
+        let outputs_ty_3 = outputs_ty();
+        let outputs_ty_4 = outputs_ty();
         let outputs_vs = outputs
             .t
             .iter()
@@ -211,12 +215,14 @@ impl ToTokens for decl::Node {
 
             #[allow(non_snake_case)]
             // FIXME: this should me an `impl Step for #name`
-            impl #name {
-                pub fn step(
+            impl chandeliers_sem::traits::Step for #name {
+                type Input = ( #( chandeliers_sem::ty_mapping!(#inputs_ty_3) ),* );
+                type Output = ( #( chandeliers_sem::ty_mapping!(#outputs_ty_3) ),* );
+                fn step(
                     &mut self,
-                    __inputs: ( #( chandeliers_sem::ty!(#inputs_ty) ),* ),
+                    __inputs: ( #( chandeliers_sem::ty!(#inputs_ty_1) ),* ),
                 ) -> (
-                    #( chandeliers_sem::ty!(#outputs_ty) ),*
+                    #( chandeliers_sem::ty!(#outputs_ty_1) ),*
                 ) {
                     let ( #( #inputs_vs ),* ) = __inputs;
                     // Actual body
@@ -236,13 +242,15 @@ impl ToTokens for decl::Node {
             #[allow(dead_code)]
             pub struct #ext_name { inner: #name }
 
-            impl #ext_name {
+            impl chandeliers_sem::traits::Step for #ext_name {
+                type Input = ( #( chandeliers_sem::ty_mapping!(#inputs_ty_4) ),* );
+                type Output = ( #( chandeliers_sem::ty_mapping!(#outputs_ty_4) ),* );
                 #[allow(unused_imports)]
-                pub fn step(
+                fn step(
                     &mut self,
-                    __inputs: ( #( chandeliers_sem::ty!(#inputs_ty_bis) ),* ),
+                    __inputs: ( #( chandeliers_sem::ty!(#inputs_ty_2) ),* ),
                 ) -> (
-                    #( chandeliers_sem::ty!(#outputs_ty_bis) ),*
+                    #( chandeliers_sem::ty!(#outputs_ty_2) ),*
                 ) {
                     self.inner.step(__inputs)
                 }
