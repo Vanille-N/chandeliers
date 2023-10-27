@@ -192,20 +192,11 @@ pub type TrResult<T> = Result<T, err::Error>;
 
 type CandleExpr = candle::expr::Expr;
 
+#[derive(Clone, Default, Debug)]
 pub struct DeclOptions {
     trace: bool,
     export: bool,
     main: Option<usize>,
-}
-
-impl Default for DeclOptions {
-    fn default() -> Self {
-        Self {
-            trace: false,
-            export: false,
-            main: None,
-        }
-    }
 }
 
 impl DeclOptions {

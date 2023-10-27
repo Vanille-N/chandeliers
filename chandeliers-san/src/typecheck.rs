@@ -75,7 +75,7 @@ impl TyCtx<'_> {
         match self.vars.get(var.t) {
             Some(vardef) => Ok(vardef
                 .as_ref()
-                .map(|span, ty| TyTuple::Single(Sp::new(ty.clone(), span)))),
+                .map(|span, ty| TyTuple::Single(Sp::new(*ty, span)))),
             None => Err(err::VarNotFound {
                 var: &var,
                 suggest1: self.vars.keys(),
@@ -90,7 +90,7 @@ impl TyCtx<'_> {
         match self.global.get(var.t) {
             Some(vardef) => Ok(vardef
                 .as_ref()
-                .map(|span, ty| TyTuple::Single(Sp::new(ty.clone(), span)))),
+                .map(|span, ty| TyTuple::Single(Sp::new(*ty, span)))),
             None => Err(err::VarNotFound {
                 var: &var,
                 suggest1: self.vars.keys(),
@@ -252,7 +252,10 @@ impl TypeCheckExpr for ast::expr::Expr {
                 rhs.is_const()?;
                 Ok(())
             }
-            Self::UnOp { inner, .. } => Ok(inner.is_const()?.t),
+            Self::UnOp { inner, .. } => {
+                inner.is_const()?;
+                Ok(())
+            }
             Self::CmpOp { lhs, rhs, .. } => {
                 lhs.is_const()?;
                 rhs.is_const()?;

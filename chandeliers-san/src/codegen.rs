@@ -261,6 +261,7 @@ impl ToTokens for decl::Node {
         };
 
         let ext_step_impl = quote_spanned! {name_span=>
+            #[allow(clippy::unused_unit)]
             impl ::chandeliers_sem::traits::Step for #ext_name {
                 type Input = ( #( ::chandeliers_sem::ty_mapping!(#inputs_ty_4) ),* );
                 type Output = ( #( ::chandeliers_sem::ty_mapping!(#outputs_ty_4) ),* );
@@ -289,6 +290,7 @@ impl ToTokens for decl::Node {
             }
 
             #[allow(non_snake_case)]
+            #[allow(clippy::unused_unit)]
             impl ::chandeliers_sem::traits::Step for #name {
                 type Input = ( #( ::chandeliers_sem::ty_mapping!(#inputs_ty_3) ),* );
                 type Output = ( #( ::chandeliers_sem::ty_mapping!(#outputs_ty_3) ),* );
