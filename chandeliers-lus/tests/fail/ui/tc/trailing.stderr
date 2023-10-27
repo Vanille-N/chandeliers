@@ -1,0 +1,16 @@
+error: Type mismatch between the left and right sides: expected (), got (()) instead that does not have the same length
+ --> tests/fail/ui/tc/trailing.rs:4:9
+  |
+4 |         () = ((),);
+  |         ^^^^^^^^^^
+  |
+note: This element has type ()
+ --> tests/fail/ui/tc/trailing.rs:4:9
+  |
+4 |         () = ((),);
+  |         ^
+note: While this element has type (())
+ --> tests/fail/ui/tc/trailing.rs:4:14
+  |
+4 |         () = ((),);
+  |              ^^^^^

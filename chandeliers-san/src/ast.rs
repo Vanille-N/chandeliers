@@ -631,7 +631,7 @@ pub mod stmt {
         Substep {
             clk: clock::Depth,
             id: Sp<expr::NodeId>,
-            args: Sp<Tuple<Sp<expr::Expr>>>,
+            args: Sp<expr::Expr>,
         },
         /// Print debug information.
         Trace {

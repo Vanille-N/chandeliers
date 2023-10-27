@@ -131,27 +131,10 @@ impl TypeCheckStmt for Sp<ast::stmt::Statement> {
                 let Some(expected_tys) = ctx.nodes_in.get(&id.t) else {
                     unreachable!("Substep is malformed: {id} is not a block");
                 };
-                if expected_tys.t.len() != args.t.len() {
-                    let s = format!(
-                        "Block {} expects {} arguments but {} were given",
-                        id,
-                        expected_tys.t.len(),
-                        args.t.len()
-                    );
-                    return Err(err::Basic {
-                        span: self.span,
-                        msg: s,
-                    }
-                    .into_err());
-                }
-                // Then we check that the arguments actually have the correct
-                // type at all positions.
-                for (arg, expected) in args.t.iter().zip(expected_tys.t.iter()) {
-                    let actual_ty = arg.typecheck(ctx)?;
-                    expected
-                        .map(|span, t| TyTuple::Single(Sp::new(t, span)))
-                        .identical(&actual_ty, self.span)?;
-                }
+                let actual_tys = args.typecheck(ctx)?;
+                expected_tys
+                    .as_flat_tytuple()
+                    .identical(&actual_tys, self.span)?;
                 Ok(Sp::new((), self.span))
             }
         }
@@ -171,7 +154,6 @@ impl TypeCheckExpr for Sp<ast::expr::Expr> {
                     es.as_ref()
                         .map(|span, es| {
                             let ts = es.try_map(|e| e.typecheck(ctx))?;
-                            assert!(ts.len() != 1, "Should be a var, not a Tuple");
                             Ok(TyTuple::Multiple(Sp::new(ts, span)))
                         })
                         .t
@@ -297,7 +279,6 @@ impl TypeCheckExpr for Sp<ast::stmt::VarTuple> {
         use ast::stmt::VarTuple;
         fn aux_multiple(span: Span, vs: &Tuple<Sp<VarTuple>>, ctx: &TyCtx) -> TcResult<TyTuple> {
             let ts = vs.try_map(|v| v.typecheck(ctx))?;
-            assert!(ts.len() != 1, "This should be a Single, not a Multiple");
             Ok(TyTuple::Multiple(Sp::new(ts, span)))
         }
         fn aux(_span: Span, vartup: &VarTuple, ctx: &TyCtx) -> TcResult<TyTuple> {

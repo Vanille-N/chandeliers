@@ -512,13 +512,14 @@ impl Translate for lus::TargetExprTuple {
     type Output = candle::stmt::VarTuple;
     fn translate(self, run_uid: usize, span: Span, _: ()) -> TrResult<Self::Output> {
         let mut vs = candle::Tuple::default();
+        let trail = self.fields.trailing_punct();
         for t in self.fields {
             vs.push(t.translate(run_uid, ())?);
         }
-        if vs.len() != 1 {
-            Ok(candle::stmt::VarTuple::Multiple(Sp::new(vs, span)))
-        } else {
+        if vs.len() == 1 && !trail {
             Ok(vs.into_iter().next().unwrap().t)
+        } else {
+            Ok(candle::stmt::VarTuple::Multiple(Sp::new(vs, span)))
         }
     }
 }
@@ -948,12 +949,14 @@ impl Translate for lus::expr::ParenExpr {
     type Output = CandleExpr;
     fn translate(self, run_uid: usize, span: Span, ctx: Self::Ctx<'_>) -> TrResult<CandleExpr> {
         let mut es = candle::Tuple::default();
+        let trail = self.inner.trailing_punct();
         for e in self.inner.into_iter() {
             es.push(e.translate(run_uid, fork!(ctx))?);
         }
-        match es.len() {
-            1 => Ok(es.into_iter().next().expect("ParenExpr cannot be empty").t),
-            _ => Ok(CandleExpr::Tuple(Sp::new(es, span))),
+        if es.len() == 1 && !trail {
+            Ok(es.into_iter().next().expect("ParenExpr cannot be empty").t)
+        } else {
+            Ok(CandleExpr::Tuple(Sp::new(es, span)))
         }
     }
 }
@@ -962,11 +965,7 @@ impl Translate for lus::expr::CallExpr {
     type Ctx<'i> = ExprCtxView<'i>;
     type Output = CandleExpr;
     fn translate(self, run_uid: usize, span: Span, ctx: Self::Ctx<'_>) -> TrResult<CandleExpr> {
-        let args_span = self._paren.span.join();
-        let mut es = candle::Tuple::default();
-        for e in self.args.into_iter() {
-            es.push(e.translate(run_uid, fork!(ctx))?);
-        }
+        let args = self.args.translate(run_uid, fork!(ctx))?;
         let repr = self.fun.map(|_, t| t.to_string());
         let id = Sp::new(
             candle::expr::NodeId {
@@ -984,7 +983,7 @@ impl Translate for lus::expr::CallExpr {
                     span,
                 },
                 id: id.clone(),
-                args: Sp::new(es, args_span),
+                args,
             },
             span,
         );

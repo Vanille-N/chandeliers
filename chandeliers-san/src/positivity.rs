@@ -114,10 +114,7 @@ impl CheckPositive for stmt::Statement {
                 // their output is only used at a deeper level.
                 // What's important is to check that the inputs are positive
                 // when the subnode's personal clock is positive.
-                for arg in args.t.iter() {
-                    arg.check_positive(fork!(depths).with(clk.dt))?;
-                }
-                Ok(())
+                args.check_positive(depths.with(clk.dt))
             }
         }
     }

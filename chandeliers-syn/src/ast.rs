@@ -562,13 +562,9 @@ pub mod expr {
     #[derive(syn_derive::Parse)]
     pub struct CallExpr {
         pub fun: Sp<LusIdent>,
-        #[syn(parenthesized)]
-        pub _paren: Paren,
-        #[syn(in = _paren)]
-        #[parse(Punctuated::parse_terminated)]
-        pub args: Punctuated<Sp<Box<Expr>>, Token![,]>,
+        pub args: Sp<ParenExpr>,
     }
-    span_end_on_field!(CallExpr._paren);
+    span_end_on_field!(CallExpr.args);
     impl Hint for CallExpr {
         fn hint(s: ParseStream) -> bool {
             fn is_parenthesized(s: ParseStream) -> Result<Paren> {

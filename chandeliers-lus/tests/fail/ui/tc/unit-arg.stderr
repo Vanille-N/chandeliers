@@ -1,0 +1,5 @@
+error: Block foo (#0) expects 0 arguments but 1 were given
+  --> tests/fail/ui/tc/unit-arg.rs:11:14
+   |
+11 |         () = foo((()));
+   |              ^^^^^^^^^

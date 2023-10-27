@@ -43,8 +43,8 @@ impl Step for counting_twice {
     fn step(&mut self, _: ()) -> ty!(int) {
         let b = later!(self <~ 0; lit!(true), ! var!(self <~ 1; b));
         update!(self, b);
-        let _0 = substep!(self <~ 0; 0 => {});
-        let _1 = substep!(self <~ 0; 1 => {});
+        let _0 = substep!(self <~ 0; 0 => {()});
+        let _1 = substep!(self <~ 0; 1 => {()});
         let res = ifx!((b) then { _0 } else { _1 });
         tick!(self);
         res
@@ -55,7 +55,7 @@ impl Step for counting_late {
     type Input = ();
     type Output = i64;
     fn step(&mut self, _: ()) -> ty!(int) {
-        let _0 = substep!(self <~ 2; 0 => {});
+        let _0 = substep!(self <~ 2; 0 => {()});
         let c = later!(self <~ 0; lit!(0), later!(self <~ 1; lit!(0), _0));
         tick!(self);
         c
@@ -93,8 +93,8 @@ impl Step for counting_parallel {
     type Input = ();
     type Output = (i64, i64);
     fn step(&mut self, _: ()) -> (ty!(int), ty!(int)) {
-        let _0 = substep!(self <~ 0; 0 => {});
-        let _1 = substep!(self <~ 0; 1 => {});
+        let _0 = substep!(self <~ 0; 0 => {()});
+        let _1 = substep!(self <~ 0; 1 => {()});
         let (a, b) = (_0, _1);
         tick!(self);
         (a, b)
@@ -113,7 +113,7 @@ impl Step for counting_parallel_tester {
     type Input = ();
     type Output = ();
     fn step(&mut self, _: ()) -> () {
-        let _0 = substep!(self <~ 0; 0 => {});
+        let _0 = substep!(self <~ 0; 0 => {()});
         tick!(self);
     }
 }

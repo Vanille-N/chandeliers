@@ -1,5 +1,16 @@
-error: Block float_of_int (#0) expects 1 arguments but 2 were given
+error: Type mismatch between the left and right sides: expected a scalar int, got a tuple (int, int)
  --> tests/fail/ui/tc/builtin/float-in.rs:7:13
   |
 7 |         x = float_of_int(1, 2);
   |             ^^^^^^^^^^^^^^^^^^
+  |
+note: This element has type int
+ --> tests/fail/ui/tc/builtin/float-in.rs:2:30
+  |
+2 |     extern node float_of_int(i : int) returns (f : float);
+  |                              ^^^^^^^^
+note: While this element has type (int, int)
+ --> tests/fail/ui/tc/builtin/float-in.rs:7:25
+  |
+7 |         x = float_of_int(1, 2);
+  |                         ^^^^^^

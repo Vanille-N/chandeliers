@@ -566,12 +566,11 @@ impl ToTokens for stmt::Statement {
             }
             Self::Substep { clk, id, args } => {
                 let id_lit = syn::LitInt::new(&format!("{}", id.t.id), id.span);
-                let args = args.t.iter();
                 toks.extend(quote! {
                     let #id = chandeliers_sem::substep!(
                         self <~ #clk;
                         #id_lit => {
-                            #( #args , )*
+                            #args
                         }
                     )
                 });

@@ -323,16 +323,13 @@ macro_rules! later {
 /// allowing delayed execution of subnodes.
 #[macro_export]
 macro_rules! substep {
-    ($this:ident <~ $dt:expr ; $id:tt => { $( $arg:expr, )* } ) => {
+    ($this:ident <~ $dt:expr ; $id:tt => { $args:expr } ) => {
         if $this.__clock >= $dt {
-            $this.__nodes.$id
-                .step(
-                    ( $( $arg ),* )
-                )
+            $this.__nodes.$id.step($args)
         } else {
             $crate::nillable::AllNil::auto_size()
         }
-    }
+    };
 }
 
 /// Conditional on `Nillable`s. [pure]

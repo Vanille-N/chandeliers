@@ -232,7 +232,7 @@ lustre::decl! {
     node system() returns (i : int);
     let
         i = 1;
-        ((((((())), )),)) = noio();
+        ((((((())), )),)) = (((noio(),)),);
     tel
 }
 

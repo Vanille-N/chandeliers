@@ -28,7 +28,7 @@ dependencies = [
 
 [[package]]
 name = "chandeliers-err"
-version = "0.2.3"
+version = "0.2.4"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -36,7 +36,7 @@ dependencies = [
 
 [[package]]
 name = "chandeliers-lus"
-version = "0.2.3"
+version = "0.2.4"
 dependencies = [
  "chandeliers-err",
  "chandeliers-san",
@@ -51,7 +51,7 @@ dependencies = [
 
 [[package]]
 name = "chandeliers-san"
-version = "0.2.3"
+version = "0.2.4"
 dependencies = [
  "chandeliers-err",
  "chandeliers-sem",
@@ -62,14 +62,14 @@ dependencies = [
 
 [[package]]
 name = "chandeliers-sem"
-version = "0.2.3"
+version = "0.2.4"
 dependencies = [
  "replace_with",
 ]
 
 [[package]]
 name = "chandeliers-std"
-version = "0.2.3"
+version = "0.2.4"
 dependencies = [
  "chandeliers-sem",
  "rand",
@@ -77,7 +77,7 @@ dependencies = [
 
 [[package]]
 name = "chandeliers-syn"
-version = "0.2.3"
+version = "0.2.4"
 dependencies = [
  "chandeliers-err",
  "chandeliers-san",
