@@ -225,11 +225,21 @@ impl DeclOptions {
     }
 
     fn with(mut self, attr: Sp<lus::Attribute>) -> TrResult<Self> {
-        match attr.t.attr.t.action.t.inner.to_string().as_str() {
-            "trace" => self.trace = true,
-            "export" => self.export = true,
-            "main" => self.main = Some(100), // FIXME
-            _ => unimplemented!("Unknown attribute"),
+        let params = attr.t.attr.t.params.map(|_, t| t.flatten());
+        let targets = attr.t.attr.t.targets.map(|_, t| t.flatten());
+        use syn::Lit;
+        match (
+            attr.t.attr.t.action.t.inner.to_string().as_str(),
+            &params.t[..],
+            &targets.t[..],
+        ) {
+            ("trace", [], []) => self.trace = true,
+            ("export", [], []) => self.export = true,
+            ("main", [], []) => self.main = Some(100),
+            ("main", [], [Lit::Int(i)]) => self.main = Some(i.base10_parse().unwrap()),
+            (attr, _, _) => {
+                unimplemented!("Unknown attribute {:?}", attr,)
+            }
         }
         Ok(self)
     }

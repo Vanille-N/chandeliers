@@ -1095,9 +1095,89 @@ span_end_by_match! {
 }
 
 #[derive(syn_derive::Parse)]
+pub struct AttrTargets {
+    #[syn(parenthesized)]
+    _paren: Paren,
+    #[syn(in = _paren)]
+    #[parse(Punctuated::parse_terminated)]
+    targets: Punctuated<syn::Lit, Token![,]>,
+}
+span_end_on_field!(AttrTargets._paren);
+impl Hint for AttrTargets {
+    fn hint(s: ParseStream) -> bool {
+        fn is_parenthesized(s: ParseStream) -> Result<Paren> {
+            let _content;
+            let p = syn::parenthesized!(_content in s);
+            Ok(p)
+        }
+        is_parenthesized(s).is_ok()
+    }
+}
+
+#[derive(syn_derive::Parse)]
+pub enum OptionAttrTargets {
+    #[parse(peek_func = AttrTargets::hint)]
+    Targets(AttrTargets),
+    None,
+}
+span_end_by_match! {
+    OptionAttrTargets.
+        Targets(p) => p;
+}
+
+#[derive(syn_derive::Parse)]
+pub struct AttrParams {
+    #[syn(bracketed)]
+    _brack: Bracket,
+    #[syn(in = _brack)]
+    #[parse(Punctuated::parse_terminated)]
+    params: Punctuated<LusIdent, Token![,]>,
+}
+span_end_on_field!(AttrParams._brack);
+impl Hint for AttrParams {
+    fn hint(s: ParseStream) -> bool {
+        fn is_bracketed(s: ParseStream) -> Result<Bracket> {
+            let _content;
+            let p = syn::bracketed!(_content in s);
+            Ok(p)
+        }
+        is_bracketed(s).is_ok()
+    }
+}
+
+#[derive(syn_derive::Parse)]
+pub enum OptionAttrParams {
+    #[parse(peek_func = AttrParams::hint)]
+    Params(AttrParams),
+    None,
+}
+span_end_by_match! {
+    OptionAttrParams.
+        Params(p) => p;
+}
+
+impl OptionAttrParams {
+    pub fn flatten(self) -> Vec<String> {
+        match self {
+            Self::None => vec![],
+            Self::Params(ps) => ps.params.into_iter().map(|i| i.inner.to_string()).collect(),
+        }
+    }
+}
+impl OptionAttrTargets {
+    pub fn flatten(self) -> Vec<syn::Lit> {
+        match self {
+            Self::None => vec![],
+            Self::Targets(ts) => ts.targets.into_iter().collect(),
+        }
+    }
+}
+
+#[derive(syn_derive::Parse)]
 pub struct AttrDef {
-    // FIXME
     pub action: Sp<LusIdent>,
+    pub params: Sp<OptionAttrParams>,
+    pub targets: Sp<OptionAttrTargets>,
 }
 span_end_on_field!(AttrDef.action);
 

@@ -204,6 +204,11 @@ impl SpanEnd for syn::token::Paren {
         Some(self.span.join())
     }
 }
+impl SpanEnd for syn::token::Bracket {
+    fn span_end(&self) -> Option<Span> {
+        Some(self.span.join())
+    }
+}
 
 /// Because `Vec` does not implement `Parse` as we want,
 /// `Tuple` is used to for sequences.

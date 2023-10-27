@@ -323,10 +323,14 @@ impl ToTokens for decl::Node {
                 fn main() {
                     use ::chandeliers_sem::traits::*;
                     let mut sys = #ext_name::default();
-                    let mut i = 1;
-                    while i != #nb_iter {
-                        sys.step(());
-                        i += 1;
+                    if #nb_iter == 0 {
+                        loop {
+                            sys.step(());
+                        }
+                    } else {
+                        for _ in 1..=#nb_iter {
+                            sys.step(());
+                        }
                     }
                 }
             });

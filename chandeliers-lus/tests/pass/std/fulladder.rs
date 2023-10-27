@@ -26,16 +26,18 @@ chandeliers_lus::decl! {
         (s2, co2) = full_add_h(a, b, c);
         ok = (s1 = s2) and (co1 = co2);
     tel;
-}
 
-fn main() {
-    use chandeliers_sem::traits::*;
-    let mut eq = equivalence::default();
-    for a in [true, false] {
-        for b in [true, false] {
-            for c in [true, false] {
-                assert!(eq.step((a, b, c).embed()).trusted())
-            }
-        }
-    }
+    #[main(8)]
+    node system() returns ();
+    var a, b, c, ok : bool; enumerate : int;
+    let
+        enumerate = 0 fby enumerate + 1;
+
+        a = (enumerate and 1) > 0;
+        b = (enumerate and 2) > 0;
+        c = (enumerate and 4) > 0;
+
+        ok = equivalence(a, b, c);
+        assert ok;
+    tel;
 }
