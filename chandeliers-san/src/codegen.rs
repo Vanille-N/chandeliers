@@ -383,6 +383,39 @@ impl ToTokens for decl::ExtNode {
         let rustc_allow = options.rustc_allow.iter();
 
         let name = name.as_ident();
+        let inputs_vs = || {
+            inputs
+                .t
+                .iter()
+                .map(|sv| sv.as_ref().map(|_, v| v.name_of()))
+        };
+        let inputs_vs_1 = inputs_vs();
+        let inputs_vs_2 = inputs_vs();
+        let outputs_vs = || {
+            outputs
+                .t
+                .iter()
+                .map(|sv| sv.as_ref().map(|_, v| v.name_of()))
+        };
+        let outputs_vs_1 = outputs_vs();
+        let outputs_vs_2 = outputs_vs();
+        let outputs_vs_3 = outputs_vs();
+
+        let trace_pre = if options.trace {
+            quote! {
+                println!("[ext] {:?} -> {}", (#(#inputs_vs_1),*), stringify!(#ext_name));
+            }
+        } else {
+            quote!()
+        };
+
+        let trace_post = if options.trace {
+            quote! {
+                println!("[ext] {} -> {:?}", stringify!(#ext_name), (#(#outputs_vs_1),*));
+            }
+        } else {
+            quote!()
+        };
 
         toks.extend(quote_spanned! {name.span()=>
             #[derive(Debug, Default)]
@@ -391,6 +424,7 @@ impl ToTokens for decl::ExtNode {
             struct #name { inner: #ext_name }
 
             #[allow(dead_code)]
+            #[allow(unused_parens)]
             // FIXME: impl Step
             impl #name {
                 #[allow(unused_imports)]
@@ -399,8 +433,15 @@ impl ToTokens for decl::ExtNode {
                     #actual_inputs: #expected_inputs_ty,
                 ) -> #expected_outputs_ty
                 {
+                    let ( #( #inputs_vs_2 ),* ) = __inputs;
+                    #trace_pre
+
                     use ::chandeliers_sem::traits::Step;
-                    self.inner.step(#actual_inputs)
+                    let ( #( #outputs_vs_2 ),* ) = self.inner.step(#actual_inputs);
+
+                    #trace_post
+                    ( #( #outputs_vs_3 ),* )
+
                 }
             }
         });
