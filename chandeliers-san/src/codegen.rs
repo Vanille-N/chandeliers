@@ -5,6 +5,25 @@ use quote::{quote, quote_spanned, ToTokens};
 
 use super::ast::*;
 
+trait ConstExprTokens {
+    fn const_expr_tokens(&self) -> TokenStream;
+}
+
+impl<T: ConstExprTokens> ConstExprTokens for Sp<T> {
+    fn const_expr_tokens(&self) -> TokenStream {
+        let inner = self.t.const_expr_tokens();
+        quote_spanned! {self.span=>
+            #inner
+        }
+    }
+}
+impl<T: ConstExprTokens> ConstExprTokens for Box<T> {
+    fn const_expr_tokens(&self) -> TokenStream {
+        let inner = self.as_ref().const_expr_tokens();
+        quote!( #inner )
+    }
+}
+
 /// `Sp` is transparently printable, but gives its own span to the output.
 impl<T: ToTokens> ToTokens for Sp<T> {
     fn to_tokens(&self, toks: &mut TokenStream) {
@@ -57,7 +76,7 @@ impl ToTokens for decl::Const {
         } = self;
         let span = name.span;
         let ext_name = Ident::new_raw(&format!("{}", name), name.span);
-        let value = value.const_expr();
+        let value = value.const_expr_tokens();
         let pub_qualifier = if options.export {
             quote!(pub)
         } else {
@@ -498,20 +517,6 @@ impl ToTokens for Sp<expr::LocalVar> {
     }
 }
 
-impl Sp<expr::Expr> {
-    fn const_expr(&self) -> TokenStream {
-        let toks = self.t.const_expr();
-        quote_spanned! {self.span=> #toks }
-    }
-}
-
-impl Sp<expr::Reference> {
-    fn const_expr(&self) -> TokenStream {
-        let toks = self.t.const_expr();
-        quote_spanned! {self.span=> #toks }
-    }
-}
-
 /// Expr is one of the few nontrivial implementations in this file,
 /// but at its core it's mostly just projecting to fields.
 ///
@@ -521,41 +526,44 @@ impl Sp<expr::Reference> {
 /// In this method we are heavily taking advantage of the fact that rust has
 /// rich const definitions and all binari/unary/comparisons/conditionals
 /// that we are going to use here are valid in Rust const contexts.
-impl expr::Expr {
-    fn const_expr(&self) -> TokenStream {
+impl ConstExprTokens for expr::Expr {
+    fn const_expr_tokens(&self) -> TokenStream {
         match self {
             Self::Lit(l) => {
                 let l = l.const_lit();
                 quote!( #l )
             }
             Self::Reference(refer) => {
-                let refer = refer.const_expr();
+                let refer = refer.const_expr_tokens();
                 quote!( #refer )
             }
             Self::BinOp { op, lhs, rhs } => {
-                let lhs = lhs.const_expr();
-                let rhs = rhs.const_expr();
+                let lhs = lhs.const_expr_tokens();
+                let rhs = rhs.const_expr_tokens();
                 quote!( (#lhs #op #rhs) )
             }
             Self::UnOp { op, inner } => {
-                let inner = inner.const_expr();
+                let inner = inner.const_expr_tokens();
                 quote!( (#op #inner) )
             }
             Self::CmpOp { op, lhs, rhs } => {
-                let lhs = lhs.const_expr();
-                let rhs = rhs.const_expr();
+                let lhs = lhs.const_expr_tokens();
+                let rhs = rhs.const_expr_tokens();
                 quote!( (#lhs #op #rhs) )
             }
             Self::Tuple(t) => {
-                let ts = t.t.iter().map(|e| e.const_expr()).collect::<Vec<_>>();
+                let ts =
+                    t.t.iter()
+                        .map(|e| e.const_expr_tokens())
+                        .collect::<Vec<_>>();
                 quote!( #( #ts ),* )
             }
             Self::Later { .. } => unreachable!("Later is not valid in const contexts"),
             Self::Substep { .. } => unreachable!("Substep is not valid in const contexts"),
             Self::Ifx { cond, yes, no } => {
-                let cond = cond.const_expr();
-                let yes = yes.const_expr();
-                let no = no.const_expr();
+                let cond = cond.const_expr_tokens();
+                let yes = yes.const_expr_tokens();
+                let no = no.const_expr_tokens();
                 quote! {
                     if #cond { #yes } else { #no }
                 }
@@ -645,8 +653,8 @@ impl ToTokens for expr::Reference {
     }
 }
 
-impl expr::Reference {
-    fn const_expr(&self) -> TokenStream {
+impl ConstExprTokens for expr::Reference {
+    fn const_expr_tokens(&self) -> TokenStream {
         match self {
             Self::Var(_) => unreachable!("Var is invalid in const contexts"),
             Self::Global(v) => quote!( #v ),

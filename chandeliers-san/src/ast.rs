@@ -80,6 +80,12 @@ impl<T> Sp<T> {
             span: self.span,
         }
     }
+
+    /// Wrap the inner type in a Box.
+    /// Useful when there are recursive structures that need indirection.
+    pub fn boxed(self) -> Sp<Box<T>> {
+        self.map(|_, t| Box::new(t))
+    }
 }
 
 /// Monad combinator to map faillible functions on a `Sp`.
@@ -568,44 +574,44 @@ pub mod expr {
         /// Application of a binary operator `a + b`
         BinOp {
             op: BinOp,
-            lhs: Box<Sp<Expr>>,
-            rhs: Box<Sp<Expr>>,
+            lhs: Sp<Box<Expr>>,
+            rhs: Sp<Box<Expr>>,
         },
         /// Application of a unary operator `!b`
-        UnOp { op: UnOp, inner: Box<Sp<Expr>> },
+        UnOp { op: UnOp, inner: Sp<Box<Expr>> },
         /// Application of a comparison function `a != b`
         CmpOp {
             op: CmpOp,
-            lhs: Box<Sp<Expr>>,
-            rhs: Box<Sp<Expr>>,
+            lhs: Sp<Box<Expr>>,
+            rhs: Sp<Box<Expr>>,
         },
         /// A when or whenop expression
         ClockOp {
             op: ClockOp,
-            inner: Box<Sp<Expr>>,
-            activate: Box<Sp<Expr>>,
+            inner: Sp<Box<Expr>>,
+            activate: Sp<Box<Expr>>,
         },
         /// The special operator "later" in (Lustre `->`)
         /// to perform case analysis on the current value of the clock.
         Later {
             clk: past::Depth,
-            before: Box<Sp<Expr>>,
-            after: Box<Sp<Expr>>,
+            before: Sp<Box<Expr>>,
+            after: Sp<Box<Expr>>,
         },
         /// A conditional expression `if b then x else y`
         Ifx {
-            cond: Box<Sp<Expr>>,
-            yes: Box<Sp<Expr>>,
-            no: Box<Sp<Expr>>,
+            cond: Sp<Box<Expr>>,
+            yes: Sp<Box<Expr>>,
+            no: Sp<Box<Expr>>,
         },
         /// Clock combinator
         Merge {
-            switch: Box<Sp<Expr>>,
-            on: Box<Sp<Expr>>,
-            off: Box<Sp<Expr>>,
+            switch: Sp<Box<Expr>>,
+            on: Sp<Box<Expr>>,
+            off: Sp<Box<Expr>>,
         },
         /// Advance a block.
-        Substep { id: Sp<NodeId>, args: Box<Sp<Expr>> },
+        Substep { id: Sp<NodeId>, args: Sp<Box<Expr>> },
     }
 
     impl fmt::Display for Expr {
