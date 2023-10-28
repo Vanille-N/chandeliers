@@ -481,12 +481,12 @@ pub mod expr {
     #[derive(syn_derive::Parse)]
     pub enum AtomicExpr {
         #[parse(peek_func = ParenExpr::hint)]
-        Paren(ParenExpr),
+        Paren(Sp<ParenExpr>),
         #[parse(peek_func = CallExpr::hint)]
-        Call(CallExpr),
+        Call(Sp<CallExpr>),
         #[parse(peek_func = LitExpr::hint)]
-        Lit(LitExpr),
-        Var(VarExpr),
+        Lit(Sp<LitExpr>),
+        Var(Sp<VarExpr>),
     }
     span_end_by_match! {
         AtomicExpr.
@@ -518,16 +518,16 @@ pub mod expr {
     #[derive(syn_derive::Parse)]
     pub enum PositiveExpr {
         #[parse(peek_func = IfExpr::hint)]
-        If(IfExpr),
+        If(Sp<IfExpr>),
         #[parse(peek_func = MergeExpr::hint)]
-        Merge(MergeExpr),
+        Merge(Sp<MergeExpr>),
         #[parse(peek_func = PreExpr::hint)]
-        Pre(PreExpr),
+        Pre(Sp<PreExpr>),
         #[parse(peek_func = NegExpr::hint)]
-        Neg(NegExpr),
+        Neg(Sp<NegExpr>),
         #[parse(peek_func = NotExpr::hint)]
-        Not(NotExpr),
-        Atomic(AtomicExpr),
+        Not(Sp<NotExpr>),
+        Atomic(Sp<AtomicExpr>),
     }
     span_end_by_match! {
         PositiveExpr.

@@ -621,9 +621,7 @@ impl Translate for lus::Type {
     type Ctx<'i> = ();
     type Output = candle::ty::TyBase;
     fn translate(self, run_uid: usize, _span: Span, _: ()) -> TrResult<Self::Output> {
-        //if !matches!(self.clock.t, lus::TypeClock::None) {
-        //    unimplemented!("Translate for ClockType");
-        //}
+        // FIXME: translate the clock
         self.base.flat_translate(run_uid, ())
     }
 }
@@ -741,9 +739,9 @@ impl Translate for lus::expr::IfExpr {
     type Ctx<'i> = ExprCtxView<'i>;
     type Output = CandleExpr;
     fn translate(self, run_uid: usize, _span: Span, ctx: Self::Ctx<'_>) -> TrResult<CandleExpr> {
-        let cond = Box::new(self.cond.translate(run_uid, fork!(ctx))?);
-        let yes = Box::new(self.yes.translate(run_uid, fork!(ctx))?);
-        let no = Box::new(self.no.translate(run_uid, ctx)?);
+        let cond = self.cond.translate(run_uid, fork!(ctx))?.boxed();
+        let yes = self.yes.translate(run_uid, fork!(ctx))?.boxed();
+        let no = self.no.translate(run_uid, ctx)?.boxed();
         Ok(CandleExpr::Ifx { cond, yes, no })
     }
 }
@@ -893,10 +891,10 @@ impl Translate for lus::expr::OrExpr {
         assoc::Descr {
             label: "OrExpr",
             convert: |elem: Sp<lus::expr::AndExpr>, _depth| elem.translate(run_uid, fork!(ctx)),
-            compose: |lhs, _op, _depth, rhs| CandleExpr::BinOp {
+            compose: |lhs: Sp<CandleExpr>, _op, _depth, rhs: Sp<CandleExpr>| CandleExpr::BinOp {
                 op: candle::expr::BinOp::BitOr,
-                lhs: Box::new(lhs),
-                rhs: Box::new(rhs),
+                lhs: lhs.boxed(),
+                rhs: rhs.boxed(),
             },
         }
         .left_associative(self.items)
@@ -910,10 +908,10 @@ impl Translate for lus::expr::AndExpr {
         assoc::Descr {
             label: "AndExpr",
             convert: |elem: Sp<lus::expr::CmpExpr>, _depth| elem.translate(run_uid, fork!(ctx)),
-            compose: |lhs, _op, _depth, rhs| CandleExpr::BinOp {
+            compose: |lhs: Sp<CandleExpr>, _op, _depth, rhs: Sp<CandleExpr>| CandleExpr::BinOp {
                 op: candle::expr::BinOp::BitAnd,
-                lhs: Box::new(lhs),
-                rhs: Box::new(rhs),
+                lhs: lhs.boxed(),
+                rhs: rhs.boxed(),
             },
         }
         .left_associative(self.items)
@@ -924,7 +922,7 @@ impl Translate for lus::expr::NotExpr {
     type Ctx<'i> = ExprCtxView<'i>;
     type Output = CandleExpr;
     fn translate(self, run_uid: usize, _span: Span, ctx: Self::Ctx<'_>) -> TrResult<CandleExpr> {
-        let inner = Box::new(self.inner.translate(run_uid, ctx)?);
+        let inner = self.inner.translate(run_uid, ctx)?.boxed();
         Ok(CandleExpr::UnOp {
             op: candle::expr::UnOp::Not,
             inner,
@@ -956,7 +954,7 @@ impl Translate for lus::expr::CmpExpr {
         let Pair::Punctuated(lhs, op) = first else {
             unreachable!("We know that there is a second")
         };
-        let lhs = Box::new(lhs.translate(run_uid, fork!(ctx))?);
+        let lhs = lhs.translate(run_uid, fork!(ctx))?.boxed();
         let op = op.translate(run_uid, span, ())?;
         // We must not have a third element.
         if let Some(third) = it.next() {
@@ -985,7 +983,7 @@ impl Translate for lus::expr::CmpExpr {
         let Pair::End(rhs) = second else {
             unreachable!("We know there is no third")
         };
-        let rhs = Box::new(rhs.translate(run_uid, ctx)?);
+        let rhs = rhs.translate(run_uid, ctx)?.boxed();
         Ok(CandleExpr::CmpOp { op, lhs, rhs })
     }
 }
@@ -1020,8 +1018,8 @@ impl Translate for lus::expr::FbyExpr {
                         dt: ctx.depth + depth,
                         span: before.span.join(after.span).expect("Faulty span"),
                     },
-                    before: Box::new(before),
-                    after: Box::new(after),
+                    before: before.boxed(),
+                    after: after.boxed(),
                 }
             },
         }
@@ -1054,8 +1052,8 @@ impl Translate for lus::expr::ThenExpr {
                         dt: ctx.depth + depth,
                         span: before.span.join(after.span).expect("Faulty span"),
                     },
-                    before: Box::new(before),
-                    after: Box::new(after),
+                    before: before.boxed(),
+                    after: after.boxed(),
                 }
             },
         }
@@ -1072,10 +1070,12 @@ impl Translate for lus::expr::AddExpr {
         assoc::Descr {
             label: "AddExpr",
             convert: |elem: Sp<lus::expr::MulExpr>, _depth| elem.translate(run_uid, fork!(ctx)),
-            compose: |lhs, op: lus::expr::AddOp, _depth, rhs| CandleExpr::BinOp {
-                op: op.translate(),
-                lhs: Box::new(lhs),
-                rhs: Box::new(rhs),
+            compose: |lhs: Sp<CandleExpr>, op: lus::expr::AddOp, _depth, rhs: Sp<CandleExpr>| {
+                CandleExpr::BinOp {
+                    op: op.translate(),
+                    lhs: lhs.boxed(),
+                    rhs: rhs.boxed(),
+                }
             },
         }
         .left_associative(self.items)
@@ -1108,10 +1108,12 @@ impl Translate for lus::expr::MulExpr {
         assoc::Descr {
             label: "MulExpr",
             convert: |elem: Sp<lus::expr::ClockExpr>, _depth| elem.translate(run_uid, fork!(ctx)),
-            compose: |lhs, op: lus::expr::MulOp, _depth, rhs| CandleExpr::BinOp {
-                op: op.translate(),
-                lhs: Box::new(lhs),
-                rhs: Box::new(rhs),
+            compose: |lhs: Sp<CandleExpr>, op: lus::expr::MulOp, _depth, rhs: Sp<CandleExpr>| {
+                CandleExpr::BinOp {
+                    op: op.translate(),
+                    lhs: lhs.boxed(),
+                    rhs: rhs.boxed(),
+                }
             },
         }
         .left_associative(self.items)
@@ -1136,10 +1138,12 @@ impl Translate for lus::expr::ClockExpr {
             convert: |elem: Sp<lus::expr::PositiveExpr>, _depth| {
                 elem.translate(run_uid, fork!(ctx))
             },
-            compose: |lhs, op: lus::expr::ClockOp, _depth, rhs| CandleExpr::ClockOp {
-                op: op.translate(),
-                inner: Box::new(lhs),
-                activate: Box::new(rhs),
+            compose: |lhs: Sp<CandleExpr>, op: lus::expr::ClockOp, _depth, rhs: Sp<CandleExpr>| {
+                CandleExpr::ClockOp {
+                    op: op.translate(),
+                    inner: lhs.boxed(),
+                    activate: rhs.boxed(),
+                }
             },
         }
         .left_associative(self.items)
@@ -1150,7 +1154,7 @@ impl Translate for lus::expr::NegExpr {
     type Ctx<'i> = ExprCtxView<'i>;
     type Output = CandleExpr;
     fn translate(self, run_uid: usize, _span: Span, ctx: Self::Ctx<'_>) -> TrResult<CandleExpr> {
-        let inner = Box::new(self.inner.translate(run_uid, ctx)?);
+        let inner = self.inner.translate(run_uid, ctx)?.boxed();
         Ok(CandleExpr::UnOp {
             op: candle::expr::UnOp::Neg,
             inner,
@@ -1192,7 +1196,7 @@ impl Translate for lus::expr::CallExpr {
             .push(Sp::new(candle::decl::NodeName { repr, run_uid }, span));
         Ok(CandleExpr::Substep {
             id: id.clone(),
-            args: Box::new(args),
+            args: args.boxed(),
         })
     }
 }
@@ -1200,12 +1204,12 @@ impl Translate for lus::expr::CallExpr {
 impl Translate for lus::expr::AtomicExpr {
     type Ctx<'i> = ExprCtxView<'i>;
     type Output = CandleExpr;
-    fn translate(self, run_uid: usize, span: Span, ctx: Self::Ctx<'_>) -> TrResult<CandleExpr> {
+    fn translate(self, run_uid: usize, _span: Span, ctx: Self::Ctx<'_>) -> TrResult<CandleExpr> {
         match self {
-            Self::Lit(l) => l.translate(run_uid, span, ctx),
-            Self::Call(c) => c.translate(run_uid, span, ctx),
-            Self::Var(v) => v.translate(run_uid, span, ctx),
-            Self::Paren(p) => p.translate(run_uid, span, ctx),
+            Self::Lit(l) => l.flat_translate(run_uid, ctx),
+            Self::Call(c) => c.flat_translate(run_uid, ctx),
+            Self::Var(v) => v.flat_translate(run_uid, ctx),
+            Self::Paren(p) => p.flat_translate(run_uid, ctx),
         }
     }
 }
@@ -1213,15 +1217,26 @@ impl Translate for lus::expr::AtomicExpr {
 impl Translate for lus::expr::PositiveExpr {
     type Ctx<'i> = ExprCtxView<'i>;
     type Output = CandleExpr;
-    fn translate(self, run_uid: usize, span: Span, ctx: Self::Ctx<'_>) -> TrResult<CandleExpr> {
+    fn translate(self, run_uid: usize, _span: Span, ctx: Self::Ctx<'_>) -> TrResult<CandleExpr> {
         match self {
-            Self::If(i) => i.translate(run_uid, span, ctx),
-            Self::Merge(_m) => unimplemented!("Translate for Merge"),
-            Self::Pre(p) => p.translate(run_uid, span, ctx),
-            Self::Neg(n) => n.translate(run_uid, span, ctx),
-            Self::Not(n) => n.translate(run_uid, span, ctx),
-            Self::Atomic(a) => a.translate(run_uid, span, ctx),
+            Self::If(i) => i.flat_translate(run_uid, ctx),
+            Self::Merge(m) => m.flat_translate(run_uid, ctx),
+            Self::Pre(p) => p.flat_translate(run_uid, ctx),
+            Self::Neg(n) => n.flat_translate(run_uid, ctx),
+            Self::Not(n) => n.flat_translate(run_uid, ctx),
+            Self::Atomic(a) => a.flat_translate(run_uid, ctx),
         }
+    }
+}
+
+impl Translate for lus::expr::MergeExpr {
+    type Ctx<'i> = ExprCtxView<'i>;
+    type Output = CandleExpr;
+    fn translate(self, run_uid: usize, _span: Span, ctx: Self::Ctx<'_>) -> TrResult<CandleExpr> {
+        let switch = self.clk.translate(run_uid, fork!(ctx))?.boxed();
+        let on = self.on.translate(run_uid, fork!(ctx))?.boxed();
+        let off = self.off.translate(run_uid, fork!(ctx))?.boxed();
+        Ok(CandleExpr::Merge { switch, on, off })
     }
 }
 

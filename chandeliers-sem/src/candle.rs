@@ -437,7 +437,7 @@ macro_rules! cmp {
 /// This fails on both `false` and `nil`.
 #[macro_export]
 macro_rules! truth {
-    ($b:expr, $msg:expr) => {
+    ($b:expr, $msg:expr) => {{
         use $crate::nillable::*;
         let b: Nillable<bool> = $b;
         match b {
@@ -445,7 +445,7 @@ macro_rules! truth {
             Defined(false) => panic!("Assertion failed: {}", $msg),
             _ => panic!("Value is nil: {}", $msg),
         }
-    };
+    }};
 }
 
 /// Select only when the guard is true. [pure]
@@ -453,7 +453,7 @@ macro_rules! truth {
 /// `when!(b; e)` is `e` when `b` is `true` and `nil` otherwise.
 #[macro_export]
 macro_rules! when {
-    ( $b:expr ; $e:expr ) => {
+    ( $b:expr ; $e:expr ) => {{
         use $crate::nillable::*;
         let b: Nillable<bool> = $b;
         let e = $e;
@@ -461,7 +461,7 @@ macro_rules! when {
             Defined(true) => e,
             _ => AllNil::auto_size(),
         }
-    }
+    }};
 }
 
 /// Select only when the guard is true. [pure]
@@ -469,7 +469,7 @@ macro_rules! when {
 /// `whenot!(b; e)` is `e` when `b` is `false` and `nil` otherwise.
 #[macro_export]
 macro_rules! whenot {
-    ( $b:expr ; $e:expr ) => {
+    ( $b:expr ; $e:expr ) => {{
         use $crate::nillable::*;
         let b: Nillable<bool> = $b;
         let e = $e;
@@ -477,7 +477,7 @@ macro_rules! whenot {
             Defined(false) => e,
             _ => AllNil::auto_size(),
         }
-    };
+    }};
 }
 
 /// Merge two streams (equivalent to `ifx`) [pure]
@@ -486,7 +486,7 @@ macro_rules! whenot {
 /// `b` is `false`.
 #[macro_export]
 macro_rules! merge {
-    ( $b:expr ; $on:expr, $off:expr ) => {
+    ( $b:expr ; $on:expr, $off:expr ) => {{
         use $crate::nillable::*;
         let b: Nillable<bool> = $b;
         let on = $on;
@@ -496,5 +496,5 @@ macro_rules! merge {
             Defined(false) => off,
             _ => AllNil::auto_size(),
         }
-    };
+    }};
 }

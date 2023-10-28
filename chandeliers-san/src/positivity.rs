@@ -57,6 +57,12 @@ impl<T: CheckPositive> CheckPositive for Sp<T> {
     }
 }
 
+impl<T: CheckPositive> CheckPositive for Box<T> {
+    fn check_positive(&self, depth: VarsDepth<'_>) -> TokResult<()> {
+        self.as_ref().check_positive(depth)
+    }
+}
+
 impl<T: MakePositive> MakePositive for Sp<T> {
     fn make_positive(&mut self) -> TokResult<()> {
         self.t.make_positive()
@@ -147,8 +153,21 @@ impl CheckPositive for expr::Expr {
             Self::Substep { args, .. } => args.check_positive(depths),
             // Reference is also an interesting case, but its impl is separate.
             Self::Reference(refer) => refer.check_positive(depths),
-            Self::ClockOp { .. } => unimplemented!("CheckPositive for ClockOp"),
-            Self::Merge { .. } => unimplemented!("CheckPositive for Merge"),
+            Self::ClockOp {
+                activate,
+                op: _,
+                inner,
+            } => {
+                activate.check_positive(fork!(depths))?;
+                inner.check_positive(fork!(depths))?;
+                Ok(())
+            }
+            Self::Merge { switch, on, off } => {
+                switch.check_positive(fork!(depths))?;
+                on.check_positive(fork!(depths))?;
+                off.check_positive(fork!(depths))?;
+                Ok(())
+            }
         }
     }
 }

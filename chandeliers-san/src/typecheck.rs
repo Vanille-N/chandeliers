@@ -152,6 +152,15 @@ impl<T: TypeCheckExpr> TypeCheckSpanExpr for Sp<T> {
     }
 }
 
+impl<T: TypeCheckExpr> TypeCheckExpr for Box<T> {
+    fn typecheck(&self, span: Span, ctx: &TyCtx) -> TcResult<TyTuple> {
+        self.as_ref().typecheck(span, ctx)
+    }
+    fn is_const(&self, span: Span) -> TcResult<()> {
+        self.as_ref().is_const(span)
+    }
+}
+
 /// Typecheck a statement.
 ///
 /// Warning: as indicated by the `&mut`, this is not pure,
@@ -239,8 +248,28 @@ impl TypeCheckExpr for ast::expr::Expr {
                     .identical(&actual_tys, span)?;
                 Ok(ctx.get_node_out(id.as_ref()).unwrap().t)
             }
-            Self::ClockOp { .. } => unimplemented!("typecheck for ClockOp"),
-            Self::Merge { .. } => unimplemented!("typecheck for Merge"),
+            Self::ClockOp {
+                op: _,
+                inner,
+                activate,
+            } => {
+                /* FIXME */
+                let activate = activate.typecheck(ctx)?;
+                let inner = inner.typecheck(ctx)?;
+                let activate = activate.is_primitive()?;
+                activate.is_bool("A clock", span)?;
+                Ok(inner.t)
+            }
+            Self::Merge { switch, on, off } => {
+                /* FIXME */
+                let switch = switch.typecheck(ctx)?;
+                let on = on.typecheck(ctx)?;
+                let off = off.typecheck(ctx)?;
+                let switch = switch.is_primitive()?;
+                switch.is_bool("A clock", span)?;
+                on.identical(&off, span)?;
+                Ok(on.t)
+            }
         }
     }
 
@@ -279,8 +308,16 @@ impl TypeCheckExpr for ast::expr::Expr {
                 no.is_const()?;
                 Ok(())
             }
-            Self::Merge { .. } => unimplemented!("is_const for Merge"),
-            Self::ClockOp { .. } => unimplemented!("is_const for ClockOp"),
+            Self::Merge { .. } => Err(err::NotConst {
+                what: "The merge builtin is",
+                site: span,
+            }
+            .into_err()),
+            Self::ClockOp { .. } => Err(err::NotConst {
+                what: "Clock operators (when/whenot) are",
+                site: span,
+            }
+            .into_err()),
         }
     }
 }

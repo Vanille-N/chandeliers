@@ -802,8 +802,25 @@ impl ToTokens for expr::Expr {
                     )
                 }
             }
-            Self::Merge { .. } => unimplemented!("to_tokens for Merge"),
-            Self::ClockOp { .. } => unimplemented!("to_tokens for ClockOp"),
+            Self::Merge { switch, on, off } => {
+                quote!(::chandeliers_sem::merge!(#switch; #on, #off))
+            }
+            Self::ClockOp {
+                op,
+                inner,
+                activate,
+            } => {
+                quote!(::chandeliers_sem::#op!(#activate; #inner))
+            }
+        })
+    }
+}
+
+impl ToTokens for expr::ClockOp {
+    fn to_tokens(&self, toks: &mut TokenStream) {
+        toks.extend(match self {
+            Self::When => quote!(when),
+            Self::Whenot => quote!(whenot),
         })
     }
 }
