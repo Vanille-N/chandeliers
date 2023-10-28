@@ -328,7 +328,7 @@ macro_rules! substep {
     };
 }
 
-/// Conditional on `Nillable`s. [pure, evauates both branches]
+/// Conditional on `Nillable`s. [pure]
 ///
 /// Usage: `ifx!(($b) then { $yes } else { $no })` (expression)
 ///
@@ -338,12 +338,13 @@ macro_rules! substep {
 #[macro_export]
 macro_rules! ifx {
     ( ( $b:expr ) then { $yes:expr } else { $no:expr } ) => {{
+        use $crate::nillable::*;
         let yes = $yes;
         let no = $no;
         match $b {
-            $crate::nillable::Defined(true) => yes,
-            $crate::nillable::Defined(false) => no,
-            $crate::nillable::Nil => $crate::nillable::AllNil::auto_size(),
+            Defined(true) => yes,
+            Defined(false) => no,
+            Nil => AllNil::auto_size(),
         }
     }};
 }
@@ -378,7 +379,7 @@ macro_rules! unop {
 macro_rules! nillable_cmp_ord {
     ($ord:ident, $res:expr, $lhs:expr, $rhs:expr) => {
         match $lhs.cmp($rhs) {
-            Some(std::cmp::Ordering::$ord) => $crate::lit!($res),
+            Some(::std::cmp::Ordering::$ord) => $crate::lit!($res),
             Some(_) => $crate::lit!(!$res),
             None => $crate::nillable::AllNil::auto_size(),
         }
@@ -437,11 +438,63 @@ macro_rules! cmp {
 #[macro_export]
 macro_rules! truth {
     ($b:expr, $msg:expr) => {
-        let b: $crate::nillable::Nillable<bool> = $b;
+        use $crate::nillable::*;
+        let b: Nillable<bool> = $b;
         match b {
-            $crate::nillable::Defined(true) => {}
-            $crate::nillable::Defined(false) => panic!("Assertion failed: {}", $msg),
-            $crate::nillable::Nil => panic!("Value is nil: {}", $msg),
+            Defined(true) => {}
+            Defined(false) => panic!("Assertion failed: {}", $msg),
+            _ => panic!("Value is nil: {}", $msg),
+        }
+    };
+}
+
+/// Select only when the guard is true. [pure]
+///
+/// `when!(b; e)` is `e` when `b` is `true` and `nil` otherwise.
+#[macro_export]
+macro_rules! when {
+    ( $b:expr ; $e:expr ) => {
+        use $crate::nillable::*;
+        let b: Nillable<bool> = $b;
+        let e = $e;
+        match b {
+            Defined(true) => e,
+            _ => AllNil::auto_size(),
+        }
+    }
+}
+
+/// Select only when the guard is true. [pure]
+///
+/// `whenot!(b; e)` is `e` when `b` is `false` and `nil` otherwise.
+#[macro_export]
+macro_rules! whenot {
+    ( $b:expr ; $e:expr ) => {
+        use $crate::nillable::*;
+        let b: Nillable<bool> = $b;
+        let e = $e;
+        match b {
+            Defined(false) => e,
+            _ => AllNil::auto_size(),
+        }
+    };
+}
+
+/// Merge two streams (equivalent to `ifx`) [pure]
+///
+/// `merge!(b; on, off)` is `on` when `b` is `true` and `off` when
+/// `b` is `false`.
+#[macro_export]
+macro_rules! merge {
+    ( $b:expr ; $on:expr, $off:expr ) => {
+        use $crate::nillable::*;
+        let b: Nillable<bool> = $b;
+        let on = $on;
+        let off = $off;
+        match $b {
+            Defined(true) => on,
+            Defined(false) => off,
+            _ => AllNil::auto_size(),
         }
     };
 }
