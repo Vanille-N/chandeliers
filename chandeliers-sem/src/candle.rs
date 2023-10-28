@@ -312,8 +312,7 @@ macro_rules! later {
 
 /// Invocation of subnodes. [side-effects: only call once for each node id]
 ///
-/// Usage: `substep!(self <~ $dt; $id => { ... })` (expression)
-/// Assumption: `self` has a `__clock` field.
+/// Usage: `substep!(self; $id => { ... })` (expression)
 /// Assumption: `self` has a tuple field `__nodes` of which the `$id`'th component
 ///             has a method `step` of the correct arity, input and output types.
 ///
@@ -324,16 +323,12 @@ macro_rules! later {
 /// allowing delayed execution of subnodes.
 #[macro_export]
 macro_rules! substep {
-    ($this:ident <~ $dt:expr ; $id:tt => { $args:expr } ) => {
-        if $this.__clock >= $dt {
-            $this.__nodes.$id.step($args)
-        } else {
-            $crate::nillable::AllNil::auto_size()
-        }
+    ($this:ident ; $id:tt => { $args:expr } ) => {
+        $this.__nodes.$id.step($args)
     };
 }
 
-/// Conditional on `Nillable`s. [pure]
+/// Conditional on `Nillable`s. [pure, evauates both branches]
 ///
 /// Usage: `ifx!(($b) then { $yes } else { $no })` (expression)
 ///
@@ -342,13 +337,15 @@ macro_rules! substep {
 /// A `Nil` test condition contaminates the entire expression.
 #[macro_export]
 macro_rules! ifx {
-    ( ( $b:expr ) then { $yes:expr } else { $no:expr } ) => {
+    ( ( $b:expr ) then { $yes:expr } else { $no:expr } ) => {{
+        let yes = $yes;
+        let no = $no;
         match $b {
-            $crate::nillable::Defined(true) => $yes,
-            $crate::nillable::Defined(false) => $no,
+            $crate::nillable::Defined(true) => yes,
+            $crate::nillable::Defined(false) => no,
             $crate::nillable::Nil => $crate::nillable::AllNil::auto_size(),
         }
-    };
+    }};
 }
 
 /// Application of a binary operator. [pure]

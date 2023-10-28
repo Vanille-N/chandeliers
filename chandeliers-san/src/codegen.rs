@@ -482,11 +482,14 @@ impl expr::Expr {
                 quote!( #( #ts ),* )
             }
             Self::Later { .. } => unreachable!("Later is not valid in const contexts"),
+            Self::Substep { .. } => unreachable!("Substep is not valid in const contexts"),
             Self::Ifx { cond, yes, no } => {
                 let cond = cond.const_expr();
                 let yes = yes.const_expr();
                 let no = no.const_expr();
-                quote!( if #cond { #yes } else { #no } )
+                quote! {
+                    if #cond { #yes } else { #no }
+                }
             }
         }
     }
@@ -562,9 +565,6 @@ impl ToTokens for expr::Reference {
             Self::Var(v) => {
                 toks.extend(quote!( #v ));
             }
-            Self::Node(n) => {
-                toks.extend(quote!( #n ));
-            }
             Self::Global(v) => {
                 toks.extend(quote! {
                     ::chandeliers_sem::lit!(#v)
@@ -578,7 +578,6 @@ impl expr::Reference {
     fn const_expr(&self) -> TokenStream {
         match self {
             Self::Var(_) => unreachable!("Var is invalid in const contexts"),
-            Self::Node(_) => unreachable!("Node is invalid in const contexts"),
             Self::Global(v) => quote!( #v ),
         }
     }
@@ -634,32 +633,12 @@ impl ToTokens for Sp<ty::TyBase> {
     }
 }
 
-/// Statement has a nontrivial implementation mostly due to the
-/// `Substep` variant that needs a lot of things.
-///
-/// As a reminder, the structure of a substep is
-/// ```skip
-/// substep!(self <~ dt; 0 => { arg1, arg2, ...}|***);
-/// ```
-/// where "***" tells candle the number of arguments that we
-/// expect in the return value.
 impl ToTokens for stmt::Statement {
     fn to_tokens(&self, toks: &mut TokenStream) {
         match self {
             Self::Let { source, target } => {
                 toks.extend(quote! {
                     let #target = #source
-                });
-            }
-            Self::Substep { clk, id, args } => {
-                let id_lit = syn::LitInt::new(&format!("{}", id.t.id), id.span);
-                toks.extend(quote! {
-                    let #id = ::chandeliers_sem::substep!(
-                        self <~ #clk;
-                        #id_lit => {
-                            #args
-                        }
-                    )
                 });
             }
             Self::Trace { .. } => {
@@ -700,8 +679,10 @@ impl ToTokens for stmt::VarTuple {
 }
 
 /// An expr in its normal (non-const) context is mostly straightforward,
-/// apart from Candle's quirky syntaxes for later `later!(self <~ dt; a, b)`
-/// and if `ifx!((b) then { y } else { n })`.
+/// apart from Candle's quirky syntaxes for
+/// - later `later!(self <~ dt; a, b)`,
+/// - if `ifx!((b) then { y } else { n })`, and
+/// - function calls `substep!(self; id => {args})`.
 impl ToTokens for expr::Expr {
     fn to_tokens(&self, toks: &mut TokenStream) {
         toks.extend(match self {
@@ -730,6 +711,17 @@ impl ToTokens for expr::Expr {
             }
             Self::Ifx { cond, yes, no } => {
                 quote!(::chandeliers_sem::ifx!((#cond) then { #yes } else { #no }))
+            }
+            Self::Substep { id, args } => {
+                let id_lit = syn::LitInt::new(&format!("{}", id.t.id), id.span);
+                quote! {
+                    ::chandeliers_sem::substep!(
+                        self;
+                        #id_lit => {
+                            #args
+                        }
+                    )
+                }
             }
         })
     }

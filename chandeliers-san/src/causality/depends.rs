@@ -251,8 +251,6 @@ impl Depends for stmt::Statement {
     provide_by_match! {
         // `target = ...` provides target
         Self::Let { target, .. } => target;
-        // `_n = call(...)` provides `_n`
-        Self::Substep { id, .. } => id;
         // Pure, provides nothing.
         Self::Trace { .. } => ;
         // Pure, provides nothing.
@@ -261,8 +259,6 @@ impl Depends for stmt::Statement {
     require_by_match! {
         // `_ = source` requires the value to be assigned.
         Self::Let { source, .. } => source;
-        // `_ = call(args)` requires function arguments.
-        Self::Substep { args, .. } => args;
         // FIXME: the fact that this is empty is more
         // unimplemented than on purpose.
         Self::Trace { .. } => ;
@@ -285,6 +281,7 @@ impl Depends for expr::Expr {
         Self::UnOp { inner, .. } => inner;
         Self::Later { before, after, .. } => before, after;
         Self::Ifx { cond, yes, no } => cond, yes, no;
+        Self::Substep { args, .. } => args;
     }
 }
 
@@ -308,7 +305,6 @@ impl Depends for expr::Reference {
     provide_nothing!();
     require_by_match! {
         Self::Var(v) => v;
-        Self::Node(n) => n;
         Self::Global(g) => g;
     }
 }

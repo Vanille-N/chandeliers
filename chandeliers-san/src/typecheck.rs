@@ -174,16 +174,6 @@ impl TypeCheckStmt for ast::stmt::Statement {
                 t.is_bool("The argument of assert", span)?;
                 Ok(())
             }
-            Self::Substep { clk: _, id, args } => {
-                let Some(expected_tys) = ctx.nodes_in.get(&id.t) else {
-                    unreachable!("Substep is malformed: {id} is not a block");
-                };
-                let actual_tys = args.typecheck(ctx)?;
-                expected_tys
-                    .as_flat_tytuple()
-                    .identical(&actual_tys, span)?;
-                Ok(())
-            }
         }
     }
 }
@@ -239,10 +229,20 @@ impl TypeCheckExpr for ast::expr::Expr {
                 yes.identical(&no, span)?;
                 Ok(yes.t)
             }
+            Self::Substep { id, args } => {
+                let Some(expected_tys) = ctx.nodes_in.get(&id.t) else {
+                    unreachable!("Substep is malformed: {id} is not a block");
+                };
+                let actual_tys = args.typecheck(ctx)?;
+                expected_tys
+                    .as_flat_tytuple()
+                    .identical(&actual_tys, span)?;
+                Ok(ctx.get_node_out(id.as_ref()).unwrap().t)
+            }
         }
     }
 
-    fn is_const(&self, _span: Span) -> TcResult<()> {
+    fn is_const(&self, span: Span) -> TcResult<()> {
         match self {
             Self::Lit(_) => Ok(()),
             Self::Reference(_) => Ok(()),
@@ -261,14 +261,16 @@ impl TypeCheckExpr for ast::expr::Expr {
                 rhs.is_const()?;
                 Ok(())
             }
-            Self::Later { before, after, .. } => {
-                let span = before.span.join(after.span).expect("Faulty span");
-                Err(err::NotConst {
-                    what: "The later operator (-> / fby) is",
-                    site: span,
-                }
-                .into_err())
+            Self::Later { .. } => Err(err::NotConst {
+                what: "The later operator (-> / fby) is",
+                site: span,
             }
+            .into_err()),
+            Self::Substep { .. } => Err(err::NotConst {
+                what: "Function calls",
+                site: span,
+            }
+            .into_err()),
             Self::Ifx { cond, yes, no } => {
                 cond.is_const()?;
                 yes.is_const()?;
@@ -301,7 +303,6 @@ impl TypeCheckExpr for ast::expr::Reference {
     fn typecheck(&self, _span: Span, ctx: &TyCtx) -> TcResult<TyTuple> {
         Ok(match self {
             Self::Var(v) => ctx.get_var(v.as_ref().map(|_, v| &v.var.t))?.inner.t,
-            Self::Node(n) => ctx.get_node_out(n.as_ref())?.t,
             Self::Global(v) => ctx.get_global(v.as_ref())?.inner.t,
         })
     }

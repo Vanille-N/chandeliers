@@ -462,15 +462,12 @@ pub mod expr {
         Global(Sp<GlobalVar>),
         /// A local variable, possibly in the past.
         Var(Sp<ClockVar>),
-        /// A subnode, possibly in the past.
-        Node(Sp<NodeId>),
     }
 
     impl fmt::Display for Reference {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
             match self {
                 Self::Var(v) => write!(f, "{v}"),
-                Self::Node(n) => write!(f, "{n}"),
                 Self::Global(g) => write!(f, "{g}"),
             }
         }
@@ -580,6 +577,8 @@ pub mod expr {
             yes: Box<Sp<Expr>>,
             no: Box<Sp<Expr>>,
         },
+        /// Advance a block.
+        Substep { id: Sp<NodeId>, args: Box<Sp<Expr>> },
     }
 
     impl fmt::Display for Expr {
@@ -595,6 +594,7 @@ pub mod expr {
                 Self::Ifx { cond, yes, no } => {
                     write!(f, "if {cond} {{ {yes} }} else {{ {no} }}")
                 }
+                Self::Substep { id, args } => write!(f, "{id}({args})"),
             }
         }
     }
@@ -602,7 +602,6 @@ pub mod expr {
 
 /// Statements and operations with side-effects.
 pub mod stmt {
-    use super::clock;
     use super::expr;
     use super::Sp;
     use super::Tuple;
@@ -631,12 +630,6 @@ pub mod stmt {
         Let {
             target: Sp<VarTuple>,
             source: Sp<expr::Expr>,
-        },
-        /// Advance a block.
-        Substep {
-            clk: clock::Depth,
-            id: Sp<expr::NodeId>,
-            args: Sp<expr::Expr>,
         },
         /// Print debug information.
         Trace {

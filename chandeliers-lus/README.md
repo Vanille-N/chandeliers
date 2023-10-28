@@ -140,8 +140,9 @@ some Lustre programs may not be supported directly and require minor syntax adju
 Here are some that you may run into if you try to copy-paste Lustre code too eagerly:
 - `node` definitions are required to end with a trailing `;`,
 - tuple unpacking `(x, y, z) = foo()` requires the surrounding `(...)`,
+- the Rust convention is used to determine in which contexts trailing commas are allowed:
+  `1 = (1) <> (1,)` and `(1, 2) = (1, 2,)`,
 - a few Rust reserved keywords (`self`, `super`, `move`, ...) cannot be used as identifiers,
 - only Rust-style comments are available, i.e. `//` for line comments and `/* ... */` for block
   comments,
-- the `if` construct requires and `end` so that parsing is not ambiguous.
 

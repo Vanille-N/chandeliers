@@ -15,6 +15,7 @@ impl Step for random_int {
     }
 }
 
+#[derive(Debug, Default, Clone)]
 pub struct random_float {
     rng: ThreadRng,
 }
@@ -26,6 +27,7 @@ impl Step for random_float {
     }
 }
 
+#[derive(Debug, Default, Clone)]
 pub struct random_bool {
     rng: ThreadRng,
 }

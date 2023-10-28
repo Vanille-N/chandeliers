@@ -163,20 +163,6 @@
 //! operators propagate the same depth to their arguments, and temporal operators
 //! act upon the depth: `pre` increases it by one, `fby` evaluates its two arguments
 //! on different depths, etc.
-//!
-//!
-//!
-//! # Substep extraction
-//!
-//! Relevant `impl`s: `Node`, all `expr::*` .
-//!
-//! Candle expressions are pure. This has the consequence that advancing by
-//! one tick another node cannot be part of an expression, and must instead
-//! be made part of a statement.
-//! This is managed by the type `ExprCtx` and its accessor `ExprCtxView`:
-//! when a call to another node is encountered, it is extracted to its own
-//! statement to assign its output to a fresh binding that can be used as
-//! a pure expression.
 
 use std::collections::HashSet;
 
@@ -1139,22 +1125,10 @@ impl Translate for lus::expr::CallExpr {
         );
         ctx.blocks
             .push(Sp::new(candle::decl::NodeName { repr, run_uid }, span));
-        let st = Sp::new(
-            candle::stmt::Statement::Substep {
-                clk: candle::clock::Depth {
-                    dt: ctx.depth,
-                    span,
-                },
-                id: id.clone(),
-                args,
-            },
-            span,
-        );
-        ctx.stmts.push(st);
-        Ok(CandleExpr::Reference(Sp::new(
-            candle::expr::Reference::Node(id),
-            span,
-        )))
+        Ok(CandleExpr::Substep {
+            id: id.clone(),
+            args: Box::new(args),
+        })
     }
 }
 

@@ -109,13 +109,6 @@ impl CheckPositive for stmt::Statement {
             Self::Let { source, .. } => source.check_positive(depths),
             Self::Trace { .. } => unimplemented!("CheckPositive for Trace"),
             Self::Assert(e) => e.check_positive(depths),
-            Self::Substep { clk, args, .. } => {
-                // Substeps are executed at level 0, but in reality
-                // their output is only used at a deeper level.
-                // What's important is to check that the inputs are positive
-                // when the subnode's personal clock is positive.
-                args.check_positive(depths.with(clk.dt))
-            }
         }
     }
 }
@@ -151,6 +144,7 @@ impl CheckPositive for expr::Expr {
                 after.check_positive(fork!(depths).with(clk.dt + 1))?;
                 Ok(())
             }
+            Self::Substep { args, .. } => args.check_positive(depths),
             // Reference is also an interesting case, but its impl is separate.
             Self::Reference(refer) => refer.check_positive(depths),
         }
@@ -171,11 +165,6 @@ impl CheckPositive for expr::Reference {
         match self {
             // We get globals for free.
             Self::Global(_) => Ok(()),
-            // Nodes look easy here, but that's because they were already
-            // extracted to their own statement where the positivity of
-            // their arguments is checked against their personal clock
-            // (of which the dt was computed exactly by the depth we are currently at)
-            Self::Node(_) => Ok(()),
             // Finally Variables have an associated clock that corresponds
             // to how many `pre` we found before the variable when performing
             // the translation.
