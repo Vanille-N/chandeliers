@@ -1,4 +1,3 @@
-/*
 chandeliers_lus::decl! {
     node dep_input(b : bool; x: int when b; y: int whenot b) returns (m : int);
     let
@@ -24,6 +23,5 @@ chandeliers_lus::decl! {
         m = merge b o1 o2;
     tel;
 }
-*/
 
 fn main() {}

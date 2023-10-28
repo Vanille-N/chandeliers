@@ -147,6 +147,8 @@ impl CheckPositive for expr::Expr {
             Self::Substep { args, .. } => args.check_positive(depths),
             // Reference is also an interesting case, but its impl is separate.
             Self::Reference(refer) => refer.check_positive(depths),
+            Self::ClockOp { .. } => unimplemented!("CheckPositive for ClockOp"),
+            Self::Merge { .. } => unimplemented!("CheckPositive for Merge"),
         }
     }
 }

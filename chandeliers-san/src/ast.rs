@@ -292,7 +292,7 @@ impl<T: Depends> Depends for Tuple<T> {
 }
 
 /// Timing primitives.
-pub mod clock {
+pub mod past {
     use super::Span;
     use std::fmt;
 
@@ -329,7 +329,7 @@ where
 
 /// Types of expressions.
 pub mod ty {
-    use super::clock;
+    use super::past;
     use super::Sp;
     use super::Tuple;
     use std::fmt;
@@ -357,7 +357,7 @@ pub mod ty {
     #[derive(Debug, Clone)]
     pub struct Stream {
         pub base: Sp<TyBase>,
-        pub depth: clock::Depth,
+        pub depth: past::Depth,
     }
 
     /// A composite type of several values arbitrarily deeply nested.
@@ -379,7 +379,7 @@ pub mod ty {
 
 /// Definitions of expressions.
 pub mod expr {
-    use super::clock;
+    use super::past;
     use super::Sp;
     use super::Tuple;
     use std::fmt;
@@ -430,9 +430,9 @@ pub mod expr {
 
     /// A past value of a variable.
     #[derive(Debug, Clone)]
-    pub struct ClockVar {
+    pub struct PastVar {
         pub var: Sp<LocalVar>,
-        pub depth: clock::Depth,
+        pub depth: past::Depth,
     }
 
     /// A subnode.
@@ -442,7 +442,7 @@ pub mod expr {
         pub repr: Sp<String>,
     }
 
-    impl fmt::Display for ClockVar {
+    impl fmt::Display for PastVar {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
             write!(f, "{}@{}", self.var, self.depth)
         }
@@ -461,7 +461,7 @@ pub mod expr {
         /// A global variable.
         Global(Sp<GlobalVar>),
         /// A local variable, possibly in the past.
-        Var(Sp<ClockVar>),
+        Var(Sp<PastVar>),
     }
 
     impl fmt::Display for Reference {
@@ -541,6 +541,21 @@ pub mod expr {
         }
     }
 
+    #[derive(Debug, Clone, Copy)]
+    pub enum ClockOp {
+        When,
+        Whenot,
+    }
+
+    impl fmt::Display for ClockOp {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            match self {
+                Self::When => write!(f, "when"),
+                Self::Whenot => write!(f, "whenot"),
+            }
+        }
+    }
+
     /// An expression.
     #[derive(Debug, Clone)]
     pub enum Expr {
@@ -564,10 +579,16 @@ pub mod expr {
             lhs: Box<Sp<Expr>>,
             rhs: Box<Sp<Expr>>,
         },
+        /// A when or whenop expression
+        ClockOp {
+            op: ClockOp,
+            inner: Box<Sp<Expr>>,
+            activate: Box<Sp<Expr>>,
+        },
         /// The special operator "later" in (Lustre `->`)
         /// to perform case analysis on the current value of the clock.
         Later {
-            clk: clock::Depth,
+            clk: past::Depth,
             before: Box<Sp<Expr>>,
             after: Box<Sp<Expr>>,
         },
@@ -576,6 +597,12 @@ pub mod expr {
             cond: Box<Sp<Expr>>,
             yes: Box<Sp<Expr>>,
             no: Box<Sp<Expr>>,
+        },
+        /// Clock combinator
+        Merge {
+            switch: Box<Sp<Expr>>,
+            on: Box<Sp<Expr>>,
+            off: Box<Sp<Expr>>,
         },
         /// Advance a block.
         Substep { id: Sp<NodeId>, args: Box<Sp<Expr>> },
@@ -595,6 +622,12 @@ pub mod expr {
                     write!(f, "if {cond} {{ {yes} }} else {{ {no} }}")
                 }
                 Self::Substep { id, args } => write!(f, "{id}({args})"),
+                Self::ClockOp {
+                    op,
+                    inner,
+                    activate,
+                } => write!(f, "({inner} {op} {activate})"),
+                Self::Merge { switch, on, off } => write!(f, "(merge {switch} {on} {off})"),
             }
         }
     }

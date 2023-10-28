@@ -282,6 +282,8 @@ impl Depends for expr::Expr {
         Self::Later { before, after, .. } => before, after;
         Self::Ifx { cond, yes, no } => cond, yes, no;
         Self::Substep { args, .. } => args;
+        Self::ClockOp { inner, activate, .. } => inner, activate;
+        Self::Merge { switch, on, off } => switch, on, off;
     }
 }
 
@@ -320,7 +322,7 @@ impl Depends for expr::NodeId {
 /// Nonzero clocks are not subject to acyclicity checks and are instead
 /// handled by the positivity check, so `ClockVar` introduces a dependency
 /// only if it is at the root depth.
-impl Depends for expr::ClockVar {
+impl Depends for expr::PastVar {
     type Output = Reference;
     provide_nothing!();
     fn requires(&self, v: &mut Vec<Reference>) {

@@ -239,6 +239,8 @@ impl TypeCheckExpr for ast::expr::Expr {
                     .identical(&actual_tys, span)?;
                 Ok(ctx.get_node_out(id.as_ref()).unwrap().t)
             }
+            Self::ClockOp { .. } => unimplemented!("typecheck for ClockOp"),
+            Self::Merge { .. } => unimplemented!("typecheck for Merge"),
         }
     }
 
@@ -277,6 +279,8 @@ impl TypeCheckExpr for ast::expr::Expr {
                 no.is_const()?;
                 Ok(())
             }
+            Self::Merge { .. } => unimplemented!("is_const for Merge"),
+            Self::ClockOp { .. } => unimplemented!("is_const for ClockOp"),
         }
     }
 }

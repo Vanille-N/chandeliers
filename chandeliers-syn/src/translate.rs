@@ -602,7 +602,7 @@ impl Translate for lus::Decls {
                     ty: ty.map(|span, ty| {
                         candle::ty::Stream {
                             base: Sp::new(ty, span),
-                            depth: candle::clock::Depth {
+                            depth: candle::past::Depth {
                                 // Putting in a dummy value 0 for `dt`, don't forget to update
                                 // it by depth propagation in the positivity check...
                                 dt: 0,
@@ -1016,7 +1016,7 @@ impl Translate for lus::expr::FbyExpr {
             },
             compose: |before: Sp<CandleExpr>, _op, depth, after: Sp<CandleExpr>| {
                 CandleExpr::Later {
-                    clk: candle::clock::Depth {
+                    clk: candle::past::Depth {
                         dt: ctx.depth + depth,
                         span: before.span.join(after.span).expect("Faulty span"),
                     },
@@ -1050,7 +1050,7 @@ impl Translate for lus::expr::ThenExpr {
             },
             compose: |before: Sp<CandleExpr>, _op, depth, after: Sp<CandleExpr>| {
                 CandleExpr::Later {
-                    clk: candle::clock::Depth {
+                    clk: candle::past::Depth {
                         dt: ctx.depth + depth,
                         span: before.span.join(after.span).expect("Faulty span"),
                     },
@@ -1107,7 +1107,7 @@ impl Translate for lus::expr::MulExpr {
     fn translate(self, run_uid: usize, _span: Span, ctx: Self::Ctx<'_>) -> TrResult<CandleExpr> {
         assoc::Descr {
             label: "MulExpr",
-            convert: |elem: Sp<lus::expr::/*ClockExpr*/PositiveExpr>, _depth| elem.translate(run_uid, fork!(ctx)),
+            convert: |elem: Sp<lus::expr::ClockExpr>, _depth| elem.translate(run_uid, fork!(ctx)),
             compose: |lhs, op: lus::expr::MulOp, _depth, rhs| CandleExpr::BinOp {
                 op: op.translate(),
                 lhs: Box::new(lhs),
@@ -1118,24 +1118,33 @@ impl Translate for lus::expr::MulExpr {
     }
 }
 
-/*
+impl lus::expr::ClockOp {
+    fn translate(self) -> candle::expr::ClockOp {
+        match self {
+            Self::When(_) => candle::expr::ClockOp::When,
+            Self::Whenot(_) => candle::expr::ClockOp::Whenot,
+        }
+    }
+}
+
 impl Translate for lus::expr::ClockExpr {
     type Ctx<'i> = ExprCtxView<'i>;
     type Output = CandleExpr;
     fn translate(self, run_uid: usize, _span: Span, ctx: Self::Ctx<'_>) -> TrResult<CandleExpr> {
-        use syn::punctuated::Pair;
-        assert!(!self.items.trailing_punct());
-        let mut its = self.items.into_pairs();
-        let Pair::End(e) = its
-            .next()
-            .expect("ClockExpr should have at least one member")
-        else {
-            unimplemented!("Translate for ClockExpr");
-        };
-        e.flat_translate(run_uid, ctx)
+        assoc::Descr {
+            label: "ClockExpr",
+            convert: |elem: Sp<lus::expr::PositiveExpr>, _depth| {
+                elem.translate(run_uid, fork!(ctx))
+            },
+            compose: |lhs, op: lus::expr::ClockOp, _depth, rhs| CandleExpr::ClockOp {
+                op: op.translate(),
+                inner: Box::new(lhs),
+                activate: Box::new(rhs),
+            },
+        }
+        .left_associative(self.items)
     }
 }
-*/
 
 impl Translate for lus::expr::NegExpr {
     type Ctx<'i> = ExprCtxView<'i>;
@@ -1224,9 +1233,9 @@ impl Translate for lus::expr::VarExpr {
         if ctx.shadow_glob.contains(&repr.t) {
             Ok(CandleExpr::Reference(Sp::new(
                 candle::expr::Reference::Var(Sp::new(
-                    candle::expr::ClockVar {
+                    candle::expr::PastVar {
                         var: Sp::new(candle::expr::LocalVar { repr, run_uid }, span),
-                        depth: candle::clock::Depth {
+                        depth: candle::past::Depth {
                             span,
                             dt: ctx.depth,
                         },

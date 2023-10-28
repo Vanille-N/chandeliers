@@ -560,6 +560,8 @@ impl expr::Expr {
                     if #cond { #yes } else { #no }
                 }
             }
+            Self::Merge { .. } => unreachable!("Merge is not valid in const contexts"),
+            Self::ClockOp { .. } => unreachable!("ClockOp is not valid in const contexts"),
         }
     }
 }
@@ -654,7 +656,7 @@ impl expr::Reference {
 
 /// Candle specifies that variables in the past can be invoqued through the
 /// notation `var!(self <~ dt; v)`.
-impl ToTokens for expr::ClockVar {
+impl ToTokens for expr::PastVar {
     fn to_tokens(&self, toks: &mut TokenStream) {
         let Self { var, depth } = self;
         toks.extend(quote! {
@@ -792,11 +794,13 @@ impl ToTokens for expr::Expr {
                     )
                 }
             }
+            Self::Merge { .. } => unimplemented!("to_tokens for Merge"),
+            Self::ClockOp { .. } => unimplemented!("to_tokens for ClockOp"),
         })
     }
 }
 
-impl ToTokens for clock::Depth {
+impl ToTokens for past::Depth {
     fn to_tokens(&self, toks: &mut TokenStream) {
         let lit = syn::Lit::Int(syn::LitInt::new(&format!("{}", self.dt), self.span));
         toks.extend(quote!( #lit ));

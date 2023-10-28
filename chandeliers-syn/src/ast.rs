@@ -228,25 +228,20 @@ span_end_by_match! {
         Float(f) => f;
 }
 
-/*
 #[derive(syn_derive::Parse)]
 pub struct WhenClock {
     _when: kw::when,
     clock: Sp<expr::AtomicExpr>,
 }
 span_end_on_field!(WhenClock.clock);
-*/
 
-/*
 #[derive(syn_derive::Parse)]
 pub struct WhenotClock {
-    _when: kw::whenot,
+    _whenot: kw::whenot,
     clock: Sp<expr::AtomicExpr>,
 }
 span_end_on_field!(WhenotClock.clock);
-*/
 
-/*
 #[derive(syn_derive::Parse)]
 pub enum TypeClock {
     #[parse(peek = kw::when)]
@@ -260,12 +255,11 @@ span_end_by_match! {
         When(c) => c;
         Whenot(c) => c;
 }
-*/
 
 #[derive(syn_derive::Parse)]
 pub struct Type {
     pub base: Sp<BaseType>,
-    //pub clock: Sp<TypeClock>,
+    pub clock: Sp<TypeClock>,
 }
 span_end_on_field!(Type./*clock or*/ base);
 
@@ -717,7 +711,6 @@ pub mod expr {
         Eq(Token![=]),
     }
 
-    /*
     /// Clock operators: `when` and `whenot`.
     #[derive(syn_derive::Parse)]
     pub enum ClockOp {
@@ -726,9 +719,7 @@ pub mod expr {
         #[parse(peek = kw::whenot)]
         Whenot(kw::whenot),
     }
-    */
 
-    /*
     /// A clocked expression as a `ClockOp`-separated list of atomic expressions.
     #[derive(syn_derive::Parse)]
     pub struct ClockExpr {
@@ -736,13 +727,12 @@ pub mod expr {
         pub items: Punctuated<Sp<PositiveExpr>, ClockOp>,
     }
     span_end_on_field!(ClockExpr.items);
-    */
 
     /// A multiplicative expression as a `MulOp`-separated list of clocked expressions.
     #[derive(syn_derive::Parse)]
     pub struct MulExpr {
         #[parse(punctuated_parse_separated_nonempty_costly)]
-        pub items: Punctuated<Sp</*ClockExpr*/ PositiveExpr>, MulOp>,
+        pub items: Punctuated<Sp<ClockExpr>, MulOp>,
     }
     span_end_on_field!(MulExpr.items);
 
