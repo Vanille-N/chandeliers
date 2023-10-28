@@ -444,6 +444,7 @@ impl ToTokens for decl::ExtNode {
 
             #[allow(dead_code)]
             #[allow(unused_parens)]
+            #[allow(clippy::let_and_return)]
             // FIXME: impl Step
             impl #name {
                 #[allow(unused_imports)]
@@ -632,8 +633,6 @@ impl Sp<expr::Lit> {
 /// Part by convention and part by necessity,
 /// we display local variables as
 ///     _local_v
-/// subnodes as
-///    _1
 /// and globals as
 ///    lit!(X)
 ///
