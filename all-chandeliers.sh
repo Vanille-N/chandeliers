@@ -35,6 +35,7 @@ main() {
             ;;
         ("bump")
             each version-bump "$2"
+            version-bump "$2"
             ;;
         ("bless") shift; TRYBUILD=overwrite IN=( ${CRATES[@]} . ) each do-cargo test "$@";;
         ("help"|*)

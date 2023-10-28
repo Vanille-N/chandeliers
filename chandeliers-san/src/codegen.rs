@@ -67,12 +67,14 @@ impl ToTokens for decl::Const {
         let declaration = quote_spanned! {span=>
             #pub_qualifier const #ext_name : ::chandeliers_sem::ty_mapping!(#ty) = #name ;
         };
+        let rustc_allow = options.rustc_allow.iter();
 
         toks.extend(quote! {
             #[allow(non_upper_case_globals)]
             const #name : ::chandeliers_sem::ty_mapping!(#ty) = #value ;
 
             #[allow(non_upper_case_globals)]
+            #( #[allow( #rustc_allow )] )*
             #declaration
         });
     }
@@ -99,13 +101,15 @@ impl ToTokens for decl::Const {
 /// so that it prints a less smart but more correct error message.
 impl ToTokens for decl::ExtConst {
     fn to_tokens(&self, toks: &mut TokenStream) {
-        let Self { name, ty } = self;
+        let Self { name, ty, options } = self;
         let ext_name = Ident::new_raw(&format!("{}", name), name.span);
         let real = quote_spanned!(name.span=> real );
         let expected = quote_spanned!(ty.span=> ::chandeliers_sem::ty_mapping!(#ty) );
         let expected_wrapped = quote_spanned!(ty.span=> Type<#expected> );
+        let rustc_allow = options.rustc_allow.iter();
         toks.extend(quote! {
             #[allow(non_upper_case_globals)]
+            #( #[allow( #rustc_allow )] )*
             const #name: #expected = {
                 struct Type<T>(T);
                 let #real = Type(#ext_name);
@@ -252,11 +256,13 @@ impl ToTokens for decl::Node {
         let ext_declaration = quote_spanned! {name_span=>
             #pub_qualifier struct #ext_name { inner: #name }
         };
+        let rustc_allow = options.rustc_allow.iter();
 
         let ext_annotated_declaration = quote_spanned! {name_span=>
             #[derive(Debug, Default)]
             #[allow(non_camel_case_types)]
             #[allow(dead_code)]
+            #( #[allow( #rustc_allow )] )*
             #ext_declaration
         };
 
@@ -353,6 +359,7 @@ impl ToTokens for decl::ExtNode {
             name,
             inputs,
             outputs,
+            options,
         } = self;
 
         let ext_name = Ident::new_raw(&format!("{}", name), name.span);
@@ -373,15 +380,18 @@ impl ToTokens for decl::ExtNode {
             ( #( ::chandeliers_sem::ty!(#inputs_ty) ),* )
         };
         let actual_inputs = quote_spanned! {inputs.span=> __inputs };
+        let rustc_allow = options.rustc_allow.iter();
 
         let name = name.as_ident();
 
         toks.extend(quote_spanned! {name.span()=>
             #[derive(Debug, Default)]
             #[allow(non_camel_case_types)]
-            #[allow(dead_code)]
+            #( #[allow( #rustc_allow )] )*
             struct #name { inner: #ext_name }
 
+            #[allow(dead_code)]
+            // FIXME: impl Step
             impl #name {
                 #[allow(unused_imports)]
                 pub fn step(
@@ -394,6 +404,24 @@ impl ToTokens for decl::ExtNode {
                 }
             }
         });
+
+        if let Some(nb_iter) = options.main {
+            toks.extend(quote! {
+                fn main() {
+                    use ::chandeliers_sem::traits::*;
+                    let mut sys = #ext_name::default();
+                    if #nb_iter == 0 {
+                        loop {
+                            sys.step(());
+                        }
+                    } else {
+                        for _ in 1..=#nb_iter {
+                            sys.step(());
+                        }
+                    }
+                }
+            });
+        }
     }
 }
 

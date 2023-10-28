@@ -39,11 +39,16 @@ lustre::decl! {
 const W: i64 = 0;
 const Z: i64 = 42;
 lustre::decl! {
+    #[rustc_allow[dead_code]]
     const A : int = B + Z;
+    #[rustc_allow[dead_code]]
     const B : int = Z;
+    #[rustc_allow[dead_code]]
     const C : int = A;
     extern const W : int;
+    #[rustc_allow[dead_code]]
     const D : int = C + E;
+    #[rustc_allow[dead_code]]
     const E : int = W + Z;
     extern const Z : int;
 }
@@ -205,7 +210,9 @@ lustre::decl! {
 */
 
 lustre::decl! {
+    #[rustc_allow[dead_code]]
     const X : int = 0;
+
     node X() returns (X : int);
     let X = 1; tel
 }
@@ -218,7 +225,9 @@ lustre::decl! {
 }
 
 lustre::decl! {
+    #[rustc_allow[dead_code]]
     const FIB0 : int = 0;
+    #[rustc_allow[dead_code]]
     const FIB1 : int = 1;
 
     node fib() returns (x : int);

@@ -676,11 +676,25 @@ pub mod decl {
         pub trace: bool,
         pub export: bool,
         pub main: Option<usize>,
+        pub rustc_allow: Vec<syn::Ident>,
+    }
+
+    #[derive(Debug, Clone)]
+    pub struct ExtNodeOptions {
+        pub trace: bool,
+        pub main: Option<usize>,
+        pub rustc_allow: Vec<syn::Ident>,
     }
 
     #[derive(Debug, Clone)]
     pub struct ConstOptions {
         pub export: bool,
+        pub rustc_allow: Vec<syn::Ident>,
+    }
+
+    #[derive(Debug, Clone)]
+    pub struct ExtConstOptions {
+        pub rustc_allow: Vec<syn::Ident>,
     }
 
     /// A node declaration.
@@ -715,6 +729,7 @@ pub mod decl {
         pub name: Sp<NodeName>,
         pub inputs: Sp<Tuple<Sp<TyVar>>>,
         pub outputs: Sp<Tuple<Sp<TyVar>>>,
+        pub options: ExtNodeOptions,
     }
 
     /// A trusted constant declaration.
@@ -724,6 +739,7 @@ pub mod decl {
     pub struct ExtConst {
         pub name: Sp<expr::GlobalVar>,
         pub ty: Sp<TyBase>,
+        pub options: ExtConstOptions,
     }
 
     /// A toplevel declaration.
