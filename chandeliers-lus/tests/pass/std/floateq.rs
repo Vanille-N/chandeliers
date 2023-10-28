@@ -13,5 +13,5 @@ chandeliers_lus::decl! {
 fn main() {
     use chandeliers_sem::traits::*;
     let mut r = rounding_error::default();
-    r.step(());
+    r.step(().embed());
 }

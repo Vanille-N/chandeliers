@@ -37,6 +37,13 @@ where
     }
 }
 
+impl<T> Embed for Nillable<T> {
+    type Target = Self;
+    fn embed(self) -> Self {
+        self
+    }
+}
+
 macro_rules! embed_for_tuple {
     ( ( $( $i:tt : $T:ty ),* ) with $($decl:tt)*) => {
         impl$($decl)* Embed for ( $( $T, )* )
@@ -51,7 +58,6 @@ macro_rules! embed_for_tuple {
     }
 }
 
-embed_for_tuple!(() with);
 embed_for_tuple!((0: T0) with <T0>);
 embed_for_tuple!((0: T0, 1: T1) with <T0, T1>);
 embed_for_tuple!((0: T0, 1: T1, 2: T2) with <T0, T1, T2>);
@@ -86,7 +92,6 @@ macro_rules! trusted_for_tuple {
     }
 }
 
-trusted_for_tuple!(() with);
 trusted_for_tuple!((0: T0) with <T0>);
 trusted_for_tuple!((0: T0, 1: T1) with <T0, T1>);
 trusted_for_tuple!((0: T0, 1: T1, 2: T2) with <T0, T1, T2>);

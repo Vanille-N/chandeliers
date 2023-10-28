@@ -12,7 +12,8 @@ pub struct counting {
 impl Step for counting {
     type Input = ();
     type Output = i64;
-    fn step(&mut self, _: ()) -> ty!(int) {
+    fn step(&mut self, __inputs: ty!()) -> ty!(int) {
+        implicit_clock!(__inputs);
         let n = later!(self <~ 0; lit!(0), var!(self <~ 1; n) + lit!(1));
         update!(self, n);
         tick!(self);
@@ -40,13 +41,14 @@ pub struct counting_late {
 impl Step for counting_twice {
     type Input = ();
     type Output = i64;
-    fn step(&mut self, _: ()) -> ty!(int) {
+    fn step(&mut self, __inputs: ty!()) -> ty!(int) {
+        implicit_clock!(__inputs);
         let b = later!(self <~ 0; lit!(true), ! var!(self <~ 1; b));
         update!(self, b);
         let res = ifx!((b) then {
-            substep!(self; 0 => {()})
+            substep!(self; 0 => {lit!(())})
         } else {
-            substep!(self; 1 => {()})
+            substep!(self; 1 => {lit!(())})
         });
         tick!(self);
         res
@@ -56,8 +58,10 @@ impl Step for counting_twice {
 impl Step for counting_late {
     type Input = ();
     type Output = i64;
-    fn step(&mut self, _: ()) -> ty!(int) {
-        let c = later!(self <~ 0; lit!(0), later!(self <~ 1; lit!(0), substep!(self; 0 => {()})));
+    fn step(&mut self, __inputs: ty!()) -> ty!(int) {
+        implicit_clock!(__inputs);
+        let c =
+            later!(self <~ 0; lit!(0), later!(self <~ 1; lit!(0), substep!(self; 0 => {lit!(())})));
         tick!(self);
         c
     }
@@ -67,7 +71,7 @@ impl Step for counting_late {
 fn counting_twice_behavior() {
     let mut count = counting_twice::default();
     for i in 0..10 {
-        let j = count.step(());
+        let j = count.step(().embed());
         assert_is!(j, lit!(i));
     }
 }
@@ -76,7 +80,7 @@ fn counting_twice_behavior() {
 fn counting_late_behavior() {
     let mut count = counting_late::default();
     for i in 0..10 {
-        let j = count.step(());
+        let j = count.step(().embed());
         let actual_i = 0.max(i - 2);
         assert_is!(j, lit!(actual_i));
     }
@@ -93,9 +97,10 @@ pub struct counting_parallel {
 impl Step for counting_parallel {
     type Input = ();
     type Output = (i64, i64);
-    fn step(&mut self, _: ()) -> (ty!(int), ty!(int)) {
-        let _0 = substep!(self; 0 => {()});
-        let _1 = substep!(self; 1 => {()});
+    fn step(&mut self, __inputs: ty!()) -> (ty!(int), ty!(int)) {
+        implicit_clock!(__inputs);
+        let _0 = substep!(self; 0 => {lit!(())});
+        let _1 = substep!(self; 1 => {lit!(())});
         let (a, b) = (_0, _1);
         tick!(self);
         (a, b)
@@ -113,16 +118,18 @@ pub struct counting_parallel_tester {
 impl Step for counting_parallel_tester {
     type Input = ();
     type Output = ();
-    fn step(&mut self, _: ()) -> () {
-        let _0 = substep!(self; 0 => {()});
+    fn step(&mut self, __inputs: ty!()) -> ty!() {
+        implicit_clock!(__inputs);
+        let _0 = substep!(self; 0 => {lit!(())});
         tick!(self);
+        lit!(())
     }
 }
 
 #[test]
 fn counting_parallel_test() {
     let mut cpt = counting_parallel_tester::default();
-    cpt.step(());
-    cpt.step(());
-    cpt.step(());
+    cpt.step(().embed());
+    cpt.step(().embed());
+    cpt.step(().embed());
 }

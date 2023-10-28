@@ -221,7 +221,6 @@ macro_rules! all_nil_for_tuple {
         }
     }
 }
-all_nil_for_tuple!(() with);
 all_nil_for_tuple!((T0) with <T0>);
 all_nil_for_tuple!((T0, T1) with <T0, T1>);
 all_nil_for_tuple!((T0, T1, T2) with <T0, T1, T2>);
@@ -238,7 +237,7 @@ all_nil_for_tuple!((T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, T10) with <T0, T1, T
 fn nil_of_size() {
     let _: Nillable<i64> = AllNil::auto_size();
     let _: (Nillable<i64>, Nillable<f64>) = AllNil::auto_size();
-    let _: () = AllNil::auto_size();
+    let _: Nillable<()> = AllNil::auto_size();
     let _: (
         ((Nillable<i64>,),),
         Nillable<f64>,
@@ -252,3 +251,36 @@ fn nil_of_size() {
         AllNil::auto_size()
     };
 }
+
+pub trait FirstIsNil {
+    fn first_is_nil(&self) -> bool;
+}
+
+impl<T> FirstIsNil for Nillable<T> {
+    fn first_is_nil(&self) -> bool {
+        matches!(self, Nil)
+    }
+}
+macro_rules! first_is_nil_for_tuple {
+    ( ( $( $T:ty ),* ) with $($decl:tt)*) => {
+        impl$($decl)* FirstIsNil for ( $( $T, )* )
+        where $( $T : FirstIsNil ),*
+        {
+            #[allow(clippy::unused_unit)]
+            fn first_is_nil(&self) -> bool {
+                self.0.first_is_nil()
+            }
+        }
+    }
+}
+first_is_nil_for_tuple!((T0) with <T0>);
+first_is_nil_for_tuple!((T0, T1) with <T0, T1>);
+first_is_nil_for_tuple!((T0, T1, T2) with <T0, T1, T2>);
+first_is_nil_for_tuple!((T0, T1, T2, T3) with <T0, T1, T2, T3>);
+first_is_nil_for_tuple!((T0, T1, T2, T3, T4) with <T0, T1, T2, T3, T4>);
+first_is_nil_for_tuple!((T0, T1, T2, T3, T4, T5) with <T0, T1, T2, T3, T4, T5>);
+first_is_nil_for_tuple!((T0, T1, T2, T3, T4, T5, T6) with <T0, T1, T2, T3, T4, T5, T6>);
+first_is_nil_for_tuple!((T0, T1, T2, T3, T4, T5, T6, T7) with <T0, T1, T2, T3, T4, T5, T6, T7>);
+first_is_nil_for_tuple!((T0, T1, T2, T3, T4, T5, T6, T7, T8) with <T0, T1, T2, T3, T4, T5, T6, T7, T8>);
+first_is_nil_for_tuple!((T0, T1, T2, T3, T4, T5, T6, T7, T8, T9) with <T0, T1, T2, T3, T4, T5, T6, T7, T8, T9>);
+first_is_nil_for_tuple!((T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, T10) with <T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, T10>);

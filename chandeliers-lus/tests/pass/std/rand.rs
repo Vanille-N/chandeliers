@@ -12,7 +12,8 @@ struct RandomInt {
 impl Step for RandomInt {
     type Input = ();
     type Output = i64;
-    fn step(&mut self, _: ()) -> ty!(int) {
+    fn step(&mut self, __inputs: ty!()) -> ty!(int) {
+        implicit_clock!(__inputs);
         self.rng.gen::<i64>().embed()
     }
 }
@@ -37,7 +38,7 @@ fn main() {
     let mut randsum = randsum::default();
     let mut sum = 0;
     for _ in 0..100 {
-        let (r, s) = randsum.step(()).trusted();
+        let (r, s) = randsum.step(().embed()).trusted();
         sum = (sum + r) % MOD;
         assert_eq!(sum, s);
     }

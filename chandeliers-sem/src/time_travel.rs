@@ -52,6 +52,7 @@ pub(crate) trait Sealed: Sized {}
 impl Sealed for i64 {}
 impl Sealed for f64 {}
 impl Sealed for bool {}
+impl Sealed for () {}
 
 /// This trait guarantees that you cannot construct an `S<_, _>` that
 /// isn't usable.

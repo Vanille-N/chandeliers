@@ -230,7 +230,12 @@ impl ToTokens for decl::Node {
                 .map(|sv| sv.as_ref().map(|_, v| v.name_of()))
         };
         let inputs_vs_1 = inputs_vs();
-        let inputs_vs_2 = inputs_vs();
+        let inputs_vs_2 = if inputs.t.is_empty() {
+            quote!(_)
+        } else {
+            let vs = inputs_vs();
+            quote!( ( #( #vs ),* ) )
+        };
 
         let outputs_ty = || {
             outputs
@@ -293,10 +298,11 @@ impl ToTokens for decl::Node {
                 #[allow(unused_imports)]
                 fn step(
                     &mut self,
-                    __inputs: ( #( ::chandeliers_sem::ty!(#inputs_ty_2) ),* ),
-                ) -> (
-                    #( ::chandeliers_sem::ty!(#outputs_ty_2) ),*
-                ) {
+                    __inputs: <( #( ::chandeliers_sem::ty_mapping!(#inputs_ty_2) ),* ) as ::chandeliers_sem::traits::Embed>::Target,
+                ) ->
+                    <( #( ::chandeliers_sem::ty_mapping!(#outputs_ty_2) ),* ) as ::chandeliers_sem::traits::Embed>::Target
+                {
+                    ::chandeliers_sem::implicit_clock!(__inputs);
                     self.inner.step(__inputs)
                 }
             }
@@ -321,11 +327,13 @@ impl ToTokens for decl::Node {
                 type Output = ( #( ::chandeliers_sem::ty_mapping!(#outputs_ty_3) ),* );
                 fn step(
                     &mut self,
-                    __inputs: ( #( ::chandeliers_sem::ty!(#inputs_ty_1) ),* ),
-                ) -> (
-                    #( ::chandeliers_sem::ty!(#outputs_ty_1) ),*
-                ) {
-                    let ( #( #inputs_vs_2 ),* ) = __inputs;
+                    __inputs: <( #( ::chandeliers_sem::ty_mapping!(#inputs_ty_1) ),* ) as ::chandeliers_sem::traits::Embed>::Target,
+                ) ->
+                    <( #( ::chandeliers_sem::ty_mapping!(#outputs_ty_1) ),* ) as ::chandeliers_sem::traits::Embed>::Target
+                {
+                    use ::chandeliers_sem::traits::*;
+                    ::chandeliers_sem::implicit_clock!(__inputs);
+                    let #inputs_vs_2 = __inputs;
                     #trace_pre
                     // Actual body
                     #( #stmts ; )*
@@ -335,7 +343,7 @@ impl ToTokens for decl::Node {
                     #( ::chandeliers_sem::update!(self, #pos_outputs_use ); )*
                     #( ::chandeliers_sem::update!(self, #pos_locals_use ); )*
                     #trace_post
-                    ( #( #outputs_vs_2 ),* )
+                    ( #( #outputs_vs_2 ),* ).embed()
                 }
             }
 
@@ -350,11 +358,11 @@ impl ToTokens for decl::Node {
                     let mut sys = #ext_name::default();
                     if #nb_iter == 0 {
                         loop {
-                            sys.step(());
+                            sys.step(().embed()).trusted();
                         }
                     } else {
                         for _ in 1..=#nb_iter {
-                            sys.step(());
+                            sys.step(().embed()).trusted();
                         }
                     }
                 }
@@ -393,10 +401,10 @@ impl ToTokens for decl::ExtNode {
             .map(|sv| sv.as_ref().map(|_, v| v.base_type_of()));
 
         let expected_outputs_ty = quote_spanned! {outputs.span=>
-            ( #( ::chandeliers_sem::ty!(#outputs_ty) ),* )
+            <( #( ::chandeliers_sem::ty_mapping!(#outputs_ty) ),* ) as ::chandeliers_sem::traits::Embed>::Target
         };
         let expected_inputs_ty = quote_spanned! {inputs.span=>
-            ( #( ::chandeliers_sem::ty!(#inputs_ty) ),* )
+            <( #( ::chandeliers_sem::ty_mapping!(#inputs_ty) ),* ) as ::chandeliers_sem::traits::Embed>::Target
         };
         let actual_inputs = quote_spanned! {inputs.span=> __inputs };
         let rustc_allow = options.rustc_allow.iter();
@@ -409,7 +417,12 @@ impl ToTokens for decl::ExtNode {
                 .map(|sv| sv.as_ref().map(|_, v| v.name_of()))
         };
         let inputs_vs_1 = inputs_vs();
-        let inputs_vs_2 = inputs_vs();
+        let inputs_vs_2 = if inputs.t.is_empty() {
+            quote!(_)
+        } else {
+            let vs = inputs_vs();
+            quote!( ( #( #vs ),* ) )
+        };
         let outputs_vs = || {
             outputs
                 .t
@@ -417,7 +430,12 @@ impl ToTokens for decl::ExtNode {
                 .map(|sv| sv.as_ref().map(|_, v| v.name_of()))
         };
         let outputs_vs_1 = outputs_vs();
-        let outputs_vs_2 = outputs_vs();
+        let outputs_vs_2 = if outputs.t.is_empty() {
+            quote!(_)
+        } else {
+            let vs = outputs_vs();
+            quote!( ( #( #vs ),* ) )
+        };
         let outputs_vs_3 = outputs_vs();
 
         let trace_pre = if options.trace {
@@ -453,15 +471,15 @@ impl ToTokens for decl::ExtNode {
                     #actual_inputs: #expected_inputs_ty,
                 ) -> #expected_outputs_ty
                 {
-                    let ( #( #inputs_vs_2 ),* ) = __inputs;
+                    ::chandeliers_sem::implicit_clock!(__inputs);
+                    let #inputs_vs_2 = __inputs;
                     #trace_pre
 
-                    use ::chandeliers_sem::traits::Step;
-                    let ( #( #outputs_vs_2 ),* ) = self.inner.step(#actual_inputs);
+                    use ::chandeliers_sem::traits::*;
+                    let #outputs_vs_2 = self.inner.step(#actual_inputs);
 
                     #trace_post
-                    ( #( #outputs_vs_3 ),* )
-
+                    ( #( #outputs_vs_3 ),* ).embed()
                 }
             }
         });
@@ -473,11 +491,11 @@ impl ToTokens for decl::ExtNode {
                     let mut sys = #ext_name::default();
                     if #nb_iter == 0 {
                         loop {
-                            sys.step(());
+                            sys.step(().embed()).trusted();
                         }
                     } else {
                         for _ in 1..=#nb_iter {
-                            sys.step(());
+                            sys.step(().embed()).trusted();
                         }
                     }
                 }
@@ -557,7 +575,7 @@ impl ConstExprTokens for expr::Expr {
                     t.t.iter()
                         .map(|e| e.const_expr_tokens())
                         .collect::<Vec<_>>();
-                quote!( #( #ts ),* )
+                quote!( ( #( #ts ),* ) )
             }
             Self::Later { .. } => unreachable!("Later is not valid in const contexts"),
             Self::Substep { .. } => unreachable!("Substep is not valid in const contexts"),
@@ -773,7 +791,7 @@ impl ToTokens for expr::Expr {
             }
             Self::Tuple(t) => {
                 let elems = t.t.iter();
-                quote!( ( #( #elems ),* ) )
+                quote!( ( #( #elems ),* ).embed() )
             }
             Self::BinOp { op, lhs, rhs } => {
                 quote!(::chandeliers_sem::binop!(#op; #lhs, #rhs))
@@ -796,7 +814,7 @@ impl ToTokens for expr::Expr {
                     ::chandeliers_sem::substep!(
                         self;
                         #id_lit => {
-                            #args
+                            #args.embed()
                         }
                     )
                 }

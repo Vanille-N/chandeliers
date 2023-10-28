@@ -54,7 +54,8 @@
 //! impl Step for counter {
 //!     type Input = ();
 //!     type Output = i64;
-//!     fn step(&mut self, _: ()) -> ty!(int) {
+//!     fn step(&mut self, __inputs: ty!()) -> ty!(int) {
+//!         implicit_clock!(__inputs);
 //!         node_trace!(self, "() => counter(n={})", self.n);
 //!         let n = later!(self <~ 0; lit!(0), var!(self <~ 1; n) + lit!(1));
 //!         update!(self, n);
@@ -67,7 +68,7 @@
 //! fn usage() {
 //!     let mut c = counter::default();
 //!     for i in 0..10 {
-//!         assert_eq!(c.step(()).trusted(), i);
+//!         assert_eq!(c.step(().embed()).trusted(), i);
 //!     }
 //! }
 //! ```
@@ -183,6 +184,7 @@ macro_rules! ty_mapping {
 /// ```
 #[macro_export]
 macro_rules! ty {
+    () => { $crate::nillable::Nillable<()> };
     ( $t:ident ) => { $crate::present_ty!($crate::ty_mapping!($t)) };
     ( $t:ident + $($rest:tt)* ) => { $crate::past_ty!($crate::ty_mapping!($t), $($rest)*) };
 }
@@ -323,9 +325,10 @@ macro_rules! later {
 /// allowing delayed execution of subnodes.
 #[macro_export]
 macro_rules! substep {
-    ($this:ident ; $id:tt => { $args:expr } ) => {
-        $this.__nodes.$id.step($args)
-    };
+    ($this:ident ; $id:tt => { $args:expr } ) => {{
+        use $crate::traits::*;
+        $this.__nodes.$id.step($args.embed())
+    }};
 }
 
 /// Conditional on `Nillable`s. [pure]
@@ -495,6 +498,16 @@ macro_rules! merge {
             Defined(true) => on,
             Defined(false) => off,
             _ => AllNil::auto_size(),
+        }
+    }};
+}
+
+#[macro_export]
+macro_rules! implicit_clock {
+    ( $inputs:expr ) => {{
+        use $crate::nillable::*;
+        if $inputs.first_is_nil() {
+            return AllNil::auto_size();
         }
     }};
 }

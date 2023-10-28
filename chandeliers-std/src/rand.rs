@@ -10,7 +10,8 @@ pub struct random_int {
 impl Step for random_int {
     type Input = ();
     type Output = i64;
-    fn step(&mut self, _: ()) -> ty!(int) {
+    fn step(&mut self, __inputs: ty!()) -> ty!(int) {
+        implicit_clock!(__inputs);
         self.rng.gen::<i64>().embed()
     }
 }
@@ -22,7 +23,8 @@ pub struct random_float {
 impl Step for random_float {
     type Input = ();
     type Output = f64;
-    fn step(&mut self, _: ()) -> ty!(float) {
+    fn step(&mut self, __inputs: ty!()) -> ty!(float) {
+        implicit_clock!(__inputs);
         self.rng.gen::<f64>().embed()
     }
 }
@@ -34,7 +36,8 @@ pub struct random_bool {
 impl Step for random_bool {
     type Input = ();
     type Output = bool;
-    fn step(&mut self, _: ()) -> ty!(bool) {
+    fn step(&mut self, __inputs: ty!()) -> ty!(bool) {
+        implicit_clock!(__inputs);
         self.rng.gen::<bool>().embed()
     }
 }

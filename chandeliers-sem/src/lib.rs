@@ -18,6 +18,7 @@ pub mod candle;
 
 /// Stream traits.
 pub mod traits {
+    pub use crate::nillable::AllNil;
     pub use crate::stepping::{Embed, Step, Trusted};
     pub use crate::time_travel::{Ago, Update};
 }
@@ -30,10 +31,10 @@ pub mod macros {
     pub use crate::{assert_is, node_trace};
     /// Expression combinator:
     pub use crate::{binop, cmp, float, ifx, later, substep, unop};
+    /// Statement:
+    pub use crate::{implicit_clock, tick, update};
     /// Expression:
     pub use crate::{lit, nil, var};
-    /// Statement:
-    pub use crate::{tick, update};
     /// Type:
     pub use crate::{ty, ty_mapping};
 }

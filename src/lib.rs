@@ -157,7 +157,7 @@ lustre::decl! {
 #[test]
 fn test_assertion() {
     let mut t = test::default();
-    t.step(());
+    t.step(().embed());
 }
 
 lustre::decl! {
@@ -175,7 +175,7 @@ lustre::decl! {
 #[should_panic]
 fn failing_assertion() {
     let mut t = failing::default();
-    t.step(());
+    t.step(().embed());
 }
 
 lustre::decl! {
@@ -257,7 +257,7 @@ fn fib_behavior() {
     let mut fib = fib::default();
     let mut vals = vec![];
     for _ in 0..10 {
-        vals.push(fib.step(()).trusted());
+        vals.push(fib.step(().embed()).trusted());
     }
     assert_eq!(&vals, &[0, 1, 1, 2, 3, 5, 8, 13, 21, 34]);
 }
@@ -266,7 +266,7 @@ fn fib_behavior() {
 fn counting_twice_behavior() {
     let mut count = counting_twice::default();
     for i in 0..10 {
-        let j = count.step(()).trusted();
+        let j = count.step(().embed()).trusted();
         assert_eq!(j, i);
     }
 }
@@ -275,7 +275,7 @@ fn counting_twice_behavior() {
 fn counting_late_behavior() {
     let mut count = counting_late::default();
     for i in 0..10 {
-        let j = count.step(()).trusted();
+        let j = count.step(().embed()).trusted();
         let actual_i = 0.max(i - 2);
         assert_eq!(j, actual_i);
     }
@@ -294,8 +294,8 @@ mod random {
     impl Step for RandomInt {
         type Input = ();
         type Output = i64;
-        fn step(&mut self, _: ()) -> ty!(int) {
-            //lit!(self.rng.gen())
+        fn step(&mut self, __inputs: ty!()) -> ty!(int) {
+            implicit_clock!(__inputs);
             lit!(4) // chosen by fair dice roll
         }
     }
@@ -320,7 +320,7 @@ mod random {
         let mut randsum = randsum::default();
         let mut sum = 0;
         for _ in 0..100 {
-            let (r, s) = randsum.step(()).trusted();
+            let (r, s) = randsum.step(().embed()).trusted();
             sum += r;
             assert_eq!(sum, s);
         }
@@ -352,7 +352,7 @@ fn test_count1() {
     use chandeliers_sem::traits::*;
     let mut count1 = count1::default();
     for _ in 0..10 {
-        let _ = count1.step(());
+        let _ = count1.step(().embed());
     }
     panic!()
 }
@@ -365,4 +365,29 @@ chandeliers_lus::decl! {
         n = 0 fby n + 1;
         assert n < 10;
     tel;
+}
+
+mod testing {
+    chandeliers_lus::decl! {
+        node system() returns ();
+        let assert true; tel;
+    }
+
+    mod sub {
+        use super::system;
+        chandeliers_lus::decl! {
+            extern node system() returns ();
+
+            #[export]
+            node main() returns ();
+            let () = system(); tel;
+        }
+    }
+
+    use sub::main;
+
+    chandeliers_lus::decl! {
+        #[main(10)]
+        extern node main() returns ();
+    }
 }
