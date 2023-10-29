@@ -1,6 +1,6 @@
 [package]
 name = "chandeliers-err"
-version = "0.3.1"
+version = "0.3.2"
 edition = "2021"
 authors = [ "Neven <vanille@crans.org>" ]
 description = "Internal error message generators for the Chandeliers project"

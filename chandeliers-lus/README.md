@@ -146,3 +146,10 @@ Here are some that you may run into if you try to copy-paste Lustre code too eag
 - only Rust-style comments are available, i.e. `//` for line comments and `/* ... */` for block
   comments,
 
+In addition, the following choices have been made with regards to the semantics:
+- the delay operator `->` has special associativity rules that make
+  `a -> b -> c` (a1, b2, c3, c4, c5, c6, ...) equal to
+  neither `a -> (b -> c)` (a1, c2, c3, c4, c5, c6, ...)
+  nor `(a -> b) -> c` (a1, c2, c3, c4, c5, c6, ...).
+
+

@@ -1,6 +1,6 @@
 [package]
 name = "chandeliers-std"
-version = "0.3.1"
+version = "0.3.2"
 edition = "2021"
 authors = [ "Neven <vanille@crans.org>" ]
 description = "A standard library for the Chandeliers suite"
@@ -11,5 +11,5 @@ repository = "https://github.com/Vanille-N/chandeliers"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-chandeliers-sem = { path = "../chandeliers-sem", version = "0.3.1" }
+chandeliers-sem = { path = "../chandeliers-sem", version = "0.3.2" }
 rand = "0.8.5"
