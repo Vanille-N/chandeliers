@@ -9,8 +9,14 @@ chandeliers_lus::decl! {
         n = if b then counting() else counting();
     tel;
 
-    node counting_late() returns (n : int);
+    node counting_late_fby() returns (n : int);
     let n = 0 fby 0 fby counting(); tel;
+
+    node counting_late_then() returns (n : int);
+    let n = 0 -> 0 -> 0 -> pre pre pre counting(); tel;
+
+    node counting_catchup() returns (n : int);
+    let n = 0 -> 0 -> 0 -> counting(); tel;
 
     #[main(10)]
     node system() returns ();
@@ -18,6 +24,8 @@ chandeliers_lus::decl! {
     let
         n = 0 fby n + 1;
         assert counting_twice() = n;
-        assert counting_late() = (0 fby 0 fby n);
+        assert counting_late_fby() = (0 fby 0 fby n);
+        assert counting_late_then() = (0 fby 0 fby 0 fby n);
+        assert counting_catchup() = (0 -> 0 -> 0 -> n);
     tel;
 }

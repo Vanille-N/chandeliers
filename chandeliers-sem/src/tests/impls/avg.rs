@@ -65,7 +65,7 @@ impl Step for cumul_avg {
         let n = later!(self <~ 0; lit!(1), var!(self <~ 1; n) + lit!(1));
         update!(self, n);
         let avg = substep!(
-            self;
+            self <~ 0;
             0 => {(
                 var!(self <~ 0; x),
                 later!(self <~ 0; lit!(0.0), var!(self <~ 1; avg)),

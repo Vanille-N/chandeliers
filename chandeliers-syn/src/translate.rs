@@ -1195,6 +1195,7 @@ impl Translate for lus::expr::CallExpr {
         ctx.blocks
             .push(Sp::new(candle::decl::NodeName { repr, run_uid }, span));
         Ok(CandleExpr::Substep {
+            clk: ctx.depth,
             id: id.clone(),
             args: args.boxed(),
         })

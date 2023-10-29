@@ -611,7 +611,11 @@ pub mod expr {
             off: Sp<Box<Expr>>,
         },
         /// Advance a block.
-        Substep { id: Sp<NodeId>, args: Sp<Box<Expr>> },
+        Substep {
+            clk: usize,
+            id: Sp<NodeId>,
+            args: Sp<Box<Expr>>,
+        },
     }
 
     impl fmt::Display for Expr {
@@ -627,7 +631,7 @@ pub mod expr {
                 Self::Ifx { cond, yes, no } => {
                     write!(f, "if {cond} {{ {yes} }} else {{ {no} }}")
                 }
-                Self::Substep { id, args } => write!(f, "{id}({args})"),
+                Self::Substep { clk, id, args } => write!(f, "{id}@{clk}{args}"),
                 Self::ClockOp {
                     op,
                     inner,

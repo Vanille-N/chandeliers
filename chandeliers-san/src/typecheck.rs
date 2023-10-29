@@ -238,7 +238,7 @@ impl TypeCheckExpr for ast::expr::Expr {
                 yes.identical(&no, span)?;
                 Ok(yes.t)
             }
-            Self::Substep { id, args } => {
+            Self::Substep { clk: _, id, args } => {
                 let Some(expected_tys) = ctx.nodes_in.get(&id.t) else {
                     unreachable!("Substep is malformed: {id} is not a block");
                 };

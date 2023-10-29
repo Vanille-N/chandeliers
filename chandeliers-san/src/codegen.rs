@@ -808,11 +808,11 @@ impl ToTokens for expr::Expr {
             Self::Ifx { cond, yes, no } => {
                 quote!(::chandeliers_sem::ifx!((#cond) then { #yes } else { #no }))
             }
-            Self::Substep { id, args } => {
+            Self::Substep { clk, id, args } => {
                 let id_lit = syn::LitInt::new(&format!("{}", id.t.id), id.span);
                 quote! {
                     ::chandeliers_sem::substep!(
-                        self;
+                        self <~ #clk;
                         #id_lit => {
                             #args.embed()
                         }

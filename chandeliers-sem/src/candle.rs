@@ -303,13 +303,15 @@ macro_rules! float {
 /// and for instants after `$dt` it will return the right value.
 #[macro_export]
 macro_rules! later {
-    ($this:ident <~ $dt:expr ; $lhs:expr, $rhs:expr) => {
+    ($this:ident <~ $dt:expr ; $lhs:expr, $rhs:expr) => {{
+        let lhs = $lhs;
+        let rhs = $rhs;
         if $this.__clock > $dt {
-            $rhs
+            rhs
         } else {
-            $lhs
+            lhs
         }
-    };
+    }};
 }
 
 /// Invocation of subnodes. [side-effects: only call once for each node id]
@@ -325,9 +327,13 @@ macro_rules! later {
 /// allowing delayed execution of subnodes.
 #[macro_export]
 macro_rules! substep {
-    ($this:ident ; $id:tt => { $args:expr } ) => {{
+    ($this:ident <~ $dt:expr ; $id:tt => { $args:expr } ) => {{
         use $crate::traits::*;
-        $this.__nodes.$id.step($args.embed())
+        if $this.__clock >= $dt {
+            $this.__nodes.$id.step($args.embed())
+        } else {
+            AllNil::auto_size()
+        }
     }};
 }
 
