@@ -1,10 +1,19 @@
 #![feature(proc_macro_diagnostic)]
 
+use std::sync::atomic::{AtomicUsize, Ordering};
+
 use chandeliers_err as err;
 use chandeliers_san as sanitizer;
 use chandeliers_syn as syntax;
 
 use sanitizer::ast::Sp;
+
+/// Generate unique identifiers for each macro invocation. We need this to avoid
+/// name collisions in `extern node` and `extern const` declarations.
+static RUN_UID: AtomicUsize = AtomicUsize::new(0);
+fn new_run_uid() -> usize {
+    RUN_UID.fetch_add(1, Ordering::SeqCst)
+}
 
 #[proc_macro]
 pub fn decl(i: proc_macro::TokenStream) -> proc_macro::TokenStream {
@@ -26,7 +35,7 @@ fn prog_pipeline(
     use sanitizer::causality::Causality;
     use sanitizer::positivity::MakePositive;
     use syntax::translate::SpanTranslate;
-    let run_uid: usize = rand::random();
+    let run_uid = new_run_uid();
     let prog = prog.translate(run_uid, ())?;
     let mut prog = prog.causality()?;
     prog.typecheck()?;

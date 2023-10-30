@@ -88,10 +88,15 @@ impl ToTokens for decl::Const {
         };
         let rustc_allow = options.rustc_allow.iter();
 
+        let doc = format!("Toplevel constant `{name}`");
         toks.extend(quote! {
+            #[doc = #doc]
+            #[doc = "(Declared with UID for internal usage)"]
             #[allow(non_upper_case_globals)]
             const #name : ::chandeliers_sem::ty_mapping!(#ty) = #value ;
 
+            #[doc = #doc]
+            #[doc = "(Visible by the outside)"]
             #[allow(non_upper_case_globals)]
             #( #[allow( #rustc_allow )] )*
             #declaration
@@ -126,7 +131,9 @@ impl ToTokens for decl::ExtConst {
         let expected = quote_spanned!(ty.span=> ::chandeliers_sem::ty_mapping!(#ty) );
         let expected_wrapped = quote_spanned!(ty.span=> Type<#expected> );
         let rustc_allow = options.rustc_allow.iter();
+        let doc = format!("Reimport of a toplevel constant; assumes that `{name}` is provided");
         toks.extend(quote! {
+            #[doc = #doc]
             #[allow(non_upper_case_globals)]
             #( #[allow( #rustc_allow )] )*
             const #name: #expected = {
@@ -190,7 +197,7 @@ impl ToTokens for decl::Node {
 
         let name_span = name.span;
         let ext_name = Ident::new_raw(&format!("{}", name), name.span);
-        let name = name.as_ident();
+        let uid_name = name.as_ident();
 
         let pos_inputs_decl = inputs.t.iter().filter(|v| v.t.strictly_positive());
         let pos_outputs_decl = outputs.t.iter().filter(|v| v.t.strictly_positive());
@@ -262,9 +269,10 @@ impl ToTokens for decl::Node {
             quote!()
         };
 
+        let name_str = format!("`{}`", name);
         let trace_pre = if options.trace {
             quote! {
-                println!("{:?} -> {}", (#(#inputs_vs_1),*), stringify!(#ext_name));
+                println!("{:?} -> {}", (#(#inputs_vs_1),*), #name_str);
             }
         } else {
             quote!()
@@ -272,13 +280,13 @@ impl ToTokens for decl::Node {
 
         let trace_post = if options.trace {
             quote! {
-                println!("{} -> {:?}", stringify!(#ext_name), (#(#outputs_vs_1),*));
+                println!("{} -> {:?}", #name_str, (#(#outputs_vs_1),*));
             }
         } else {
             quote!()
         };
         let ext_declaration = quote_spanned! {name_span=>
-            #pub_qualifier struct #ext_name { inner: #name }
+            #pub_qualifier struct #ext_name { inner: #uid_name }
         };
         let rustc_allow = options.rustc_allow.iter();
 
@@ -308,21 +316,31 @@ impl ToTokens for decl::Node {
             }
         };
 
+        let doc_name = format!(" `{name}` ");
         toks.extend(quote! {
+            #[doc = " Node definition"]
+            #[doc = #doc_name]
+            #[doc = "(for internal use)"]
             #[derive(Debug, Default)]
             #[allow(non_camel_case_types)]
             #[allow(non_snake_case)]
-            #pub_qualifier struct #name {
+            #pub_qualifier struct #uid_name {
                 __clock: usize,
+                #[doc = " Strictly positive variables of"]
+                #[doc = #doc_name]
                 #( #pos_inputs_decl , )*
                 #( #pos_outputs_decl , )*
                 #( #pos_locals_decl , )*
+                #[doc = " Subnodes of"]
+                #[doc = #doc_name]
                 __nodes: ( #( #blocks , )* ),
             }
 
+            #[doc = " Implementation of Step for"]
+            #[doc = #doc_name]
             #[allow(non_snake_case)]
             #[allow(clippy::unused_unit)]
-            impl ::chandeliers_sem::traits::Step for #name {
+            impl ::chandeliers_sem::traits::Step for #uid_name {
                 type Input = ( #( ::chandeliers_sem::ty_mapping!(#inputs_ty_3) ),* );
                 type Output = ( #( ::chandeliers_sem::ty_mapping!(#outputs_ty_3) ),* );
                 fn step(
@@ -333,27 +351,41 @@ impl ToTokens for decl::Node {
                 {
                     use ::chandeliers_sem::traits::*;
                     ::chandeliers_sem::implicit_clock!(__inputs);
+                    "Implicit clock is running";
                     let #inputs_vs_2 = __inputs;
                     #trace_pre
-                    // Actual body
+                    "Begin body of the node";
                     #( #stmts ; )*
-                    // Finish by incrementing the clock and updating the streams.
+                    "End body of the node";
                     ::chandeliers_sem::tick!(self);
                     #( ::chandeliers_sem::update!(self, #pos_inputs_use ); )*
                     #( ::chandeliers_sem::update!(self, #pos_outputs_use ); )*
                     #( ::chandeliers_sem::update!(self, #pos_locals_use ); )*
+                    "Finish by returning the outputs";
                     #trace_post
                     ( #( #outputs_vs_2 ),* ).embed()
                 }
             }
 
+            #[doc = " Wrapper declaration of"]
+            #[doc = #doc_name]
+            #[doc = " (part of the public interface)"]
             #ext_annotated_declaration
+
+
+            #[doc = " Implementation of Step for"]
+            #[doc = #doc_name]
+            #[doc = " (immediately defers to Step for inner)"]
             #ext_step_impl
         });
 
         if let Some(nb_iter) = options.main {
+            let doc = format!(
+                "Main function automatically generated from {name} (runs for {nb_iter} steps)"
+            );
             toks.extend(quote! {
-                fn main() {
+                #[doc = #doc]
+                pub fn main() {
                     use ::chandeliers_sem::traits::*;
                     let mut sys = #ext_name::default();
                     if #nb_iter == 0 {
@@ -390,6 +422,7 @@ impl ToTokens for decl::ExtNode {
         } = self;
 
         let ext_name = Ident::new_raw(&format!("{}", name), name.span);
+        let uid_name = name.as_ident();
 
         let inputs_ty = inputs
             .t
@@ -409,7 +442,6 @@ impl ToTokens for decl::ExtNode {
         let actual_inputs = quote_spanned! {inputs.span=> __inputs };
         let rustc_allow = options.rustc_allow.iter();
 
-        let name = name.as_ident();
         let inputs_vs = || {
             inputs
                 .t
@@ -438,9 +470,10 @@ impl ToTokens for decl::ExtNode {
         };
         let outputs_vs_3 = outputs_vs();
 
+        let name_str = format!("`{}`", name);
         let trace_pre = if options.trace {
             quote! {
-                println!("[ext] {:?} -> {}", (#(#inputs_vs_1),*), stringify!(#ext_name));
+                println!("[ext] {:?} -> {}", (#(#inputs_vs_1),*), #name_str);
             }
         } else {
             quote!()
@@ -448,23 +481,23 @@ impl ToTokens for decl::ExtNode {
 
         let trace_post = if options.trace {
             quote! {
-                println!("[ext] {} -> {:?}", stringify!(#ext_name), (#(#outputs_vs_1),*));
+                println!("[ext] {} -> {:?}", #name_str, (#(#outputs_vs_1),*));
             }
         } else {
             quote!()
         };
 
-        toks.extend(quote_spanned! {name.span()=>
+        toks.extend(quote_spanned! {uid_name.span()=>
             #[derive(Debug, Default)]
             #[allow(non_camel_case_types)]
             #( #[allow( #rustc_allow )] )*
-            struct #name { inner: #ext_name }
+            struct #uid_name { inner: #ext_name }
 
             #[allow(dead_code)]
             #[allow(unused_parens)]
             #[allow(clippy::let_and_return)]
             // FIXME: impl Step
-            impl #name {
+            impl #uid_name {
                 #[allow(unused_imports)]
                 pub fn step(
                     &mut self,
@@ -485,8 +518,12 @@ impl ToTokens for decl::ExtNode {
         });
 
         if let Some(nb_iter) = options.main {
+            let doc = format!(
+                "Main function automatically generated from {name} (runs for {nb_iter} steps)"
+            );
             toks.extend(quote! {
-                fn main() {
+                #[doc = #doc]
+                pub fn main() {
                     use ::chandeliers_sem::traits::*;
                     let mut sys = #ext_name::default();
                     if #nb_iter == 0 {
@@ -733,7 +770,9 @@ impl ToTokens for stmt::Statement {
     fn to_tokens(&self, toks: &mut TokenStream) {
         match self {
             Self::Let { source, target } => {
+                let pretty = format!("Variable assignment: {target} := {source};");
                 toks.extend(quote! {
+                    #pretty;
                     let #target = #source
                 });
             }
@@ -741,8 +780,10 @@ impl ToTokens for stmt::Statement {
                 unimplemented!("Trace");
             }
             Self::Assert(e) => {
+                let pretty = format!("Assertion: {e}");
                 let s = format!("{}", &e);
                 toks.extend(quote! {
+                    #pretty;
                     ::chandeliers_sem::truth!(#e, #s);
                 })
             }
@@ -814,7 +855,7 @@ impl ToTokens for expr::Expr {
                     ::chandeliers_sem::substep!(
                         self <~ #clk;
                         #id_lit => {
-                            #args.embed()
+                            #args
                         }
                     )
                 }

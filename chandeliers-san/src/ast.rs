@@ -348,6 +348,21 @@ pub mod ty {
         Bool,
     }
 
+    /*
+    #[derive(Debug, Clone)]
+    pub enum Clock {
+        Explicit { activation: bool, id: Sp<String> },
+        Implicit,
+        Adaptative,
+    }
+
+    #[derive(Debug, Clone)]
+    pub struct Clocked<Ty> {
+        pub ty: Sp<Ty>,
+        pub clk: Clock,
+    }
+    */
+
     impl fmt::Display for TyBase {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
             match self {
@@ -381,6 +396,30 @@ pub mod ty {
             }
         }
     }
+
+    /*
+    impl<Ty: fmt::Display> fmt::Display for Clocked<Ty> {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            let Self { ty, clk } = self;
+            write!(f, "{ty}{clk}")
+        }
+    }
+    */
+
+    /*
+    impl fmt::Display for Clock {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            match self {
+                Self::Explicit { activation, id } => write!(
+                    f,
+                    " {when} {id}",
+                    when = if *activation { "when" } else { "whenot" }
+                ),
+                _ => Ok(()),
+            }
+        }
+    }
+    */
 }
 
 /// Definitions of expressions.
@@ -450,13 +489,17 @@ pub mod expr {
 
     impl fmt::Display for PastVar {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-            write!(f, "{}@{}", self.var, self.depth)
+            if self.depth.dt > 0 {
+                write!(f, "{}@{}", self.var, self.depth)
+            } else {
+                write!(f, "{}", self.var)
+            }
         }
     }
 
     impl fmt::Display for NodeId {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-            write!(f, "{} (#{})", self.repr, self.id)
+            write!(f, "{}", self.repr)
         }
     }
 
@@ -631,7 +674,13 @@ pub mod expr {
                 Self::Ifx { cond, yes, no } => {
                     write!(f, "if {cond} {{ {yes} }} else {{ {no} }}")
                 }
-                Self::Substep { clk, id, args } => write!(f, "{id}@{clk}{args}"),
+                Self::Substep { clk, id, args } => {
+                    if *clk > 0 {
+                        write!(f, "{id}@{clk}{args}")
+                    } else {
+                        write!(f, "{id}{args}")
+                    }
+                }
                 Self::ClockOp {
                     op,
                     inner,
