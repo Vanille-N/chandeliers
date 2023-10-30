@@ -681,6 +681,52 @@ impl Sp<ast::decl::Node> {
 
 /// Same signature as Node but we trust its type as there are no contents to check.
 impl Sp<ast::decl::ExtNode> {
+    fn typecheck(&mut self) -> TcResult<()> {
+        let extvar = Default::default();
+        let mut ctx = TyCtx::from_ext(&extvar);
+        // FIXME: prettify
+        if self.t.options.main.is_some() {
+            if !self.t.inputs.t.is_empty() {
+                return Err(err::Basic {
+                    msg: "Node declared as main should not have any inputs".to_string(),
+                    span: self.t.inputs.span,
+                }
+                .into_err());
+            }
+            if !self.t.outputs.t.is_empty() {
+                return Err(err::Basic {
+                    msg: "Node declared as main should not have any outputs".to_string(),
+                    span: self.t.inputs.span,
+                }
+                .into_err());
+            }
+        }
+        // These are all the extra variables that we provide in addition
+        // to `extvar`.
+        for vs in &[&self.t.inputs, &self.t.outputs] {
+            for v in vs.t.iter() {
+                if let Some(prior) = ctx.vars.get(&v.t.name.t) {
+                    return Err(err::GraphUnitDeclTwice {
+                        unit: &v.t.name,
+                        prior: "a prior item",
+                        new_site: v.span,
+                        prior_site: prior.def_site,
+                    }
+                    .into_err());
+                } else {
+                    ctx.vars.insert(
+                        v.t.name.t.clone(),
+                        WithDefSite {
+                            def_site: v.span,
+                            inner: v.t.ty.as_ref().map(|_, t| t.base.t),
+                        },
+                    );
+                }
+            }
+        }
+        Ok(())
+    }
+
     pub fn signature(&self) -> (SpTyBaseTuple, SpTyBaseTuple) {
         let inputs = self
             .t
@@ -791,6 +837,7 @@ impl Sp<ast::decl::Prog> {
                     }
                 }
                 ast::decl::Decl::ExtNode(n) => {
+                    n.typecheck()?;
                     let (i, o) = n.signature();
                     if functx.insert(n.t.name.t.clone(), (i, o)).is_some() {
                         let s = format!("Redefinition of node {}", n.t.name);

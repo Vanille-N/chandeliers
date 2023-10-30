@@ -1,0 +1,23 @@
+error: Attempt to redefine i, when a prior item already defines it
+ --> tests/fail/ui/causality/redef-node-extern.rs:2:39
+  |
+2 |     extern node foo(i : int) returns (i : int);
+  |                                       ^
+  |
+note: Already defined here
+ --> tests/fail/ui/causality/redef-node-extern.rs:2:21
+  |
+2 |     extern node foo(i : int) returns (i : int);
+  |                     ^
+
+error: Attempt to redefine i, when a prior item already defines it
+ --> tests/fail/ui/causality/redef-node-extern.rs:6:30
+  |
+6 |     extern node bar(i : int; i : bool) returns ();
+  |                              ^
+  |
+note: Already defined here
+ --> tests/fail/ui/causality/redef-node-extern.rs:6:21
+  |
+6 |     extern node bar(i : int; i : bool) returns ();
+  |                     ^
