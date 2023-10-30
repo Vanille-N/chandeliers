@@ -1,25 +1,28 @@
 //! Generate actual Candle statements from an AST.
 
-use proc_macro2::{Ident, TokenStream};
+use proc_macro2::{Ident, Span, TokenStream};
 use quote::{quote, quote_spanned, ToTokens};
 
 use super::ast::*;
 
 trait ConstExprTokens {
+    fn const_expr_tokens(&self, span: Span) -> TokenStream;
+}
+trait ConstExprSpanTokens {
     fn const_expr_tokens(&self) -> TokenStream;
 }
 
-impl<T: ConstExprTokens> ConstExprTokens for Sp<T> {
+impl<T: ConstExprTokens> ConstExprSpanTokens for Sp<T> {
     fn const_expr_tokens(&self) -> TokenStream {
-        let inner = self.t.const_expr_tokens();
+        let inner = self.t.const_expr_tokens(self.span);
         quote_spanned! {self.span=>
             #inner
         }
     }
 }
 impl<T: ConstExprTokens> ConstExprTokens for Box<T> {
-    fn const_expr_tokens(&self) -> TokenStream {
-        let inner = self.as_ref().const_expr_tokens();
+    fn const_expr_tokens(&self, span: Span) -> TokenStream {
+        let inner = self.as_ref().const_expr_tokens(span);
         quote!( #inner )
     }
 }
@@ -59,6 +62,66 @@ impl ToTokens for decl::Decl {
     }
 }
 
+trait OptionsPubQualifier {
+    fn active(&self) -> bool;
+    fn pub_qualifier(&self) -> TokenStream {
+        if self.active() {
+            quote!(pub)
+        } else {
+            quote!()
+        }
+    }
+}
+
+impl OptionsPubQualifier for decl::ConstOptions {
+    fn active(&self) -> bool {
+        self.export
+    }
+}
+
+impl OptionsPubQualifier for decl::NodeOptions {
+    fn active(&self) -> bool {
+        self.export
+    }
+}
+
+trait OptionsTraces {
+    fn active(&self) -> bool;
+    fn traces(
+        &self,
+        prefix: &str,
+        name: &Sp<decl::NodeName>,
+        inputs: Sp<&Tuple<Sp<decl::TyVar>>>,
+        outputs: Sp<&Tuple<Sp<decl::TyVar>>>,
+    ) -> (TokenStream, TokenStream) {
+        let name = format!("{}", name);
+        let inputs = inputs.as_values();
+        let outputs = outputs.as_values();
+        if self.active() {
+            (
+                quote! {
+                    println!("{}{:?} -> {}", #prefix, #inputs, #name);
+                },
+                quote! {
+                    println!("{}{} -> {:?}", #prefix, #name, #outputs);
+                },
+            )
+        } else {
+            (quote!(), quote!())
+        }
+    }
+}
+impl OptionsTraces for decl::NodeOptions {
+    fn active(&self) -> bool {
+        self.trace
+    }
+}
+impl OptionsTraces for decl::ExtNodeOptions {
+    fn active(&self) -> bool {
+        self.trace
+    }
+}
+
 /// Global constant.
 ///
 /// This is straightforward generation of the components, apart from the
@@ -75,16 +138,14 @@ impl ToTokens for decl::Const {
             value,
         } = self;
         let span = name.span;
-        let ext_name = Ident::new_raw(&format!("{}", name), name.span);
+        let ext_name = name.as_raw_ident();
+        let glob = name.as_sanitized_ident();
         let value = value.const_expr_tokens();
-        let pub_qualifier = if options.export {
-            quote!(pub)
-        } else {
-            quote!()
-        };
+        let ty = ty.as_defined_ty();
+        let pub_qualifier = options.pub_qualifier();
 
         let declaration = quote_spanned! {span=>
-            #pub_qualifier const #ext_name : ::chandeliers_sem::ty_mapping!(#ty) = #name ;
+            #pub_qualifier const #ext_name : #ty = #glob ;
         };
         let rustc_allow = options.rustc_allow.iter();
 
@@ -93,7 +154,7 @@ impl ToTokens for decl::Const {
             #[doc = #doc]
             #[doc = "(Declared with UID for internal usage)"]
             #[allow(non_upper_case_globals)]
-            const #name : ::chandeliers_sem::ty_mapping!(#ty) = #value ;
+            const #glob : #ty = #value ;
 
             #[doc = #doc]
             #[doc = "(Visible by the outside)"]
@@ -126,9 +187,10 @@ impl ToTokens for decl::Const {
 impl ToTokens for decl::ExtConst {
     fn to_tokens(&self, toks: &mut TokenStream) {
         let Self { name, ty, options } = self;
-        let ext_name = Ident::new_raw(&format!("{}", name), name.span);
+        let ext_name = name.as_raw_ident();
+        let expected = ty.as_defined_ty();
+        let glob = name.as_sanitized_ident();
         let real = quote_spanned!(name.span=> real );
-        let expected = quote_spanned!(ty.span=> ::chandeliers_sem::ty_mapping!(#ty) );
         let expected_wrapped = quote_spanned!(ty.span=> Type<#expected> );
         let rustc_allow = options.rustc_allow.iter();
         let doc = format!("Reimport of a toplevel constant; assumes that `{name}` is provided");
@@ -136,7 +198,7 @@ impl ToTokens for decl::ExtConst {
             #[doc = #doc]
             #[allow(non_upper_case_globals)]
             #( #[allow( #rustc_allow )] )*
-            const #name: #expected = {
+            const #glob: #expected = {
                 struct Type<T>(T);
                 let #real = Type(#ext_name);
                 let expected: #expected_wrapped = #real ;
@@ -194,15 +256,20 @@ impl ToTokens for decl::Node {
             stmts,
             options,
         } = self;
+        let inputs = inputs.as_ref();
+        let outputs = outputs.as_ref();
 
         let name_span = name.span;
-        let ext_name = Ident::new_raw(&format!("{}", name), name.span);
-        let uid_name = name.as_ident();
+        let ext_name = name.as_raw_ident();
+        let uid_name = name.as_sanitized_ident();
 
         let pos_inputs_decl = inputs.t.iter().filter(|v| v.t.strictly_positive());
         let pos_outputs_decl = outputs.t.iter().filter(|v| v.t.strictly_positive());
         let pos_locals_decl = locals.t.iter().filter(|v| v.t.strictly_positive());
-        let blocks = blocks.iter().map(|n| n.as_ident()).collect::<Vec<_>>();
+        let blocks = blocks
+            .iter()
+            .map(|n| n.as_sanitized_ident())
+            .collect::<Vec<_>>();
 
         let pos_inputs_use = inputs
             .t
@@ -219,72 +286,22 @@ impl ToTokens for decl::Node {
             .iter()
             .filter(|v| v.t.strictly_positive())
             .map(|v| v.as_ref().map(|_, v| v.name_of()));
-        let inputs_ty = || {
-            inputs
-                .t
-                .iter()
-                .map(|sv| sv.as_ref().map(|_, v| v.base_type_of()))
-        };
-        let inputs_ty_1 = inputs_ty();
-        let inputs_ty_2 = inputs_ty();
-        let inputs_ty_3 = inputs_ty();
-        let inputs_ty_4 = inputs_ty();
+        let inputs_ty_3 = inputs.as_defined_tys();
+        let inputs_ty_4 = inputs.as_defined_tys();
+        let expected_inputs_ty_1 = inputs.as_embedded_tys();
+        let expected_inputs_ty_2 = inputs.as_embedded_tys();
+        let expected_outputs_ty_1 = outputs.as_embedded_tys();
+        let expected_outputs_ty_2 = outputs.as_embedded_tys();
 
-        let inputs_vs = || {
-            inputs
-                .t
-                .iter()
-                .map(|sv| sv.as_ref().map(|_, v| v.name_of()))
-        };
-        let inputs_vs_1 = inputs_vs();
-        let inputs_vs_2 = if inputs.t.is_empty() {
-            quote!(_)
-        } else {
-            let vs = inputs_vs();
-            quote!( ( #( #vs ),* ) )
-        };
+        let inputs_vs_asst = inputs.as_assignment_target();
 
-        let outputs_ty = || {
-            outputs
-                .t
-                .iter()
-                .map(|sv| sv.as_ref().map(|_, v| v.base_type_of()))
-        };
-        let outputs_ty_1 = outputs_ty();
-        let outputs_ty_2 = outputs_ty();
-        let outputs_ty_3 = outputs_ty();
-        let outputs_ty_4 = outputs_ty();
-        let outputs_vs = || {
-            outputs
-                .t
-                .iter()
-                .map(|sv| sv.as_ref().map(|_, v| v.name_of()))
-        };
-        let outputs_vs_1 = outputs_vs();
-        let outputs_vs_2 = outputs_vs();
+        let outputs_ty_3 = outputs.as_defined_tys();
+        let outputs_ty_4 = outputs.as_defined_tys();
+        let outputs_vs_2 = outputs.as_values();
 
-        let pub_qualifier = if options.export {
-            quote!(pub)
-        } else {
-            quote!()
-        };
+        let pub_qualifier = options.pub_qualifier();
 
-        let name_str = format!("`{}`", name);
-        let trace_pre = if options.trace {
-            quote! {
-                println!("{:?} -> {}", (#(#inputs_vs_1),*), #name_str);
-            }
-        } else {
-            quote!()
-        };
-
-        let trace_post = if options.trace {
-            quote! {
-                println!("{} -> {:?}", #name_str, (#(#outputs_vs_1),*));
-            }
-        } else {
-            quote!()
-        };
+        let (trace_pre, trace_post) = options.traces("", name, inputs, outputs);
         let ext_declaration = quote_spanned! {name_span=>
             #pub_qualifier struct #ext_name { inner: #uid_name }
         };
@@ -301,14 +318,14 @@ impl ToTokens for decl::Node {
         let ext_step_impl = quote_spanned! {name_span=>
             #[allow(clippy::unused_unit)]
             impl ::chandeliers_sem::traits::Step for #ext_name {
-                type Input = ( #( ::chandeliers_sem::ty_mapping!(#inputs_ty_4) ),* );
-                type Output = ( #( ::chandeliers_sem::ty_mapping!(#outputs_ty_4) ),* );
+                type Input = #inputs_ty_4;
+                type Output = #outputs_ty_4;
                 #[allow(unused_imports)]
                 fn step(
                     &mut self,
-                    __inputs: <( #( ::chandeliers_sem::ty_mapping!(#inputs_ty_2) ),* ) as ::chandeliers_sem::traits::Embed>::Target,
+                    __inputs: #expected_inputs_ty_1,
                 ) ->
-                    <( #( ::chandeliers_sem::ty_mapping!(#outputs_ty_2) ),* ) as ::chandeliers_sem::traits::Embed>::Target
+                    #expected_outputs_ty_1
                 {
                     ::chandeliers_sem::implicit_clock!(__inputs);
                     self.inner.step(__inputs)
@@ -341,18 +358,18 @@ impl ToTokens for decl::Node {
             #[allow(non_snake_case)]
             #[allow(clippy::unused_unit)]
             impl ::chandeliers_sem::traits::Step for #uid_name {
-                type Input = ( #( ::chandeliers_sem::ty_mapping!(#inputs_ty_3) ),* );
-                type Output = ( #( ::chandeliers_sem::ty_mapping!(#outputs_ty_3) ),* );
+                type Input = #inputs_ty_3;
+                type Output = #outputs_ty_3;
                 fn step(
                     &mut self,
-                    __inputs: <( #( ::chandeliers_sem::ty_mapping!(#inputs_ty_1) ),* ) as ::chandeliers_sem::traits::Embed>::Target,
+                    __inputs: #expected_inputs_ty_2,
                 ) ->
-                    <( #( ::chandeliers_sem::ty_mapping!(#outputs_ty_1) ),* ) as ::chandeliers_sem::traits::Embed>::Target
+                    #expected_outputs_ty_2
                 {
                     use ::chandeliers_sem::traits::*;
                     ::chandeliers_sem::implicit_clock!(__inputs);
                     "Implicit clock is running";
-                    let #inputs_vs_2 = __inputs;
+                    let #inputs_vs_asst = __inputs;
                     #trace_pre
                     "Begin body of the node";
                     #( #stmts ; )*
@@ -363,7 +380,7 @@ impl ToTokens for decl::Node {
                     #( ::chandeliers_sem::update!(self, #pos_locals_use ); )*
                     "Finish by returning the outputs";
                     #trace_post
-                    ( #( #outputs_vs_2 ),* ).embed()
+                    #outputs_vs_2.embed()
                 }
             }
 
@@ -403,6 +420,57 @@ impl ToTokens for decl::Node {
     }
 }
 
+impl Sp<&Tuple<Sp<decl::TyVar>>> {
+    fn as_defined_tys(&self) -> TokenStream {
+        if self.t.len() == 1 {
+            let first = self.t.iter().next().unwrap().base_type_of().as_lustre_ty();
+            quote_spanned! {self.span=>
+                ::chandeliers_sem::ty_mapping!(#first)
+            }
+        } else {
+            let tup = self.t.iter().map(|sv| sv.base_type_of().as_lustre_ty());
+            quote_spanned! {self.span=>
+                ( #( ::chandeliers_sem::ty_mapping!(#tup) ),* )
+            }
+        }
+    }
+
+    fn as_embedded_tys(&self) -> TokenStream {
+        let tys = self.as_defined_tys();
+        quote_spanned! {self.span=>
+            <#tys as ::chandeliers_sem::traits::Embed>::Target
+        }
+    }
+
+    fn as_values(&self) -> TokenStream {
+        if self.t.len() == 1 {
+            let first = self
+                .t
+                .iter()
+                .next()
+                .unwrap()
+                .as_ref()
+                .map(|_, v| v.name_of());
+            quote_spanned! {self.span=>
+                #first
+            }
+        } else {
+            let tup = self.t.iter().map(|sv| sv.as_ref().map(|_, v| v.name_of()));
+            quote_spanned! {self.span=>
+                ( #( #tup ),* )
+            }
+        }
+    }
+
+    fn as_assignment_target(&self) -> TokenStream {
+        if self.t.is_empty() {
+            quote_spanned!(self.span=> _)
+        } else {
+            self.as_values()
+        }
+    }
+}
+
 /// Extern node declaration: assert that it implements the right trait.
 ///
 /// We use similar techniques to the ones in `ExtConst` to block the compiler's
@@ -420,25 +488,14 @@ impl ToTokens for decl::ExtNode {
             outputs,
             options,
         } = self;
+        let inputs = inputs.as_ref();
+        let outputs = outputs.as_ref();
 
-        let ext_name = Ident::new_raw(&format!("{}", name), name.span);
-        let uid_name = name.as_ident();
+        let ext_name = name.as_raw_ident();
+        let uid_name = name.as_sanitized_ident();
 
-        let inputs_ty = inputs
-            .t
-            .iter()
-            .map(|sv| sv.as_ref().map(|_, v| v.base_type_of()));
-        let outputs_ty = outputs
-            .t
-            .iter()
-            .map(|sv| sv.as_ref().map(|_, v| v.base_type_of()));
-
-        let expected_outputs_ty = quote_spanned! {outputs.span=>
-            <( #( ::chandeliers_sem::ty_mapping!(#outputs_ty) ),* ) as ::chandeliers_sem::traits::Embed>::Target
-        };
-        let expected_inputs_ty = quote_spanned! {inputs.span=>
-            <( #( ::chandeliers_sem::ty_mapping!(#inputs_ty) ),* ) as ::chandeliers_sem::traits::Embed>::Target
-        };
+        let expected_outputs_ty = outputs.as_embedded_tys();
+        let expected_inputs_ty = inputs.as_embedded_tys();
         let actual_inputs = quote_spanned! {inputs.span=> __inputs };
         let rustc_allow = options.rustc_allow.iter();
 
@@ -448,53 +505,24 @@ impl ToTokens for decl::ExtNode {
                 .iter()
                 .map(|sv| sv.as_ref().map(|_, v| v.name_of()))
         };
-        let inputs_vs_1 = inputs_vs();
         let inputs_vs_2 = if inputs.t.is_empty() {
             quote!(_)
         } else {
             let vs = inputs_vs();
             quote!( ( #( #vs ),* ) )
         };
-        let outputs_vs = || {
-            outputs
-                .t
-                .iter()
-                .map(|sv| sv.as_ref().map(|_, v| v.name_of()))
-        };
-        let outputs_vs_1 = outputs_vs();
-        let outputs_vs_2 = if outputs.t.is_empty() {
-            quote!(_)
-        } else {
-            let vs = outputs_vs();
-            quote!( ( #( #vs ),* ) )
-        };
-        let outputs_vs_3 = outputs_vs();
+        let outputs_vs_2 = outputs.as_assignment_target();
+        let outputs_vs_3 = outputs.with_span(name.span).as_values();
 
-        let name_str = format!("`{}`", name);
-        let trace_pre = if options.trace {
-            quote! {
-                println!("[ext] {:?} -> {}", (#(#inputs_vs_1),*), #name_str);
-            }
-        } else {
-            quote!()
-        };
+        let (trace_pre, trace_post) = options.traces("[pre] ", name, inputs, outputs);
 
-        let trace_post = if options.trace {
-            quote! {
-                println!("[ext] {} -> {:?}", #name_str, (#(#outputs_vs_1),*));
-            }
-        } else {
-            quote!()
-        };
-
-        toks.extend(quote_spanned! {uid_name.span()=>
+        toks.extend(quote_spanned! {name.span=>
             #[derive(Debug, Default)]
             #[allow(non_camel_case_types)]
             #( #[allow( #rustc_allow )] )*
             struct #uid_name { inner: #ext_name }
 
             #[allow(dead_code)]
-            #[allow(unused_parens)]
             #[allow(clippy::let_and_return)]
             // FIXME: impl Step
             impl #uid_name {
@@ -512,7 +540,7 @@ impl ToTokens for decl::ExtNode {
                     let #outputs_vs_2 = self.inner.step(#actual_inputs);
 
                     #trace_post
-                    ( #( #outputs_vs_3 ),* ).embed()
+                    #outputs_vs_3.embed()
                 }
             }
         });
@@ -541,12 +569,38 @@ impl ToTokens for decl::ExtNode {
     }
 }
 
-impl Sp<decl::NodeName> {
-    fn as_ident(&self) -> Ident {
+macro_rules! sp_transparent {
+    ( fn $fn:ident where $ty:ty ) => {
+        impl Sp<$ty> {
+            fn $fn(&self) -> TokenStream {
+                let inner = self.t.$fn(self.span);
+                quote_spanned! {self.span=>
+                    #inner
+                }
+            }
+        }
+    };
+    ( fn $fn:ident return $T:ty where $ty:ty ) => {
+        impl Sp<$ty> {
+            fn $fn(&self) -> Sp<$T> {
+                let inner = self.t.$fn(self.span);
+                Sp::new(inner, self.span)
+            }
+        }
+    };
+}
+
+sp_transparent!(fn as_sanitized_ident where decl::NodeName);
+sp_transparent!(fn as_raw_ident where decl::NodeName);
+impl decl::NodeName {
+    fn as_sanitized_ident(&self, _span: Span) -> impl ToTokens {
         Ident::new(
-            &format!("__{}__node_{}", self.t.run_uid, &self.t.repr.t),
-            self.t.repr.span,
+            &format!("__{}__node_{}", self.run_uid, &self.repr.t),
+            self.repr.span,
         )
+    }
+    fn as_raw_ident(&self, _span: Span) -> impl ToTokens {
+        Ident::new_raw(&format!("{}", &self.repr.t), self.repr.span)
     }
 }
 
@@ -556,13 +610,18 @@ impl decl::TyVar {
     }
 }
 
-impl ToTokens for Sp<expr::GlobalVar> {
-    fn to_tokens(&self, toks: &mut TokenStream) {
-        let id = Ident::new(
-            &format!("__{}__global_{}", self.t.run_uid, &self.t.repr.t),
-            self.t.repr.span,
-        );
-        toks.extend(quote!( #id ));
+sp_transparent!(fn as_sanitized_ident where expr::GlobalVar);
+sp_transparent!(fn as_raw_ident where expr::GlobalVar);
+impl expr::GlobalVar {
+    fn as_sanitized_ident(&self, _span: Span) -> impl ToTokens {
+        Ident::new(
+            &format!("__{}__global_{}", self.run_uid, &self.repr.t),
+            self.repr.span,
+        )
+    }
+
+    fn as_raw_ident(&self, _span: Span) -> impl ToTokens {
+        Ident::new_raw(&format!("{}", &self.repr.t), self.repr.span)
     }
 }
 
@@ -583,10 +642,10 @@ impl ToTokens for Sp<expr::LocalVar> {
 /// rich const definitions and all binari/unary/comparisons/conditionals
 /// that we are going to use here are valid in Rust const contexts.
 impl ConstExprTokens for expr::Expr {
-    fn const_expr_tokens(&self) -> TokenStream {
+    fn const_expr_tokens(&self, _: Span) -> TokenStream {
         match self {
             Self::Lit(l) => {
-                let l = l.const_lit();
+                let l = l.const_expr_tokens();
                 quote!( #l )
             }
             Self::Reference(refer) => {
@@ -671,17 +730,14 @@ impl ToTokens for expr::CmpOp {
 /// the same as `LitInt`/`LitFloat`/`LitBool`.
 /// Maybe future implementations will change the internals of `expr::Lit`
 /// to not perform parsing to base10.
-impl Sp<expr::Lit> {
-    fn const_lit(&self) -> syn::Lit {
-        let mut lit = match self.t {
-            expr::Lit::Int(i) => syn::Lit::Int(syn::LitInt::new(&format!("{}i64", i), self.span)),
-            expr::Lit::Float(f) => {
-                syn::Lit::Float(syn::LitFloat::new(&format!("{}f64", f), self.span))
-            }
-            expr::Lit::Bool(b) => syn::Lit::Bool(syn::LitBool::new(b, self.span)),
+impl ConstExprTokens for expr::Lit {
+    fn const_expr_tokens(&self, span: Span) -> TokenStream {
+        let lit = match self {
+            Self::Int(i) => syn::Lit::Int(syn::LitInt::new(&format!("{}i64", i), span)),
+            Self::Float(f) => syn::Lit::Float(syn::LitFloat::new(&format!("{}f64", f), span)),
+            Self::Bool(b) => syn::Lit::Bool(syn::LitBool::new(*b, span)),
         };
-        lit.set_span(self.span);
-        lit
+        quote!( #lit )
     }
 }
 
@@ -699,8 +755,9 @@ impl ToTokens for expr::Reference {
                 toks.extend(quote!( #v ));
             }
             Self::Global(v) => {
+                let g = v.as_sanitized_ident();
                 toks.extend(quote! {
-                    ::chandeliers_sem::lit!(#v)
+                    ::chandeliers_sem::lit!(#g)
                 });
             }
         }
@@ -708,10 +765,13 @@ impl ToTokens for expr::Reference {
 }
 
 impl ConstExprTokens for expr::Reference {
-    fn const_expr_tokens(&self) -> TokenStream {
+    fn const_expr_tokens(&self, _span: Span) -> TokenStream {
         match self {
             Self::Var(_) => unreachable!("Var is invalid in const contexts"),
-            Self::Global(v) => quote!( #v ),
+            Self::Global(v) => {
+                let g = v.as_sanitized_ident();
+                quote!( #g )
+            }
         }
     }
 }
@@ -736,8 +796,9 @@ impl ToTokens for decl::TyVar {
     }
 }
 
+sp_transparent!(fn base_type_of return ty::TyBase where decl::TyVar);
 impl decl::TyVar {
-    fn base_type_of(&self) -> ty::TyBase {
+    fn base_type_of(&self, _: Span) -> ty::TyBase {
         self.ty.t.base.t
     }
 
@@ -750,7 +811,7 @@ impl decl::TyVar {
 /// This is the type that it has in function arguments and return values.
 impl ToTokens for Sp<ty::Stream> {
     fn to_tokens(&self, toks: &mut TokenStream) {
-        let ty = self.t.base;
+        let ty = self.t.base.as_lustre_ty();
         let mut pluses = Vec::new();
         for _ in 0..self.t.depth.dt {
             pluses.push(quote!( + ));
@@ -759,10 +820,19 @@ impl ToTokens for Sp<ty::Stream> {
     }
 }
 
-impl ToTokens for Sp<ty::TyBase> {
-    fn to_tokens(&self, toks: &mut TokenStream) {
-        let ty = Ident::new(&format!("{}", self.t), self.span);
-        toks.extend(quote_spanned!(self.span=> #ty ));
+impl Sp<ty::TyBase> {
+    fn as_defined_ty(&self) -> TokenStream {
+        let ty = self.as_lustre_ty();
+        quote_spanned! {self.span=>
+            ::chandeliers_sem::ty_mapping!(#ty)
+        }
+    }
+}
+
+sp_transparent!(fn as_lustre_ty where ty::TyBase);
+impl ty::TyBase {
+    fn as_lustre_ty(&self, span: Span) -> impl ToTokens {
+        Ident::new(&format!("{}", self), span)
     }
 }
 
@@ -824,7 +894,7 @@ impl ToTokens for expr::Expr {
     fn to_tokens(&self, toks: &mut TokenStream) {
         toks.extend(match self {
             Self::Lit(l) => {
-                let l = l.const_lit();
+                let l = l.const_expr_tokens();
                 quote!(::chandeliers_sem::lit!(#l))
             }
             Self::Reference(refer) => {

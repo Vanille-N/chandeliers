@@ -86,6 +86,12 @@ impl<T> Sp<T> {
     pub fn boxed(self) -> Sp<Box<T>> {
         self.map(|_, t| Box::new(t))
     }
+
+    /// Get the same contents but with a new span.
+    pub fn with_span(mut self, span: Span) -> Self {
+        self.span = span;
+        self
+    }
 }
 
 /// Monad combinator to map faillible functions on a `Sp`.
