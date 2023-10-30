@@ -10,7 +10,7 @@ chandeliers_lus::decl! {
     #[trace]
     extern node cumul(i : int) returns (s : int);
 
-    #[main]
+    #[main(10)]
     node system() returns ();
     var i : int;
     let

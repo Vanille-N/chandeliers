@@ -11,7 +11,7 @@ CRATES=( \
 
 each() {
     for crate in "${CRATES[@]}"; do
-        ( cd $crate && echo ">>> Submodule '$crate'" && $@ )
+        ( cd $crate && echo ">>> Submodule '$crate'" && $@ ) || [ -z STRICT ] || exit 100
     done
 }
 
@@ -21,12 +21,16 @@ version-bump() {
 }
 
 do-cargo() {
-    cargo "$@"
+    cargo "$@" || [ -z STRICT ] || exit 100
 }
 
 main() {
     case "$1" in
-        ("check"|"build"|"test"|"update"|"clippy"|"fmt")
+        ("check"|"build"|"test")
+            STRICT=1 each do-cargo "$@"
+            STRICT=1 do-cargo "$@"
+            ;;
+        ("update"|"clippy"|"fmt")
             each do-cargo "$@"
             do-cargo "$@"
             ;;

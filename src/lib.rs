@@ -354,7 +354,6 @@ fn test_count1() {
     for _ in 0..10 {
         let _ = count1.step(().embed());
     }
-    panic!()
 }
 
 chandeliers_lus::decl! {

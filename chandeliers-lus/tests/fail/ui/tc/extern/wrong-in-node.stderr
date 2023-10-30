@@ -2,12 +2,12 @@ error[E0308]: mismatched types
   --> tests/fail/ui/tc/extern/wrong-in-node.rs:14:32
    |
 14 |     extern node wrong_step_sig() returns (f: float);
-   |                 -------------- ^ expected `Nillable<i64>`, found `()`
+   |                 -------------- ^ expected `Nillable<i64>`, found `Nillable<()>`
    |                 |
    |                 arguments to this method are incorrect
    |
-   = note:   expected enum `Nillable<i64>`
-           found unit type `()`
+   = note: expected enum `Nillable<i64>`
+              found enum `Nillable<()>`
 note: method defined here
   --> $CHANDELIERS_SEM/src/stepping.rs
    |
