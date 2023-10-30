@@ -432,3 +432,25 @@ mod then_assoc {
         tel;
     }
 }
+
+mod slow {
+    chandeliers_lus::decl! {
+        #[trace]
+        node counter() returns (n : int);
+        let n = 0 fby n + 1; tel;
+
+        node blink() returns (b : bool);
+        let b = true fby not b; tel;
+
+        #[main]
+        node system() returns ();
+        var b, m : bool; n : int when b; witness : int;
+        let
+            b = blink();
+            witness = 0 fby (witness + if b then 1 else 0);
+            n = counter(() when b);
+            m = merge b (n = witness) true;
+            assert m;
+        tel;
+    }
+}

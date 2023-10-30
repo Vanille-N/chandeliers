@@ -386,26 +386,26 @@ macro_rules! unop {
 #[doc(hidden)]
 #[macro_export]
 macro_rules! nillable_cmp_ord {
-    ($ord:ident, $res:expr, $lhs:expr, $rhs:expr) => {
+    ($ord:ident, $res:expr, $lhs:expr, $rhs:expr) => {{
         match $lhs.cmp($rhs) {
             Some(::std::cmp::Ordering::$ord) => $crate::lit!($res),
             Some(_) => $crate::lit!(!$res),
             None => $crate::nillable::AllNil::auto_size(),
         }
-    };
+    }};
 }
 
 /// Do not use directly, call `cmp` instead.
 #[doc(hidden)]
 #[macro_export]
 macro_rules! nillable_cmp_eq {
-    ($equal:expr, $lhs:expr, $rhs:expr) => {
+    ($equal:expr, $lhs:expr, $rhs:expr) => {{
         match $lhs.eq($rhs) {
             Some(true) => $crate::lit!($equal),
             Some(false) => $crate::lit!(!$equal),
             None => $crate::nillable::AllNil::auto_size(),
         }
-    };
+    }};
 }
 
 /// Comparison operators on `Nillable`. [pure]
@@ -420,24 +420,24 @@ macro_rules! nillable_cmp_eq {
 /// a `Nil` argument will contaminate the result.
 #[macro_export]
 macro_rules! cmp {
-    (== ; $lhs:expr, $rhs:expr) => {
+    (== ; $lhs:expr, $rhs:expr) => {{
         $crate::nillable_cmp_eq!(true, $lhs, $rhs)
-    };
-    (!= ; $lhs:expr, $rhs:expr) => {
+    }};
+    (!= ; $lhs:expr, $rhs:expr) => {{
         $crate::nillable_cmp_eq!(false, $lhs, $rhs)
-    };
-    (< ; $lhs:expr, $rhs:expr) => {
+    }};
+    (< ; $lhs:expr, $rhs:expr) => {{
         $crate::nillable_cmp_ord!(Less, true, $lhs, $rhs)
-    };
-    (> ; $lhs:expr, $rhs:expr) => {
+    }};
+    (> ; $lhs:expr, $rhs:expr) => {{
         $crate::nillable_cmp_ord!(Greater, true, $lhs, $rhs)
-    };
-    (<= ; $lhs:expr, $rhs:expr) => {
+    }};
+    (<= ; $lhs:expr, $rhs:expr) => {{
         $crate::nillable_cmp_ord!(Greater, false, $lhs, $rhs)
-    };
-    (>= ; $lhs:expr, $rhs:expr) => {
+    }};
+    (>= ; $lhs:expr, $rhs:expr) => {{
         $crate::nillable_cmp_ord!(Less, false, $lhs, $rhs)
-    };
+    }};
 }
 
 /// Assert that a boolean holds. [statement]

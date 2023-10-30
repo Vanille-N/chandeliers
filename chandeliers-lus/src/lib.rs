@@ -49,6 +49,7 @@ compiling!(fail_ui_syn with compile_fail in fail/ui/syn/);
 compiling!(fail_ui_tc with compile_fail in fail/ui/tc/);
 compiling!(fail_ui_options with compile_fail in fail/ui/options/);
 compiling!(fail_std with compile_fail in fail/std/);
+compiling!(fail_ui_clk with compile_fail in fail/ui/clk/);
 
 compiling!(pass_ui with pass in pass/ui/);
 compiling!(pass_syn with pass in pass/syn/);

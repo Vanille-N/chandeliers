@@ -482,16 +482,14 @@ pub mod expr {
     pub enum AtomicExpr {
         #[parse(peek_func = ParenExpr::hint)]
         Paren(Sp<ParenExpr>),
-        #[parse(peek_func = CallExpr::hint)]
-        Call(Sp<CallExpr>),
         #[parse(peek_func = LitExpr::hint)]
         Lit(Sp<LitExpr>),
+        #[parse(peek_func = VarExpr::hint)]
         Var(Sp<VarExpr>),
     }
     span_end_by_match! {
         AtomicExpr.
             Paren(p) => p;
-            Call(c) => c;
             Lit(l) => l;
             Var(v) => v;
 
@@ -517,6 +515,8 @@ pub mod expr {
     /// ```
     #[derive(syn_derive::Parse)]
     pub enum PositiveExpr {
+        #[parse(peek_func = CallExpr::hint)]
+        Call(Sp<CallExpr>),
         #[parse(peek_func = IfExpr::hint)]
         If(Sp<IfExpr>),
         #[parse(peek_func = MergeExpr::hint)]
@@ -532,6 +532,8 @@ pub mod expr {
     span_end_by_match! {
         PositiveExpr.
             If(i) => i;
+            Merge(m) => m;
+            Call(c) => c;
             Pre(p) => p;
             Neg(n) => n;
             Not(n) => n;
@@ -744,11 +746,27 @@ pub mod expr {
     }
     span_end_on_field!(AddExpr.items);
 
+    /// A "Then" temporal expression as a `->`-separated list of additive expressions.
+    #[derive(syn_derive::Parse)]
+    pub struct ThenExpr {
+        #[parse(punctuated_parse_separated_nonempty_costly)]
+        pub items: Punctuated<Sp<AddExpr>, Token![->]>,
+    }
+    span_end_on_field!(ThenExpr.items);
+
+    /// A "Fby" temporal expression as a `fby`-separated list of then expressions.
+    #[derive(syn_derive::Parse)]
+    pub struct FbyExpr {
+        #[parse(punctuated_parse_separated_nonempty_costly)]
+        pub items: Punctuated<Sp<ThenExpr>, kw::fby>,
+    }
+    span_end_on_field!(FbyExpr.items);
+
     /// A comparison expression as a `CmpOp`-separated list of temporal expressions.
     #[derive(syn_derive::Parse)]
     pub struct CmpExpr {
         #[parse(punctuated_parse_separated_nonempty_costly)]
-        pub items: Punctuated<Sp<AddExpr>, CmpOp>,
+        pub items: Punctuated<Sp<FbyExpr>, CmpOp>,
     }
     span_end_on_field!(CmpExpr.items);
 
@@ -767,22 +785,6 @@ pub mod expr {
         pub items: Punctuated<Sp<AndExpr>, kw::or>,
     }
     span_end_on_field!(OrExpr.items);
-
-    /// A "Then" temporal expression as a `->`-separated list of additive expressions.
-    #[derive(syn_derive::Parse)]
-    pub struct ThenExpr {
-        #[parse(punctuated_parse_separated_nonempty_costly)]
-        pub items: Punctuated<Sp<OrExpr>, Token![->]>,
-    }
-    span_end_on_field!(ThenExpr.items);
-
-    /// A "Fby" temporal expression as a `fby`-separated list of then expressions.
-    #[derive(syn_derive::Parse)]
-    pub struct FbyExpr {
-        #[parse(punctuated_parse_separated_nonempty_costly)]
-        pub items: Punctuated<Sp<ThenExpr>, kw::fby>,
-    }
-    span_end_on_field!(FbyExpr.items);
 
     /// A conditional expression.
     ///
@@ -836,13 +838,13 @@ pub mod expr {
 
     /// Any expression.
     pub struct Expr {
-        pub inner: Sp<FbyExpr>,
+        pub inner: Sp<OrExpr>,
     }
     span_end_on_field!(Expr.inner);
 
     impl Parse for Expr {
         fn parse(input: ParseStream) -> Result<Self> {
-            let inner: Sp<FbyExpr> = input.parse()?;
+            let inner: Sp<OrExpr> = input.parse()?;
             Ok(Self { inner })
         }
     }

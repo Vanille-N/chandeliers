@@ -253,7 +253,6 @@ impl TypeCheckExpr for ast::expr::Expr {
                 inner,
                 activate,
             } => {
-                /* FIXME */
                 let activate = activate.typecheck(ctx)?;
                 let inner = inner.typecheck(ctx)?;
                 let activate = activate.is_primitive()?;
@@ -261,7 +260,6 @@ impl TypeCheckExpr for ast::expr::Expr {
                 Ok(inner.t)
             }
             Self::Merge { switch, on, off } => {
-                /* FIXME */
                 let switch = switch.typecheck(ctx)?;
                 let on = on.typecheck(ctx)?;
                 let off = off.typecheck(ctx)?;

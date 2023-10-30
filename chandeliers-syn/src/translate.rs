@@ -1043,7 +1043,7 @@ impl Translate for lus::expr::ThenExpr {
         // in the same way.
         assoc::Descr {
             label: "ThenExpr",
-            convert: |elem: Sp<lus::expr::OrExpr>, _depth| {
+            convert: |elem: Sp<lus::expr::AddExpr>, _depth| {
                 elem.translate(run_uid, fork!(ctx) /* DO NOT BUMP */)
             },
             compose: |before: Sp<CandleExpr>, _op, depth, after: Sp<CandleExpr>| {
@@ -1208,7 +1208,6 @@ impl Translate for lus::expr::AtomicExpr {
     fn translate(self, run_uid: usize, _span: Span, ctx: Self::Ctx<'_>) -> TrResult<CandleExpr> {
         match self {
             Self::Lit(l) => l.flat_translate(run_uid, ctx),
-            Self::Call(c) => c.flat_translate(run_uid, ctx),
             Self::Var(v) => v.flat_translate(run_uid, ctx),
             Self::Paren(p) => p.flat_translate(run_uid, ctx),
         }
@@ -1222,6 +1221,7 @@ impl Translate for lus::expr::PositiveExpr {
         match self {
             Self::If(i) => i.flat_translate(run_uid, ctx),
             Self::Merge(m) => m.flat_translate(run_uid, ctx),
+            Self::Call(c) => c.flat_translate(run_uid, ctx),
             Self::Pre(p) => p.flat_translate(run_uid, ctx),
             Self::Neg(n) => n.flat_translate(run_uid, ctx),
             Self::Not(n) => n.flat_translate(run_uid, ctx),

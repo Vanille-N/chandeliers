@@ -827,6 +827,7 @@ impl ToTokens for expr::Expr {
                 inner,
                 activate,
             } => {
+                // `#op` expands to `when` or `whenot` which are Candle macros.
                 quote!(::chandeliers_sem::#op!(#activate; #inner))
             }
         })

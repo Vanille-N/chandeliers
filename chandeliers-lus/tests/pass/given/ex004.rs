@@ -10,7 +10,7 @@ chandeliers_lus::decl! {
     var cpt : int;
     let
       cpt = incr(x);
-      ok = true -> (pre cpt) <= cpt;
+      ok = true -> (pre cpt <= cpt);
     tel
 }
 
