@@ -179,7 +179,7 @@ where
 macro_rules! assert_is {
     ($lhs:expr, $rhs:expr) => {
         if !$lhs.is($rhs) {
-            panic!("{} is not identical to {}", $lhs, $rhs.with_type_of($lhs));
+            panic!("{} is not identical to {}", $lhs, $rhs.with_type_of(&$lhs));
         }
     };
 }

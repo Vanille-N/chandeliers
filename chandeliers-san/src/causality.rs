@@ -19,6 +19,8 @@ use graph::Graph;
 /// typechecking in the right order.
 pub trait Causality: Sized {
     /// Rearrange the internal contents in a causally consistent ordering.
+    /// # Error
+    /// Fails if there is a cycle (including of length 1).
     fn causality(self) -> Result<Self>;
 }
 

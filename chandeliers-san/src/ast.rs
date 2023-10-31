@@ -22,7 +22,7 @@ pub struct Tuple<T> {
 impl<T> Default for Tuple<T> {
     fn default() -> Self {
         Self {
-            elems: Default::default(),
+            elems: Vec::default(),
         }
     }
 }
@@ -61,11 +61,13 @@ impl<T> Tuple<T> {
     }
 
     /// Number of elements in the tuple.
+    #[must_use]
     pub fn len(&self) -> usize {
         self.elems.len()
     }
 
     /// Whether this tuple is empty.
+    #[must_use]
     pub fn is_empty(&self) -> bool {
         self.elems.is_empty()
     }
@@ -686,7 +688,7 @@ pub mod decl {
         pub rustc_allow: Vec<syn::Ident>,
     }
 
-    /// A node declaration `node foo(x) returns (y); var z; let <body> tel.
+    /// A node declaration `node foo(x) returns (y); var z; let <body> tel`.
     #[derive(Debug, Clone)]
     pub struct Node {
         /// Public name of the node (`foo`).

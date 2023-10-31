@@ -44,7 +44,7 @@ use std::fmt;
 use std::hash::Hash;
 
 use super::depends::Depends;
-use chandeliers_err::{self as err, IntoError, TrySpan};
+use chandeliers_err::{self as err, IntoError, Result, TrySpan};
 
 /// The identifier of a `Unit`.
 ///
@@ -142,14 +142,13 @@ where
     /// Get the identifier of a `Unit` if it exists,
     /// or insert a new one with a fresh id.
     fn get_or_insert_atomic(&mut self, o: Unit, override_span: bool) -> usize {
-        let uid = match self.atomics.1.get(&o) {
-            Some(uid) => *uid,
-            None => {
-                let uid = self.atomics.0.len();
-                self.atomics.0.push(WithDefSite::without(&o));
-                self.atomics.1.insert(o.clone(), uid);
-                uid
-            }
+        let uid = if let Some(uid) = self.atomics.1.get(&o) {
+            *uid
+        } else {
+            let uid = self.atomics.0.len();
+            self.atomics.0.push(WithDefSite::without(&o));
+            self.atomics.1.insert(o.clone(), uid);
+            uid
         };
         if override_span {
             self.atomics.0[uid].try_override_span(&o);
@@ -176,7 +175,7 @@ where
     /// if the `Unit` in question has not already been encountered,
     /// so this method should be called after all insertions are
     /// complete.
-    pub fn must_provide(&mut self, o: Unit) -> Result<(), err::Error> {
+    pub fn must_provide(&mut self, o: Unit) -> Result<()> {
         let uid = self.get_or_insert_atomic(o.clone(), false);
         if !self.provided_for_ext.contains(&uid) {
             Err(err::GraphUnitUndeclared { unit: &o }.into_err())
@@ -186,7 +185,7 @@ where
     }
 
     /// Declare a new set of constraints.
-    pub fn insert(&mut self, t: Obj) -> Result<(), err::Error> {
+    pub fn insert(&mut self, t: Obj) -> Result<()> {
         let mut provide_units = Vec::new();
         let mut require_units = Vec::new();
         let mut provide_uids = Vec::new();
@@ -202,8 +201,9 @@ where
             let uid = self.get_or_insert_atomic(req.clone(), false);
             require_uids.push(WithDefSite::try_with(&uid, req));
         }
-        assert!(self.elements.len() == self.provide.len());
-        assert!(self.elements.len() == self.require.len());
+        if self.elements.len() != self.provide.len() || self.elements.len() != self.require.len() {
+            unreachable!("The internals are malformed")
+        }
         self.provide.push(provide_uids);
         self.require.push(require_uids);
         self.elements.push(t);
@@ -212,7 +212,7 @@ where
 
     /// Resolve all previously inserted constraints and return a scheduling
     /// without temporal inconsistencies.
-    pub fn scheduling(self) -> Result<Vec<Obj>, err::Error> {
+    pub fn scheduling(self) -> Result<Vec<Obj>> {
         let nb = self.atomics.0.len();
         let (provider, constraints) = {
             // First step is to create some reverse mappings that will
@@ -298,17 +298,6 @@ where
                 /// Building the SCC.
                 scc: Vec<Vec<usize>>,
             }
-            let mut expl = SccExplorer {
-                index: 0,
-                stk: Vec::new(),
-                extra: vec![Extra::default(); nb],
-                scc: Vec::new(),
-            };
-            for v in 0..nb {
-                if expl.extra[v].index.is_none() {
-                    explore_scc(v, &constraints, &mut expl);
-                }
-            }
 
             /// Exploration procedure for one node.
             fn explore_scc(v: usize, graph: &[Vec<WithDefSite<usize>>], expl: &mut SccExplorer) {
@@ -349,6 +338,19 @@ where
                     expl.scc.push(scc);
                 }
             }
+
+            let mut expl = SccExplorer {
+                index: 0,
+                stk: Vec::new(),
+                extra: vec![Extra::default(); nb],
+                scc: Vec::new(),
+            };
+            for v in 0..nb {
+                if expl.extra[v].index.is_none() {
+                    explore_scc(v, &constraints, &mut expl);
+                }
+            }
+
             expl.scc
         };
         // Check that all |scc| = 1
@@ -356,14 +358,18 @@ where
         // We're going to remove all elements one at a time, let's make that easier.
         let mut unused: Vec<Option<Obj>> = self.elements.into_iter().map(Some).collect();
         for c in &scc {
-            assert!(!c.is_empty(), "Malformed SCC of size 0");
+            if c.is_empty() {
+                unreachable!("Malformed SCC of size 0");
+            }
             if c.len() > 1 {
                 // Oops, here's a loop.
                 let looping = c.iter().map(|l| self.atomics.0[*l].elements());
                 return Err(err::Cycle { items: looping }.into_err());
             }
             // Correctly of size 1, we can use it next.
-            let id = *c.last().expect("Length == 1");
+            let Some(&id) = c.last() else {
+                unreachable!("Length was determined to be 1");
+            };
             // This is faillible because we have `Unit`s that are not provided by anyone.
             if let Some(Some(prov)) = provider.get(id) {
                 if let Some(obj) = unused[*prov].take() {

@@ -14,7 +14,7 @@
 
 use std::fmt;
 
-use crate::ast::*;
+use crate::ast::{decl, expr, stmt};
 use crate::sp::Sp;
 use chandeliers_err as err;
 use proc_macro2::Span;
@@ -33,7 +33,7 @@ use proc_macro2::Span;
 /// - `Expr` is a pure expression: it never `provides` anything, and
 ///   recurses into all fields to determine what it `requires`.
 /// - `Def` is a variable assignment `x = v`: it will recurse into
-///   `x` for `provides`, and into `v` for `requires.
+///   `x` for `provides`, and into `v` for `requires`.
 ///
 /// The macros used here for easy implementation are tailore for these
 /// kinds of behaviors.
@@ -70,9 +70,9 @@ impl fmt::Display for Reference {
 impl err::TrySpan for Reference {
     fn try_span(&self) -> Option<Span> {
         match self {
-            Reference::FunName(i) => i.try_span(),
-            Reference::LocalVarName(i) => i.try_span(),
-            Reference::GlobalVarName(i) => i.try_span(),
+            Reference::FunName(i) | Reference::LocalVarName(i) | Reference::GlobalVarName(i) => {
+                i.try_span()
+            }
         }
     }
 }

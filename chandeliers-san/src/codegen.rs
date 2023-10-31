@@ -202,44 +202,44 @@ impl ToTokens for decl::ExtConst {
     }
 }
 
-/// Generate a node declaration and implementation as
-/// specified by the interface of Candle.
-///
-/// ```skip
-/// struct MyNode {
-///     __clock: usize,
-///     // Inputs
-///     i1: ty!(int+),
-///     i2: ty!(int++),
-///     // Outputs
-///     o1: ty!(float+),
-///     o1: ty!(float++++),
-///     // Locals
-///     l1: ty!(int+),
-///     __nodes: (block1, block2, ...),
-/// }
-///
-/// impl Step for MyNode {
-///     fn step(&mut self, inputs: (ty!(int), ty!(int))) -> (ty!(float), ty!(float)) {
-///         let ... = ...;
-///         // other statements go here
-///         // including stepsof subnodes
-///         let _1 = substep!(self <~ 1; 0 => { ... }|*);
-///         // then tick the clock,
-///         tick!(self);
-///         // update all internal values for the next step,
-///         update!(self, i1);
-///         update!(self, o1);
-///         update!(self, l1);
-///         // and return
-///         (o1, o2)
-///     }
-/// }
-/// ```
-///
-/// See the actual definitions of the language in crate `chandeliers-sem`
-/// if you find the above example confusing.
 impl ToTokens for decl::Node {
+    /// Generate a node declaration and implementation as
+    /// specified by the interface of Candle.
+    ///
+    /// ```skip
+    /// struct MyNode {
+    ///     __clock: usize,
+    ///     // Inputs
+    ///     i1: ty!(int+),
+    ///     i2: ty!(int++),
+    ///     // Outputs
+    ///     o1: ty!(float+),
+    ///     o1: ty!(float++++),
+    ///     // Locals
+    ///     l1: ty!(int+),
+    ///     __nodes: (block1, block2, ...),
+    /// }
+    ///
+    /// impl Step for MyNode {
+    ///     fn step(&mut self, inputs: (ty!(int), ty!(int))) -> (ty!(float), ty!(float)) {
+    ///         let ... = ...;
+    ///         // other statements go here
+    ///         // including stepsof subnodes
+    ///         let _1 = substep!(self <~ 1; 0 => { ... }|*);
+    ///         // then tick the clock,
+    ///         tick!(self);
+    ///         // update all internal values for the next step,
+    ///         update!(self, i1);
+    ///         update!(self, o1);
+    ///         update!(self, l1);
+    ///         // and return
+    ///         (o1, o2)
+    ///     }
+    /// }
+    /// ```
+    ///
+    /// See the actual definitions of the language in crate `chandeliers-sem`
+    /// if you find the above example confusing.
     fn to_tokens(&self, toks: &mut TokenStream) {
         let Self {
             name,
@@ -252,33 +252,25 @@ impl ToTokens for decl::Node {
         } = self;
         let inputs = inputs.as_ref();
         let outputs = outputs.as_ref();
+        let locals = locals.as_ref();
 
         let name_span = name.span;
         let ext_name = name.as_raw_ident();
         let uid_name = name.as_sanitized_ident();
 
-        let pos_inputs_decl = inputs.t.iter().filter(|v| v.t.strictly_positive());
-        let pos_outputs_decl = outputs.t.iter().filter(|v| v.t.strictly_positive());
-        let pos_locals_decl = locals.t.iter().filter(|v| v.t.strictly_positive());
-        let blocks = blocks
-            .iter()
-            .map(|n| n.as_sanitized_ident())
-            .collect::<Vec<_>>();
+        let pos_inputs_decl = inputs.strictly_positive();
+        let pos_outputs_decl = outputs.strictly_positive();
+        let pos_locals_decl = locals.strictly_positive();
+        let blocks = blocks.iter().map(|n| n.as_sanitized_ident());
 
         let pos_inputs_use = inputs
-            .t
-            .iter()
-            .filter(|v| v.t.strictly_positive())
+            .strictly_positive()
             .map(|v| v.name_of().as_sanitized_ident());
         let pos_outputs_use = outputs
-            .t
-            .iter()
-            .filter(|v| v.t.strictly_positive())
+            .strictly_positive()
             .map(|v| v.name_of().as_sanitized_ident());
         let pos_locals_use = locals
-            .t
-            .iter()
-            .filter(|v| v.t.strictly_positive())
+            .strictly_positive()
             .map(|v| v.name_of().as_sanitized_ident());
         let inputs_ty_3 = inputs.as_defined_tys();
         let inputs_ty_4 = inputs.as_defined_tys();
@@ -421,6 +413,7 @@ impl ToTokens for decl::Node {
 }
 
 impl Sp<&Tuple<Sp<decl::TyVar>>> {
+    /// Get the type tuple pre-embedding (no `Nillable`s).
     fn as_defined_tys(&self) -> TokenStream {
         let mut tup = self.t.iter().map(|sv| sv.base_type_of().as_defined_ty());
         if self.t.len() == 1 {
@@ -432,6 +425,7 @@ impl Sp<&Tuple<Sp<decl::TyVar>>> {
         }
     }
 
+    /// Get the type tuple post-embedding (with `Nillable` everywhere).
     fn as_embedded_tys(&self) -> TokenStream {
         let tys = self.as_defined_tys();
         quote_spanned! {self.span=>
@@ -439,6 +433,7 @@ impl Sp<&Tuple<Sp<decl::TyVar>>> {
         }
     }
 
+    /// Produce the corresponding destructuring tuple.
     fn as_values(&self) -> TokenStream {
         let mut tup = self.t.iter().map(|sv| sv.name_of().as_sanitized_ident());
         if self.t.len() == 1 {
@@ -453,12 +448,21 @@ impl Sp<&Tuple<Sp<decl::TyVar>>> {
         }
     }
 
+    /// For an assignment, we turn `()` into `_`
+    /// and the rest to a normal destructuring tuple.
     fn as_assignment_target(&self) -> TokenStream {
         if self.t.is_empty() {
             quote_spanned!(self.span=> _)
         } else {
             self.as_values()
         }
+    }
+
+    /// Iterate over all strictly positive variables of the tuple.
+    /// This gives the list of all the variables that need to be stored
+    /// in the struct.
+    fn strictly_positive(&self) -> impl Iterator<Item = &Sp<decl::TyVar>> {
+        self.t.iter().filter(|v| v.t.strictly_positive())
     }
 }
 
@@ -552,6 +556,9 @@ impl ToTokens for decl::ExtNode {
 crate::sp::transparent_impl!(fn as_sanitized_ident return TokenStream where decl::NodeName);
 crate::sp::transparent_impl!(fn as_raw_ident return TokenStream where decl::NodeName);
 impl decl::NodeName {
+    /// Format as a name that cannot have collisions with other global
+    /// variables, including those of the same name in other invocations of
+    /// the macro.
     fn as_sanitized_ident(&self, _span: Span) -> TokenStream {
         let id = Ident::new(
             &format!("__{}__node_{}", self.run_uid, &self.repr.t),
@@ -559,6 +566,9 @@ impl decl::NodeName {
         );
         quote!( #id )
     }
+
+    /// Format the name without sanitization. Still needs to be raw
+    /// because it could be a Rust keyword.
     fn as_raw_ident(&self, _span: Span) -> TokenStream {
         let id = Ident::new_raw(&self.repr.t.to_string(), self.repr.span);
         quote!( #id )
@@ -566,6 +576,9 @@ impl decl::NodeName {
 }
 
 impl decl::TyVar {
+    /// The depth of any variable is guaranteed to be at least zero, but is
+    /// it strictly more ? This determines for which variables we actually
+    /// need to store data.
     fn strictly_positive(&self) -> bool {
         self.ty.t.depth.t.dt > 0
     }
@@ -574,6 +587,9 @@ impl decl::TyVar {
 crate::sp::transparent_impl!(fn as_sanitized_ident return TokenStream where expr::GlobalVar);
 crate::sp::transparent_impl!(fn as_raw_ident return TokenStream where expr::GlobalVar);
 impl expr::GlobalVar {
+    /// Format as a name that cannot have collisions with other global
+    /// variables, including those of the same name in other invocations of
+    /// the macro.
     fn as_sanitized_ident(&self, _span: Span) -> TokenStream {
         let id = Ident::new(
             &format!("__{}__global_{}", self.run_uid, &self.repr.t),
@@ -582,6 +598,8 @@ impl expr::GlobalVar {
         quote!( #id )
     }
 
+    /// Format the name without sanitization. Still needs to be raw
+    /// because it could be a Rust keyword.
     fn as_raw_ident(&self, _span: Span) -> TokenStream {
         let id = Ident::new_raw(&self.repr.t.to_string(), self.repr.span);
         quote!( #id )
@@ -590,6 +608,7 @@ impl expr::GlobalVar {
 
 crate::sp::transparent_impl!(fn as_sanitized_ident return TokenStream where expr::LocalVar);
 impl expr::LocalVar {
+    /// Format as a name that cannot have collisions with existing global variables.
     fn as_sanitized_ident(&self, _span: Span) -> TokenStream {
         let id = Ident::new(&format!("__local_{}", &self.repr.t), self.repr.span);
         quote!( #id )
@@ -766,10 +785,12 @@ impl ToTokens for decl::TyVar {
 crate::sp::transparent_impl!(fn base_type_of return ty::TyBase where decl::TyVar);
 crate::sp::transparent_impl!(fn name_of return expr::LocalVar where decl::TyVar);
 impl decl::TyVar {
+    /// A `TyVar` is a pair of a name and a type. This extracts the type.
     fn base_type_of(&self, _: Span) -> ty::TyBase {
         self.ty.t.ty.t.inner.t
     }
 
+    /// A `TyVar` is a pair of a name and a type. This extracts the name.
     fn name_of(&self, _: Span) -> expr::LocalVar {
         self.name.t.clone()
     }

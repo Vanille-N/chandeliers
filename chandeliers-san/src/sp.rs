@@ -90,6 +90,7 @@ impl<T> Sp<T> {
     }
 
     /// Get the same contents but with a new span.
+    #[must_use]
     pub fn with_span(mut self, span: Span) -> Self {
         self.span = span;
         self
@@ -156,7 +157,7 @@ impl<T: SpanEnd> SpanEnd for Box<T> {
 /// since most parsed objects are nonempty.
 impl<T: SpanEnd, P> SpanEnd for syn::punctuated::Punctuated<T, P> {
     fn span_end(&self) -> Option<Span> {
-        self.last().and_then(|x| x.span_end())
+        self.last().and_then(SpanEnd::span_end)
     }
 }
 
@@ -302,6 +303,6 @@ impl<T: ToTokens> ToTokens for Sp<T> {
         let Self { span, t } = &self;
         toks.extend(quote_spanned! {*span=>
             #t
-        })
+        });
     }
 }
