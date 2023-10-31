@@ -2,9 +2,9 @@
 
 use std::collections::HashMap;
 
-use crate::ast::{self, Sp};
+use crate::ast;
+use crate::sp::{Sp, Span, Spanned};
 use chandeliers_err::{self as err, IntoError};
-use proc_macro2::Span;
 
 pub type TcResult<T> = Result<T, err::Error>;
 
@@ -75,7 +75,7 @@ impl TyCtx<'_> {
         match self.vars.get(var.t) {
             Some(vardef) => Ok(vardef
                 .as_ref()
-                .map(|span, ty| TyTuple::Single(Sp::new(*ty, span)))),
+                .map(|span, ty| TyTuple::Single(ty.spanned(span)))),
             None => Err(err::VarNotFound {
                 var: &var,
                 suggest1: self.vars.keys(),
@@ -90,7 +90,7 @@ impl TyCtx<'_> {
         match self.global.get(var.t) {
             Some(vardef) => Ok(vardef
                 .as_ref()
-                .map(|span, ty| TyTuple::Single(Sp::new(*ty, span)))),
+                .map(|span, ty| TyTuple::Single(ty.spanned(span)))),
             None => Err(err::VarNotFound {
                 var: &var,
                 suggest1: self.vars.keys(),
@@ -198,7 +198,7 @@ impl TypeCheckExpr for ast::expr::Expr {
                 es.as_ref()
                     .map(|span, es| {
                         let ts = es.try_map(|e| e.typecheck(ctx))?;
-                        Ok(TyTuple::Multiple(Sp::new(ts, span)))
+                        Ok(TyTuple::Multiple(ts.spanned(span)))
                     })
                     .t
             }
@@ -217,7 +217,7 @@ impl TypeCheckExpr for ast::expr::Expr {
                 let left = lhs.typecheck(ctx)?;
                 let right = rhs.typecheck(ctx)?;
                 op.accepts(left.is_primitive()?, right.is_primitive()?)?;
-                Ok(TyTuple::Single(Sp::new(TyBase::Bool, span)))
+                Ok(TyTuple::Single(TyBase::Bool.spanned(span)))
             }
             Self::Later {
                 clk: _,
@@ -323,11 +323,14 @@ impl TypeCheckExpr for ast::expr::Expr {
 /// No surprises here: an Int has type int, a Bool has type bool, and a Float has type float.
 impl TypeCheckExpr for ast::expr::Lit {
     fn typecheck(&self, span: Span, _ctx: &TyCtx) -> TcResult<TyTuple> {
-        match self {
-            Self::Int(_) => Ok(TyTuple::Single(Sp::new(TyBase::Int, span))),
-            Self::Float(_) => Ok(TyTuple::Single(Sp::new(TyBase::Float, span))),
-            Self::Bool(_) => Ok(TyTuple::Single(Sp::new(TyBase::Bool, span))),
-        }
+        Ok(TyTuple::Single(
+            match self {
+                Self::Int(_) => TyBase::Int,
+                Self::Float(_) => TyBase::Float,
+                Self::Bool(_) => TyBase::Bool,
+            }
+            .spanned(span),
+        ))
     }
     fn is_const(&self, _span: Span) -> TcResult<()> {
         Ok(())
@@ -356,7 +359,7 @@ impl TypeCheckExpr for ast::stmt::VarTuple {
         use ast::stmt::VarTuple;
         fn aux_multiple(span: Span, vs: &Tuple<Sp<VarTuple>>, ctx: &TyCtx) -> TcResult<TyTuple> {
             let ts = vs.try_map(|v| v.typecheck(ctx))?;
-            Ok(TyTuple::Multiple(Sp::new(ts, span)))
+            Ok(TyTuple::Multiple(ts.spanned(span)))
         }
         match self {
             VarTuple::Single(v) => Ok(ctx.get_var(v.as_ref())?.inner.t),
@@ -577,12 +580,12 @@ impl SpTyBaseTuple {
     fn as_flat_tytuple(&self) -> Sp<TyTuple> {
         self.as_ref().map(|span, tup| {
             if tup.len() != 1 {
-                TyTuple::Multiple(Sp::new(
-                    tup.map_ref(|t| t.map(|span, t| TyTuple::Single(Sp::new(t, span)))),
-                    span,
-                ))
+                TyTuple::Multiple(
+                    tup.map_ref(|t| t.map(|span, t| TyTuple::Single(t.spanned(span))))
+                        .spanned(span),
+                )
             } else {
-                TyTuple::Single(Sp::new(tup.iter().last().expect("Length == 1").t, span))
+                TyTuple::Single(tup.iter().last().expect("Length == 1").t.spanned(span))
             }
         })
     }
@@ -631,7 +634,7 @@ impl Sp<ast::decl::Node> {
                         v.t.name.t.clone(),
                         WithDefSite {
                             def_site: v.span,
-                            inner: v.t.ty.as_ref().map(|_, t| t.base.t),
+                            inner: v.t.ty.as_ref().map(|_, t| t.ty.t.inner.t),
                         },
                     );
                 }
@@ -648,7 +651,7 @@ impl Sp<ast::decl::Node> {
                 .into_err());
             };
             let id = ast::expr::NodeId {
-                id: Sp::new(id, blk.span),
+                id: id.spanned(blk.span),
                 repr: blk.t.repr.clone(),
             };
             ctx.nodes_in.insert(id.clone(), i.clone());
@@ -666,15 +669,15 @@ impl Sp<ast::decl::Node> {
             .t
             .inputs
             .t
-            .map_ref(|v| v.t.ty.as_ref().map(|_, t| t.base.t));
+            .map_ref(|v| v.t.ty.as_ref().map(|_, t| t.ty.t.inner.t));
         let outputs = self
             .t
             .outputs
             .t
-            .map_ref(|v| v.t.ty.as_ref().map(|_, t| t.base.t));
+            .map_ref(|v| v.t.ty.as_ref().map(|_, t| t.ty.t.inner.t));
         (
-            Sp::new(inputs, self.t.inputs.span),
-            Sp::new(outputs, self.t.outputs.span),
+            inputs.spanned(self.t.inputs.span),
+            outputs.spanned(self.t.outputs.span),
         )
     }
 }
@@ -718,7 +721,7 @@ impl Sp<ast::decl::ExtNode> {
                         v.t.name.t.clone(),
                         WithDefSite {
                             def_site: v.span,
-                            inner: v.t.ty.as_ref().map(|_, t| t.base.t),
+                            inner: v.t.ty.as_ref().map(|_, t| t.ty.t.inner.t),
                         },
                     );
                 }
@@ -732,15 +735,15 @@ impl Sp<ast::decl::ExtNode> {
             .t
             .inputs
             .t
-            .map_ref(|v| v.t.ty.as_ref().map(|_, t| t.base.t));
+            .map_ref(|v| v.t.ty.as_ref().map(|_, t| t.ty.t.inner.t));
         let outputs = self
             .t
             .outputs
             .t
-            .map_ref(|v| v.t.ty.as_ref().map(|_, t| t.base.t));
+            .map_ref(|v| v.t.ty.as_ref().map(|_, t| t.ty.t.inner.t));
         (
-            Sp::new(inputs, self.t.inputs.span),
-            Sp::new(outputs, self.t.outputs.span),
+            inputs.spanned(self.t.inputs.span),
+            outputs.spanned(self.t.outputs.span),
         )
     }
 }
@@ -754,7 +757,7 @@ impl Sp<ast::decl::Const> {
         let e = self.t.value.typecheck(&TyCtx::from_ext(varctx))?;
         self.t
             .ty
-            .map(|span, t| TyTuple::Single(Sp::new(t, span)))
+            .map(|span, t| TyTuple::Single(t.spanned(span)))
             .identical(&e, self.span)?;
         Ok(())
     }

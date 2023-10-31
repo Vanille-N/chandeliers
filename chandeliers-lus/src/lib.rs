@@ -6,7 +6,7 @@ use chandeliers_err as err;
 use chandeliers_san as sanitizer;
 use chandeliers_syn as syntax;
 
-use sanitizer::ast::Sp;
+use sanitizer::sp::Sp;
 
 /// Generate unique identifiers for each macro invocation. We need this to avoid
 /// name collisions in `extern node` and `extern const` declarations.

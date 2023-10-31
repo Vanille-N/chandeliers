@@ -8,220 +8,11 @@
 //! converting them into interpretable code using the methods from `codegen.rs`.
 
 use crate::causality::depends::Depends;
-use chandeliers_err as err;
 use proc_macro2::Span;
 use std::fmt;
-use std::hash::{Hash, Hasher};
+use std::hash::Hash;
 
-/// Span wrapper.
-///
-/// This type is ubiquitous across this entire crate and you can expect
-/// an overwhelming majority of the fields of all structs to contain one or
-/// several `Sp<_>`.
-///
-/// `Sp` is mostly used through `map`, `new`, and it also implements
-/// many traits by projecting into its `.t` field.
-#[derive(Debug, Clone, Copy)]
-pub struct Sp<T> {
-    /// A payload.
-    pub t: T,
-    /// The span associated with the payload.
-    pub span: Span,
-}
-
-impl<T> From<&Sp<T>> for Span {
-    fn from(val: &Sp<T>) -> Self {
-        val.span
-    }
-}
-
-impl<T> err::TrySpan for Sp<T> {
-    fn try_span(&self) -> Option<Span> {
-        Some(self.into())
-    }
-}
-
-impl<T> Sp<T> {
-    /// Create a new `Sp` from a payload and a span.
-    pub fn new(t: T, span: Span) -> Self {
-        Self { t, span }
-    }
-
-    /// Convert a `&Sp<T>` into a `Sp<&T>`.
-    /// Mostly useful because `map` consumes Self and
-    /// because `Sp` derives `Copy`.
-    pub fn as_ref(&self) -> Sp<&T> {
-        Sp {
-            t: &self.t,
-            span: self.span,
-        }
-    }
-
-    /// Convert an `&mut Sp<T>` into a `Sp<&mut T>`.
-    /// Mostly useful because `map` consumes Self and
-    /// because `Sp` derives `Copy`.
-    pub fn as_ref_mut(&mut self) -> Sp<&mut T> {
-        Sp {
-            t: &mut self.t,
-            span: self.span,
-        }
-    }
-
-    /// Apply a transformation to the payload while preserving the same span.
-    ///
-    /// This lets us track the same portion of the source code from beginning
-    /// to end through translations into different ASTs.
-    pub fn map<U, F>(self, f: F) -> Sp<U>
-    where
-        F: FnOnce(Span, T) -> U,
-    {
-        Sp {
-            t: f(self.span, self.t),
-            span: self.span,
-        }
-    }
-
-    /// Wrap the inner type in a Box.
-    /// Useful when there are recursive structures that need indirection.
-    pub fn boxed(self) -> Sp<Box<T>> {
-        self.map(|_, t| Box::new(t))
-    }
-
-    /// Get the same contents but with a new span.
-    pub fn with_span(mut self, span: Span) -> Self {
-        self.span = span;
-        self
-    }
-}
-
-/// Monad combinator to map faillible functions on a `Sp`.
-impl<T, E> Sp<Result<T, E>> {
-    pub fn transpose(self) -> Result<Sp<T>, E> {
-        match self.t {
-            Ok(t) => Ok(Sp { t, span: self.span }),
-            Err(e) => Err(e),
-        }
-    }
-}
-
-/// Equality ignores the span.
-impl<T: PartialEq> PartialEq for Sp<T> {
-    fn eq(&self, other: &Self) -> bool {
-        self.t == other.t
-    }
-}
-impl<T: Eq> Eq for Sp<T> {}
-
-/// Hash ignores the span.
-impl<T: Hash> Hash for Sp<T> {
-    fn hash<H: Hasher>(&self, h: &mut H) {
-        self.t.hash(h);
-    }
-}
-
-/// `SpanEnd` is the way that `Sp` has of computing its own span:
-/// upon parsing it will record the beginning of the span to use as its
-/// own, but ideally it also wants to eventually know the end of the Span,
-/// and for that it asks `T`.
-///
-/// `SpanEnd` should be implemented for all types `T` for which you want to
-/// be able to parse a `Sp<T>`
-pub trait SpanEnd {
-    /// Where this object ends.
-    ///
-    /// This is intentionally defined very loosely:
-    /// - all types may return `None` if they do not want to reveal their
-    ///   size or if they don't know it,
-    /// - in the case of `Some(s)`, `s` may or may not include the entire
-    ///   the only thing that is relevant is the endpoint.
-    fn span_end(&self) -> Option<Span>;
-}
-
-/// Straightforward projection.
-impl<T: SpanEnd> SpanEnd for Box<T> {
-    fn span_end(&self) -> Option<Span> {
-        self.as_ref().span_end()
-    }
-}
-
-/// `Punctuated` projects to its last element.
-///
-/// Historical note: `SpanEnd` was created for the most part to handle
-/// the fact that `Punctuated` is sometimes empty and has no span.
-/// Although `Sp` is the main implementor, `Punctuated` is the reason
-/// that it has to exist at all.
-/// `Punctuated` is one of very few implementations that can even return `None`,
-/// since most parsed objects are nonempty.
-impl<T: SpanEnd, P> SpanEnd for syn::punctuated::Punctuated<T, P> {
-    fn span_end(&self) -> Option<Span> {
-        self.last().and_then(|x| x.span_end())
-    }
-}
-
-/// Parsing `Sp<T>` invoques `SpanEnd` to know where the parsing ended.
-impl<T> syn::parse::Parse for Sp<T>
-where
-    T: syn::parse::Parse + SpanEnd,
-{
-    fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
-        let begin = input.span();
-        let t: T = input.parse()?;
-        let end = t.span_end().unwrap_or(begin);
-        Ok(Self {
-            t,
-            span: begin.join(end).unwrap(),
-        })
-    }
-}
-
-/// Don't let the trivial implementation of `SpanEnd` for `Sp<T>` distract
-/// you from its importance, the fact that `Sp<T>` returns a `Some(_)` in
-/// one step is what makes it computationally feasible at all to have
-/// most implementors of `SpanEnd` recurse into one field without blowing up
-/// the stack of Rustc.
-impl<T> SpanEnd for Sp<T>
-where
-    T: SpanEnd,
-{
-    fn span_end(&self) -> Option<Span> {
-        self.t.span_end()
-    }
-}
-
-/// `Sp` is transparently displayable.
-impl<T: fmt::Display> fmt::Display for Sp<T> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.t)
-    }
-}
-
-/// Implement `SpanEnd` from `Spanned`.
-/// Only recommended for items whose `span` is trivial, others should
-/// be wrapped in a `Sp<_>` to alleviate the computation.
-macro_rules! span_end_from_spanned {
-    ( $($ty:tt)* ) => {
-        impl SpanEnd for $($ty)* {
-            fn span_end(&self) -> Option<Span> {
-                Some(self.span())
-            }
-        }
-    }
-}
-
-// Some implementation for `syn` types.
-span_end_from_spanned!(syn::Ident);
-span_end_from_spanned!(syn::Lit);
-impl SpanEnd for syn::token::Paren {
-    fn span_end(&self) -> Option<Span> {
-        Some(self.span.join())
-    }
-}
-impl SpanEnd for syn::token::Bracket {
-    fn span_end(&self) -> Option<Span> {
-        Some(self.span.join())
-    }
-}
-
+crate::sp::derive_spanned!(Tuple<T> where <T>);
 /// Because `Vec` does not implement `Parse` as we want,
 /// `Tuple` is used to for sequences.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -342,10 +133,11 @@ where
 /// Types of expressions.
 pub mod ty {
     use super::past;
-    use super::Sp;
     use super::Tuple;
+    use crate::sp::Sp;
     use std::fmt;
 
+    crate::sp::derive_spanned!(TyBase);
     /// A basic scalar type.
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
     pub enum TyBase {
@@ -354,20 +146,12 @@ pub mod ty {
         Bool,
     }
 
-    /*
     #[derive(Debug, Clone)]
     pub enum Clock {
         Explicit { activation: bool, id: Sp<String> },
         Implicit,
         Adaptative,
     }
-
-    #[derive(Debug, Clone)]
-    pub struct Clocked<Ty> {
-        pub ty: Sp<Ty>,
-        pub clk: Clock,
-    }
-    */
 
     impl fmt::Display for TyBase {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -379,14 +163,22 @@ pub mod ty {
         }
     }
 
+    crate::sp::derive_spanned!(Clocked<T> where <T>);
+    #[derive(Debug, Clone)]
+    pub struct Clocked<T> {
+        pub inner: Sp<T>,
+        pub clk: Sp<Clock>,
+    }
+
     /// A scalar type with a clock becomes a fixed-size rotating stream
     /// of values.
     #[derive(Debug, Clone)]
     pub struct Stream {
-        pub base: Sp<TyBase>,
+        pub ty: Sp<Clocked<TyBase>>,
         pub depth: past::Depth,
     }
 
+    crate::sp::derive_spanned!(TyTuple);
     /// A composite type of several values arbitrarily deeply nested.
     #[derive(Debug, Clone)]
     pub enum TyTuple {
@@ -403,16 +195,6 @@ pub mod ty {
         }
     }
 
-    /*
-    impl<Ty: fmt::Display> fmt::Display for Clocked<Ty> {
-        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-            let Self { ty, clk } = self;
-            write!(f, "{ty}{clk}")
-        }
-    }
-    */
-
-    /*
     impl fmt::Display for Clock {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
             match self {
@@ -425,16 +207,16 @@ pub mod ty {
             }
         }
     }
-    */
 }
 
 /// Definitions of expressions.
 pub mod expr {
     use super::past;
-    use super::Sp;
     use super::Tuple;
+    use crate::sp::Sp;
     use std::fmt;
 
+    crate::sp::derive_spanned!(Lit);
     /// A literal.
     #[derive(Debug, Clone, Copy)]
     pub enum Lit {
@@ -453,6 +235,7 @@ pub mod expr {
         }
     }
 
+    crate::sp::derive_spanned!(LocalVar);
     /// A local variable.
     #[derive(Debug, Clone, PartialEq, Eq, Hash)]
     pub struct LocalVar {
@@ -460,6 +243,7 @@ pub mod expr {
         pub run_uid: usize,
     }
 
+    crate::sp::derive_spanned!(GlobalVar);
     /// A global constant.
     #[derive(Debug, Clone, PartialEq, Eq, Hash)]
     pub struct GlobalVar {
@@ -479,6 +263,7 @@ pub mod expr {
         }
     }
 
+    crate::sp::derive_spanned!(PastVar);
     /// A past value of a variable.
     #[derive(Debug, Clone)]
     pub struct PastVar {
@@ -486,6 +271,7 @@ pub mod expr {
         pub depth: past::Depth,
     }
 
+    crate::sp::derive_spanned!(NodeId);
     /// A subnode.
     #[derive(Debug, Clone, PartialEq, Eq, Hash)]
     pub struct NodeId {
@@ -509,6 +295,7 @@ pub mod expr {
         }
     }
 
+    crate::sp::derive_spanned!(Reference);
     /// An extern value, i.e. not composed of primitive literals
     /// and operators.
     #[derive(Debug, Clone)]
@@ -611,6 +398,7 @@ pub mod expr {
         }
     }
 
+    crate::sp::derive_spanned!(Expr);
     /// An expression.
     #[derive(Debug, Clone)]
     pub enum Expr {
@@ -701,8 +489,8 @@ pub mod expr {
 /// Statements and operations with side-effects.
 pub mod stmt {
     use super::expr;
-    use super::Sp;
     use super::Tuple;
+    use crate::sp::Sp;
     use std::fmt;
 
     /// The target of an assignment `(x, y, z) = ...`
@@ -721,6 +509,7 @@ pub mod stmt {
         }
     }
 
+    crate::sp::derive_spanned!(Statement);
     /// A statement.
     #[derive(Debug, Clone)]
     pub enum Statement {
@@ -745,8 +534,8 @@ pub mod decl {
     use super::stmt;
     use super::ty;
     use super::ty::TyBase;
-    use super::Sp;
     use super::Tuple;
+    use crate::sp::Sp;
     use std::fmt;
 
     /// A typed variable.
@@ -756,6 +545,7 @@ pub mod decl {
         pub ty: Sp<ty::Stream>,
     }
 
+    crate::sp::derive_spanned!(NodeName);
     /// A node name (either for a declaration or for an invocation)
     #[derive(Debug, Clone, PartialEq, Eq, Hash)]
     pub struct NodeName {

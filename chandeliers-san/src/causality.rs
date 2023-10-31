@@ -7,6 +7,7 @@
 //! which is done by the `Causality` trait.
 
 use crate::ast;
+use crate::sp::Sp;
 use chandeliers_err as err;
 
 pub mod depends;
@@ -35,7 +36,7 @@ impl Causality for ast::decl::Prog {
     }
 }
 
-impl<T: Causality> Causality for ast::Sp<T> {
+impl<T: Causality> Causality for Sp<T> {
     /// Trivial projection.
     fn causality(self) -> CycResult<Self> {
         self.map(|_, t| t.causality()).transpose()

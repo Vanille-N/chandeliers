@@ -20,7 +20,7 @@ use syn::spanned::Spanned;
 use syn::token::{Bracket, Paren};
 use syn::{Ident, Lit, Token};
 
-use chandeliers_san::ast::{Sp, SpanEnd};
+use chandeliers_san::sp::{Sp, SpanEnd};
 
 /// Impl `SpanEnd` for structs.
 ///
@@ -231,14 +231,14 @@ span_end_by_match! {
 #[derive(syn_derive::Parse)]
 pub struct WhenClock {
     _when: kw::when,
-    clock: Sp<expr::AtomicExpr>,
+    pub clock: Sp<LusIdent>,
 }
 span_end_on_field!(WhenClock.clock);
 
 #[derive(syn_derive::Parse)]
 pub struct WhenotClock {
     _whenot: kw::whenot,
-    clock: Sp<expr::AtomicExpr>,
+    pub clock: Sp<LusIdent>,
 }
 span_end_on_field!(WhenotClock.clock);
 

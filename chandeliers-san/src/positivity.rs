@@ -12,6 +12,7 @@ use chandeliers_err::{self as err, IntoError};
 type TokResult<T> = Result<T, err::Error>;
 
 use crate::ast::*;
+use crate::sp::Sp;
 
 struct VarsDepth<'i> {
     max_known: &'i mut HashMap<expr::LocalVar, usize>,

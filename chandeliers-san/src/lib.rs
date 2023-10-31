@@ -51,7 +51,10 @@
 //! to implement in other ways, but you should be careful not to drop your
 //! AST because you thought it was changed in-place.
 
+#![feature(associated_type_defaults)]
+
 pub mod ast;
+pub mod sp;
 
 pub mod causality;
 
