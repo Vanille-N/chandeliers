@@ -52,6 +52,9 @@
 //! AST because you thought it was changed in-place.
 
 #![feature(associated_type_defaults)]
+#![warn(missing_docs)]
+#![warn(clippy::missing_docs_in_private_items)]
+#![warn(clippy::pedantic)]
 
 pub mod ast;
 pub mod sp;

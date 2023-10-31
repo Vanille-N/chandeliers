@@ -14,9 +14,15 @@
 use std::fmt;
 
 /// Values of `T` or `Nil`.
+///
+/// Nil can implement most operations by mapping, and unlike `Option` it
+/// has a canonical way to define operators by systematically
+/// using the `Option` monad.
 #[derive(Debug, Clone, Copy)]
 pub enum Nillable<T> {
+    /// Something.
     Defined(T),
+    /// Nothing.
     Nil,
 }
 
@@ -200,6 +206,7 @@ where
 ///
 /// Implementations are currently provided for tuples of length up to 10.
 pub trait AllNil {
+    /// Construct a default value.
     fn auto_size() -> Self;
 }
 
@@ -252,7 +259,9 @@ fn nil_of_size() {
     };
 }
 
+/// Check if the tuple has a non-nil first element.
 pub trait FirstIsNil {
+    /// (Recursively) query the head of the tuple until a base type.
     fn first_is_nil(&self) -> bool;
 }
 

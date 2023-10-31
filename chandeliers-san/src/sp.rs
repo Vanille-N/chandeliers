@@ -96,8 +96,8 @@ impl<T> Sp<T> {
     }
 }
 
-/// Monad combinator to map faillible functions on a `Sp`.
 impl<T, E> Sp<Result<T, E>> {
+    /// Monad combinator to map faillible functions on a `Sp`.
     pub fn transpose(self) -> Result<Sp<T>, E> {
         match self.t {
             Ok(t) => Ok(Sp { t, span: self.span }),
@@ -229,19 +229,27 @@ impl SpanEnd for syn::token::Bracket {
 /// For most types `T` this would be `Sp<T>`, however they may be some variants,
 /// most notably `TokenStream` with a `Span` is still a `TokenStream`.
 pub trait Spanned: Sized {
+    /// Self after wrapping, typically but not necessarily `Sp<Self>`.
     type Output;
+    /// Add a span.
     fn spanned(self, span: Span) -> Self::Output;
 }
 macro_rules! derive_spanned {
     ( $T:ty ) => {
+        #[doc = "Default implementation of Spanned for"]
+        #[doc = stringify!($T)]
+        #[doc = "wraps in `Sp`"]
         impl $crate::sp::Spanned for $T {
-            type Output = Sp<Self>;
+            type Output = $crate::sp::Sp<Self>;
             fn spanned(self, span: $crate::sp::Span) -> $crate::sp::Sp<Self> {
                 $crate::sp::Sp { t: self, span }
             }
         }
     };
     ( $T:ty where $($t:tt)* ) => {
+        #[doc = "Default implementation of Spanned for"]
+        #[doc = stringify!($T)]
+        #[doc = "wraps in `Sp`"]
         impl$($t)* $crate::sp::Spanned for $T {
             type Output = $crate::sp::Sp<Self>;
             fn spanned(self, span: $crate::sp::Span) -> $crate::sp::Sp<Self> {

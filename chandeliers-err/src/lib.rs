@@ -1,34 +1,59 @@
+//! Error message generation.
+
+#![warn(missing_docs)]
+#![warn(clippy::missing_docs_in_private_items)]
+#![warn(clippy::pedantic)]
+
 use proc_macro2::Span;
 use std::fmt::Display;
 
+/// Anything that went wrong: a sequence of `Span` and associated message.
 pub type Error = Vec<(String, Option<Span>)>;
+
+/// Generate an `Error`.
 pub trait IntoError {
+    /// Produce the sequence of spans and help messages.
     fn into_err(self) -> Error;
 }
+
+/// Result type with errors that can be emitted by Rustc.
+pub type Result<T> = std::result::Result<T, Error>;
+
+/// Objects that can be converted to spans.
 pub trait TrySpan {
+    /// Try to get a span from the object (by default we don't get any,
+    /// but an `Sp<_>` wrapper might provide one)
     fn try_span(&self) -> Option<Span> {
         None
     }
 }
 
+/// Always `Some`.
 impl TrySpan for Span {
     fn try_span(&self) -> Option<Span> {
         Some(*self)
     }
 }
+
+/// Trivial projection.
 impl<T: TrySpan> TrySpan for &T {
     fn try_span(&self) -> Option<Span> {
         (*self).try_span()
     }
 }
+
+/// Trivial projection.
 impl<T: TrySpan> TrySpan for Option<T> {
     fn try_span(&self) -> Option<Span> {
         self.as_ref().and_then(|t| t.try_span())
     }
 }
 
+/// An explicit error message with its span.
 pub struct Basic {
+    /// Error kind.
     pub msg: String,
+    /// Error location.
     pub span: Span,
 }
 
@@ -38,10 +63,15 @@ impl IntoError for Basic {
     }
 }
 
+/// Generate an error for incompatible types between a "left" and a "right" values.
 pub struct TypeMismatch<Source, Left, Right, Msg> {
+    /// Span of the entire error.
     pub source: Source,
+    /// Left expression and span.
     pub left: Left,
+    /// Right expression and span.
     pub right: Right,
+    /// Extra message.
     pub msg: Msg,
 }
 
@@ -73,9 +103,13 @@ where
     }
 }
 
+/// Generate an error for a variable that was not declared yet.
 pub struct VarNotFound<Var, Suggest1, Suggest2> {
+    /// What is missing.
     pub var: Var,
+    /// Local variable suggestions.
     pub suggest1: Suggest1,
+    /// Global variable suggestions.
     pub suggest2: Suggest2,
 }
 
@@ -128,8 +162,11 @@ where
     }
 }
 
+/// Generate an erorr for an expression that is noot valid in a `const` declaration.
 pub struct NotConst<Item, Site> {
+    /// Description of the invalid expression constructor.
     pub what: Item,
+    /// Location of the error.
     pub site: Site,
 }
 
@@ -152,11 +189,17 @@ where
     }
 }
 
+/// Generate an error for a binary operator that expected arguments of a specific type.
 pub struct BinopMismatch<Oper, Site, Expect, Left, Right> {
+    /// Description of the operator.
     pub oper: Oper,
+    /// Location of the error.
     pub site: Site,
+    /// What we expected in place of the arguments.
     pub expect: Expect,
+    /// Left hand side and span.
     pub left: Left,
+    /// Right hand side and span.
     pub right: Right,
 }
 
@@ -189,10 +232,15 @@ where
     }
 }
 
+/// Generate an error for a unary operator that expected an argument of a specific type.
 pub struct UnopMismatch<Oper, Expect, Site, Inner> {
+    /// Description of the operator.
     pub oper: Oper,
+    /// What the operator expects.
     pub expect: Expect,
+    /// Location of the error.
     pub site: Site,
+    /// Invalid expression and span.
     pub inner: Inner,
 }
 
@@ -220,9 +268,14 @@ where
     }
 }
 
+/// Generate an error for something that should have been a bool but isn't,
+/// e.g. `if 1 then 0 else 1`.
 pub struct BoolRequired<Type, Site, Inner> {
+    /// Type that was found (should have been bool).
     pub actual: Type,
+    /// Location of the error.
     pub site: Site,
+    /// Location of the inner contents.
     pub inner: Inner,
 }
 
@@ -246,7 +299,9 @@ where
     }
 }
 
+/// Generate an error for a cyclic definition.
 pub struct Cycle<Items> {
+    /// A (not necessarily ordered) cycle.
     pub items: Items,
 }
 
@@ -271,10 +326,16 @@ where
     }
 }
 
+/// Error message for an object that was defined twice when only one
+/// declaration should exist.
 pub struct GraphUnitDeclTwice<Unit, NewSite, Prior, PriorSite> {
+    /// Display of the redefined object.
     pub unit: Unit,
+    /// Location of the superfluous definition.
     pub new_site: NewSite,
+    /// Item that defined the object previously.
     pub prior: Prior,
+    /// Location of the first definition.
     pub prior_site: PriorSite,
 }
 
@@ -303,7 +364,9 @@ where
     }
 }
 
+/// Error for an object that should have been declared but was not.
 pub struct GraphUnitUndeclared<Unit> {
+    /// Missing object and site where usage was attempted.
     pub unit: Unit,
 }
 
@@ -319,9 +382,14 @@ where
     }
 }
 
+/// Special case of `Cycle`: custom message for an object that depends
+/// specifically on itself directly.
 pub struct GraphUnitDependsOnItself<Unit, Site1, Site2> {
+    /// Object that loops.
     pub unit: Unit,
+    /// Where it is defined.
     pub def_site: Site1,
+    /// Where it is used (usually a subspan of `def_site`).
     pub usage: Site2,
 }
 
@@ -345,10 +413,15 @@ where
     }
 }
 
+/// Error for when one tried to access too far into the past.
 pub struct NotPositive<Var, Site> {
+    /// Variable that is not deep enough.
     pub var: Var,
+    /// Location of the error.
     pub site: Site,
+    /// How deep we could have gone.
     pub available_depth: usize,
+    /// How deep we actually tried to go.
     pub attempted_depth: usize,
 }
 impl<Var, Site> IntoError for NotPositive<Var, Site>
@@ -377,7 +450,10 @@ where
     }
 }
 
+/// Error for a literal that is not supported
+/// (Lustre only has `float`, `int`, and `bool` literals, so e.g. a `&str` will trigger this error).
 pub struct UnhandledLitType<Site> {
+    /// Location of the literal.
     pub site: Site,
 }
 impl<Site> IntoError for UnhandledLitType<Site>
@@ -392,12 +468,22 @@ where
     }
 }
 
+/// Error for when a comparison operator is used with associativity.
+/// Since `a = b = c` is ambiguous (does it mean `(a = b) = c` or `a = (b = c)`
+/// or `(a = b) and (b = c)`, we choose to reject all interpretations and
+/// ask for explicit parentheses around comparison operators.
 pub struct CmpNotAssociative<First, Oper1, Second, Oper2, Third, Site> {
+    /// The `<` of `a < b > c`
     pub oper1: Oper1,
+    /// The `a` of `a < b > c`
     pub first: First,
+    /// The whole location of `a < b > c`
     pub site: Site,
+    /// The `b` of `a < b > c`
     pub second: Second,
+    /// The `c` of `a < b > c`
     pub third: Third,
+    /// The `>` of `a < b > c`
     pub oper2: Oper2,
 }
 impl<First, Oper1, Second, Oper2, Third, Site> IntoError

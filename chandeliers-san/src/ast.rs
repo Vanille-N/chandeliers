@@ -8,7 +8,6 @@
 //! converting them into interpretable code using the methods from `codegen.rs`.
 
 use crate::causality::depends::Depends;
-use proc_macro2::Span;
 use std::fmt;
 use std::hash::Hash;
 
@@ -61,10 +60,12 @@ impl<T> Tuple<T> {
         self.elems.iter_mut()
     }
 
+    /// Number of elements in the tuple.
     pub fn len(&self) -> usize {
         self.elems.len()
     }
 
+    /// Whether this tuple is empty.
     pub fn is_empty(&self) -> bool {
         self.elems.is_empty()
     }
@@ -96,13 +97,13 @@ impl<T: Depends> Depends for Tuple<T> {
 
 /// Timing primitives.
 pub mod past {
-    use super::Span;
     use std::fmt;
 
+    crate::sp::derive_spanned!(Depth);
     /// The depth of a variable (how many `pre`/`fby` are in front)
     #[derive(Debug, Clone, Copy)]
     pub struct Depth {
-        pub span: Span,
+        /// How many instants in the past.
         pub dt: usize,
     }
 
@@ -141,15 +142,27 @@ pub mod ty {
     /// A basic scalar type.
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
     pub enum TyBase {
+        /// Integer type (parsed from `int`, represented by `i64`)
         Int,
+        /// Float type (parsed from `float`, represented by `f64`)
         Float,
+        /// Bool type (parsed from `bool` represented by `bool`)
         Bool,
     }
 
+    /// A clock type.
     #[derive(Debug, Clone)]
     pub enum Clock {
-        Explicit { activation: bool, id: Sp<String> },
+        /// A clock written in the source code (e.g. `when b`).
+        Explicit {
+            /// Whether this clock is positive (when) or negative (whenot).
+            activation: bool,
+            /// Name of the boolean variable representing the clock.
+            id: Sp<String>,
+        },
+        /// The default clock of the node.
         Implicit,
+        /// Any clock.
         Adaptative,
     }
 
@@ -164,9 +177,12 @@ pub mod ty {
     }
 
     crate::sp::derive_spanned!(Clocked<T> where <T>);
+    /// A clock bound to an object (typically a `TyBase`).
     #[derive(Debug, Clone)]
     pub struct Clocked<T> {
+        /// Contents (the type).
         pub inner: Sp<T>,
+        /// Attached clock.
         pub clk: Sp<Clock>,
     }
 
@@ -174,15 +190,22 @@ pub mod ty {
     /// of values.
     #[derive(Debug, Clone)]
     pub struct Stream {
+        /// Inner type.
         pub ty: Sp<Clocked<TyBase>>,
-        pub depth: past::Depth,
+        /// How many steps into the past this variable is used
+        /// (computed by `MakePositive`).
+        pub depth: Sp<past::Depth>,
     }
 
     crate::sp::derive_spanned!(TyTuple);
     /// A composite type of several values arbitrarily deeply nested.
     #[derive(Debug, Clone)]
     pub enum TyTuple {
+        /// End of the nesting by a singleton element.
+        /// Covers both `x` and `(x)`.
         Single(Sp<TyBase>),
+        /// A tuple of any number of elements.
+        /// E.g. `()`, `(x,)`, `(x, y, z)`, ...
         Multiple(Sp<Tuple<Sp<TyTuple>>>),
     }
 
@@ -220,8 +243,11 @@ pub mod expr {
     /// A literal.
     #[derive(Debug, Clone, Copy)]
     pub enum Lit {
+        /// Integer literal (parsed).
         Int(i64),
+        /// Float literal (parsed).
         Float(f64),
+        /// Bool literal (parsed).
         Bool(bool),
     }
 
@@ -239,7 +265,9 @@ pub mod expr {
     /// A local variable.
     #[derive(Debug, Clone, PartialEq, Eq, Hash)]
     pub struct LocalVar {
+        /// Name.
         pub repr: Sp<String>,
+        /// Number to generate unique identifiers.
         pub run_uid: usize,
     }
 
@@ -247,7 +275,9 @@ pub mod expr {
     /// A global constant.
     #[derive(Debug, Clone, PartialEq, Eq, Hash)]
     pub struct GlobalVar {
+        /// Name.
         pub repr: Sp<String>,
+        /// Number to generate unique identifiers.
         pub run_uid: usize,
     }
 
@@ -267,21 +297,25 @@ pub mod expr {
     /// A past value of a variable.
     #[derive(Debug, Clone)]
     pub struct PastVar {
+        /// Variable.
         pub var: Sp<LocalVar>,
-        pub depth: past::Depth,
+        /// How many steps in the past.
+        pub depth: Sp<past::Depth>,
     }
 
     crate::sp::derive_spanned!(NodeId);
     /// A subnode.
     #[derive(Debug, Clone, PartialEq, Eq, Hash)]
     pub struct NodeId {
+        /// Index in the `struct`'s `__node` field.
         pub id: Sp<usize>,
+        /// Name of the call.
         pub repr: Sp<String>,
     }
 
     impl fmt::Display for PastVar {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-            if self.depth.dt > 0 {
+            if self.depth.t.dt > 0 {
                 write!(f, "{}@{}", self.var, self.depth)
             } else {
                 write!(f, "{}", self.var)
@@ -318,13 +352,21 @@ pub mod expr {
     /// A binary operator.
     #[derive(Debug, Clone, Copy)]
     pub enum BinOp {
+        /// `+`
         Add,
+        /// `*`
         Mul,
+        /// `-` (binary)
         Sub,
+        /// `/`
         Div,
+        /// `%`
         Rem,
+        /// `and`
         BitAnd,
+        /// `or`
         BitOr,
+        /// Not currently representable.
         BitXor,
     }
 
@@ -346,7 +388,9 @@ pub mod expr {
     /// A unary operator.
     #[derive(Debug, Clone, Copy)]
     pub enum UnOp {
+        /// `-` (unary)
         Neg,
+        /// `not`
         Not,
     }
 
@@ -362,11 +406,17 @@ pub mod expr {
     /// A comparison operator.
     #[derive(Debug, Clone, Copy)]
     pub enum CmpOp {
+        /// `<=`
         Le,
+        /// `>=`
         Ge,
+        /// `<`
         Lt,
+        /// `>`
         Gt,
+        /// `=`
         Eq,
+        /// `<>`
         Ne,
     }
 
@@ -383,9 +433,12 @@ pub mod expr {
         }
     }
 
+    /// A clock operator applied to an expression.
     #[derive(Debug, Clone, Copy)]
     pub enum ClockOp {
+        /// `when`
         When,
+        /// `whenot`
         Whenot,
     }
 
@@ -408,49 +461,75 @@ pub mod expr {
         Reference(Sp<Reference>),
         /// Tuples `(1, 2.0, x)`.
         Tuple(Sp<Tuple<Sp<Expr>>>),
-        /// Application of a binary operator `a + b`
+        /// Application of a binary operator `a + b`.
         BinOp {
+            /// Binary operator (e.g. `+`).
             op: BinOp,
+            /// Left-hand-side (e.g. `a`).
             lhs: Sp<Box<Expr>>,
+            /// Right-hand-side (e.g. `b`).
             rhs: Sp<Box<Expr>>,
         },
-        /// Application of a unary operator `!b`
-        UnOp { op: UnOp, inner: Sp<Box<Expr>> },
-        /// Application of a comparison function `a != b`
-        CmpOp {
-            op: CmpOp,
-            lhs: Sp<Box<Expr>>,
-            rhs: Sp<Box<Expr>>,
-        },
-        /// A when or whenop expression
-        ClockOp {
-            op: ClockOp,
+        /// Application of a unary operator `not b`.
+        UnOp {
+            /// Unary operator (e.g. `not`).
+            op: UnOp,
+            /// Contents (e.g. `b`).
             inner: Sp<Box<Expr>>,
+        },
+        /// Application of a comparison function `a <> b`.
+        CmpOp {
+            /// Comparison operator (e.g. `<>`).
+            op: CmpOp,
+            /// Left-hand-side (e.g. `a`).
+            lhs: Sp<Box<Expr>>,
+            /// Right-hand-side (e.g. `b`).
+            rhs: Sp<Box<Expr>>,
+        },
+        /// A when or whenot expression `e when b`.
+        ClockOp {
+            /// Clock operator (e.g. `when`).
+            op: ClockOp,
+            /// Expression being clocked (e.g. `e`).
+            inner: Sp<Box<Expr>>,
+            /// Clock variable (e.g. `b`).
             activate: Sp<Box<Expr>>,
         },
         /// The special operator "later" in (Lustre `->`)
         /// to perform case analysis on the current value of the clock.
         Later {
-            clk: past::Depth,
+            /// Number of steps after which we read the `after` field.
+            clk: Sp<past::Depth>,
+            /// Value to evaluate before `clk`.
             before: Sp<Box<Expr>>,
+            /// Value to evaluate after `clk`.
             after: Sp<Box<Expr>>,
         },
         /// A conditional expression `if b then x else y`
         Ifx {
+            /// Boolean condition.
             cond: Sp<Box<Expr>>,
+            /// Evaluate if the condition holds.
             yes: Sp<Box<Expr>>,
+            /// Evaluate if the condition does not hold.
             no: Sp<Box<Expr>>,
         },
         /// Clock combinator
         Merge {
+            /// Boolean condition.
             switch: Sp<Box<Expr>>,
+            /// Evaluate if the condition holds.
             on: Sp<Box<Expr>>,
+            /// Evaluate if the condition does not hold.
             off: Sp<Box<Expr>>,
         },
         /// Advance a block.
         Substep {
+            /// Number of steps to wait before activating for the first time.
             clk: usize,
+            /// Index in the `struct`'s `__nodes` field.
             id: Sp<NodeId>,
+            /// Arguments of the function call (parenthesized but not a tuple).
             args: Sp<Box<Expr>>,
         },
     }
@@ -493,10 +572,13 @@ pub mod stmt {
     use crate::sp::Sp;
     use std::fmt;
 
-    /// The target of an assignment `(x, y, z) = ...`
+    /// The target of an assignment `(x, y, z) = ...`.
+    /// May be abritrarily nested.
     #[derive(Debug, Clone)]
     pub enum VarTuple {
+        /// End of the recursion through a single variable.
         Single(Sp<expr::LocalVar>),
+        /// Comma-separated tuple.
         Multiple(Sp<Tuple<Sp<VarTuple>>>),
     }
 
@@ -515,13 +597,10 @@ pub mod stmt {
     pub enum Statement {
         /// Variable binding `let x = ...`
         Let {
+            /// Variable tuple for destructuring the assignment.
             target: Sp<VarTuple>,
+            /// Expression to compute.
             source: Sp<expr::Expr>,
-        },
-        /// Print debug information.
-        Trace {
-            msg: String,
-            fmt: Tuple<expr::LocalVar>,
         },
         /// Perform an assertion.
         Assert(Sp<expr::Expr>),
@@ -541,7 +620,9 @@ pub mod decl {
     /// A typed variable.
     #[derive(Debug, Clone)]
     pub struct TyVar {
+        /// Name of the variable.
         pub name: Sp<expr::LocalVar>,
+        /// Type of the variable (including the temporal depth and clock).
         pub ty: Sp<ty::Stream>,
     }
 
@@ -549,7 +630,9 @@ pub mod decl {
     /// A node name (either for a declaration or for an invocation)
     #[derive(Debug, Clone, PartialEq, Eq, Hash)]
     pub struct NodeName {
+        /// Name of the node.
         pub repr: Sp<String>,
+        /// Number to generate unique identifiers.
         pub run_uid: usize,
     }
 
@@ -559,89 +642,127 @@ pub mod decl {
         }
     }
 
+    /// Options Available for a node.
     #[derive(Debug, Clone)]
     pub struct NodeOptions {
+        /// `#[trace]`: display debug information on the inputs and outputs
         pub trace: bool,
+        /// `#[export]`: this struct is public.
         pub export: bool,
+        /// `#[main(n)]` generate a main function for this node that runs `n` times.
         pub main: Option<usize>,
+        /// `#[rustc_allow("foo")]`: generates a `#[allow(foo)]` on the definition
+        /// to silence Rustc warnings.
         pub rustc_allow: Vec<syn::Ident>,
     }
 
+    /// Options Available for an extern node.
     #[derive(Debug, Clone)]
     pub struct ExtNodeOptions {
+        /// `#[trace]`: display debug information on the inputs and outputs
         pub trace: bool,
+        /// `#[main(n)]` generate a main function for this node that runs `n` times.
         pub main: Option<usize>,
+        /// `#[rustc_allow("foo")]`: generates a `#[allow(foo)]` on the definition
+        /// to silence Rustc warnings.
         pub rustc_allow: Vec<syn::Ident>,
     }
 
+    /// Options available for a const.
     #[derive(Debug, Clone)]
     pub struct ConstOptions {
+        /// `#[export]`: this const is public.
         pub export: bool,
+        /// `#[rustc_allow("foo")]`: generates a `#[allow(foo)]` on the definition
+        /// to silence Rustc warnings.
         pub rustc_allow: Vec<syn::Ident>,
     }
 
+    /// Options available for an extern const.
     #[derive(Debug, Clone)]
     pub struct ExtConstOptions {
+        /// `#[rustc_allow("foo")]`: generates a `#[allow(foo)]` on the definition
+        /// to silence Rustc warnings.
         pub rustc_allow: Vec<syn::Ident>,
     }
 
-    /// A node declaration.
+    /// A node declaration `node foo(x) returns (y); var z; let <body> tel.
     #[derive(Debug, Clone)]
     pub struct Node {
+        /// Public name of the node (`foo`).
         pub name: Sp<NodeName>,
+        /// Compilation options attached (in the form `#[...]` as per the standard Rust notation)
         pub options: NodeOptions,
-        /// Input and output variables.
+        /// Input variables and types (`x`).
         pub inputs: Sp<Tuple<Sp<TyVar>>>,
+        /// Output variables and types (`y`).
         pub outputs: Sp<Tuple<Sp<TyVar>>>,
+        /// Local variables and types (`z`).
         pub locals: Sp<Tuple<Sp<TyVar>>>,
-        /// Other nodes that are used by this one.
+        /// Other nodes that are used by this one (function calls in `<body>`).
         pub blocks: Vec<Sp<NodeName>>,
-        /// Body of the node declaration.
+        /// Body of the node declaration (`<body>`).
         pub stmts: Vec<Sp<stmt::Statement>>,
     }
 
-    /// A global constant.
+    /// A global constant `const X : int = 0`.
     #[derive(Debug, Clone)]
     pub struct Const {
+        /// Public name of the constant (`X`).
         pub name: Sp<expr::GlobalVar>,
+        /// Compilation options attached (in the form `#[...]` as per the standard Rust notation)
         pub options: ConstOptions,
+        /// Type of the constant (`int`).
         pub ty: Sp<TyBase>,
+        /// Const-computable value (`0`).
         pub value: Sp<expr::Expr>,
     }
 
-    /// A trusted node declaration.
+    /// A trusted node declaration `extern node foo(x) returns (y);`.
     /// It does not have a body, and the rest of the program will
     /// assume that it is well-defined.
     #[derive(Debug, Clone)]
     pub struct ExtNode {
+        /// Public name of the node (`foo`).
         pub name: Sp<NodeName>,
+        /// Input variables and types (`x`).
         pub inputs: Sp<Tuple<Sp<TyVar>>>,
+        /// Output variables and types (`y`).
         pub outputs: Sp<Tuple<Sp<TyVar>>>,
+        /// Compilation options attached (in the form `#[...]` as per the standard Rust notation)
         pub options: ExtNodeOptions,
     }
 
-    /// A trusted constant declaration.
+    /// A trusted constant declaration `extern const X : int;`.
     /// It does not have a value, and the rest of the program will
     /// asusme that it is well-defined.
     #[derive(Debug, Clone)]
     pub struct ExtConst {
+        /// Public name of the constant (`X`).
         pub name: Sp<expr::GlobalVar>,
+        /// Type of the constant (`int`).
         pub ty: Sp<TyBase>,
+        /// Compilation options attached (in the form `#[...]` as per the standard Rust notation)
         pub options: ExtConstOptions,
     }
 
     /// A toplevel declaration.
     #[derive(Debug, Clone)]
     pub enum Decl {
+        /// `const X : int = 0`
         Const(Sp<Const>),
+        /// `node foo() returns (); let tel`
         Node(Sp<Node>),
+        /// `extern const X : int`.
         ExtConst(Sp<ExtConst>),
+        /// `extern node foo() returns ();`
         ExtNode(Sp<ExtNode>),
     }
 
     /// A Lustre program is a sequence of declarations.
     #[derive(Debug, Clone)]
     pub struct Prog {
+        /// Sequence of declarations.
         pub decls: Vec<Sp<Decl>>,
     }
 }

@@ -14,7 +14,9 @@ use crate::nillable::*;
 /// This distributes the `Nillable` to each element in the case of tuples.
 /// Implementations are currently provided for tuples of length up to 10.
 pub trait Embed {
+    /// Wraped type.
     type Target;
+    /// Conversion.
     fn embed(self) -> Self::Target;
 }
 
@@ -23,7 +25,9 @@ pub trait Embed {
 /// This distributes the `unwrap` to each element in the case of tuples.
 /// Implementations are currently provided for tuples of length up to 10.
 pub trait Trusted {
+    /// Base type.
     type Target;
+    /// Conversion.
     fn trusted(self) -> Self::Target;
 }
 
@@ -64,11 +68,16 @@ embed_for_tuple!((0: T0, 1: T1, 2: T2) with <T0, T1, T2>);
 embed_for_tuple!((0: T0, 1: T1, 2: T2, 3: T3) with <T0, T1, T2, T3>);
 embed_for_tuple!((0: T0, 1: T1, 2: T2, 3: T3, 4: T4) with <T0, T1, T2, T3, T4>);
 embed_for_tuple!((0: T0, 1: T1, 2: T2, 3: T3, 4: T4, 5: T5) with <T0, T1, T2, T3, T4, T5>);
-embed_for_tuple!((0: T0, 1: T1, 2: T2, 3: T3, 4: T4, 5: T5, 6: T6) with <T0, T1, T2, T3, T4, T5, T6>);
-embed_for_tuple!((0: T0, 1: T1, 2: T2, 3: T3, 4: T4, 5: T5, 6: T6, 7: T7) with <T0, T1, T2, T3, T4, T5, T6, T7>);
-embed_for_tuple!((0: T0, 1: T1, 2: T2, 3: T3, 4: T4, 5: T5, 6: T6, 7: T7, 8: T8) with <T0, T1, T2, T3, T4, T5, T6, T7, T8>);
-embed_for_tuple!((0: T0, 1: T1, 2: T2, 3: T3, 4: T4, 5: T5, 6: T6, 7: T7, 8: T8, 9: T9) with <T0, T1, T2, T3, T4, T5, T6, T7, T8, T9>);
-embed_for_tuple!((0: T0, 1: T1, 2: T2, 3: T3, 4: T4, 5: T5, 6: T6, 7: T7, 8: T8, 9: T9, 10: T10) with <T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, T10>);
+embed_for_tuple!((0: T0, 1: T1, 2: T2, 3: T3, 4: T4, 5: T5, 6: T6)
+    with <T0, T1, T2, T3, T4, T5, T6>);
+embed_for_tuple!((0: T0, 1: T1, 2: T2, 3: T3, 4: T4, 5: T5, 6: T6, 7: T7)
+    with <T0, T1, T2, T3, T4, T5, T6, T7>);
+embed_for_tuple!((0: T0, 1: T1, 2: T2, 3: T3, 4: T4, 5: T5, 6: T6, 7: T7, 8: T8)
+    with <T0, T1, T2, T3, T4, T5, T6, T7, T8>);
+embed_for_tuple!((0: T0, 1: T1, 2: T2, 3: T3, 4: T4, 5: T5, 6: T6, 7: T7, 8: T8, 9: T9)
+    with <T0, T1, T2, T3, T4, T5, T6, T7, T8, T9>);
+embed_for_tuple!((0: T0, 1: T1, 2: T2, 3: T3, 4: T4, 5: T5, 6: T6, 7: T7, 8: T8, 9: T9, 10: T10)
+    with <T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, T10>);
 // Who would ever need more than 10 arguments, right ?
 
 impl<T> Trusted for Nillable<T> {
@@ -98,11 +107,16 @@ trusted_for_tuple!((0: T0, 1: T1, 2: T2) with <T0, T1, T2>);
 trusted_for_tuple!((0: T0, 1: T1, 2: T2, 3: T3) with <T0, T1, T2, T3>);
 trusted_for_tuple!((0: T0, 1: T1, 2: T2, 3: T3, 4: T4) with <T0, T1, T2, T3, T4>);
 trusted_for_tuple!((0: T0, 1: T1, 2: T2, 3: T3, 4: T4, 5: T5) with <T0, T1, T2, T3, T4, T5>);
-trusted_for_tuple!((0: T0, 1: T1, 2: T2, 3: T3, 4: T4, 5: T5, 6: T6) with <T0, T1, T2, T3, T4, T5, T6>);
-trusted_for_tuple!((0: T0, 1: T1, 2: T2, 3: T3, 4: T4, 5: T5, 6: T6, 7: T7) with <T0, T1, T2, T3, T4, T5, T6, T7>);
-trusted_for_tuple!((0: T0, 1: T1, 2: T2, 3: T3, 4: T4, 5: T5, 6: T6, 7: T7, 8: T8) with <T0, T1, T2, T3, T4, T5, T6, T7, T8>);
-trusted_for_tuple!((0: T0, 1: T1, 2: T2, 3: T3, 4: T4, 5: T5, 6: T6, 7: T7, 8: T8, 9: T9) with <T0, T1, T2, T3, T4, T5, T6, T7, T8, T9>);
-trusted_for_tuple!((0: T0, 1: T1, 2: T2, 3: T3, 4: T4, 5: T5, 6: T6, 7: T7, 8: T8, 9: T9, 10: T10) with <T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, T10>);
+trusted_for_tuple!((0: T0, 1: T1, 2: T2, 3: T3, 4: T4, 5: T5, 6: T6)
+    with <T0, T1, T2, T3, T4, T5, T6>);
+trusted_for_tuple!((0: T0, 1: T1, 2: T2, 3: T3, 4: T4, 5: T5, 6: T6, 7: T7)
+    with <T0, T1, T2, T3, T4, T5, T6, T7>);
+trusted_for_tuple!((0: T0, 1: T1, 2: T2, 3: T3, 4: T4, 5: T5, 6: T6, 7: T7, 8: T8)
+    with <T0, T1, T2, T3, T4, T5, T6, T7, T8>);
+trusted_for_tuple!((0: T0, 1: T1, 2: T2, 3: T3, 4: T4, 5: T5, 6: T6, 7: T7, 8: T8, 9: T9)
+    with <T0, T1, T2, T3, T4, T5, T6, T7, T8, T9>);
+trusted_for_tuple!((0: T0, 1: T1, 2: T2, 3: T3, 4: T4, 5: T5, 6: T6, 7: T7, 8: T8, 9: T9, 10: T10)
+    with <T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, T10>);
 // Who would ever need more than 10 arguments, right ?
 
 #[test]
@@ -121,7 +135,10 @@ fn embed_trusted_inverse() {
 /// a node call will usually look like
 /// `let (o1, o2) = n.step((i1, i2, i3).embed()).trusted();`
 pub trait Step {
+    /// Input tuple (expects "normal" rust types like `i64`, not `Nillable<i64>` or `O<i64>`.
     type Input: Embed;
+    /// Output tuple (expects "normal" rust types like `i64`, not `Nillable<i64>` or `O<i64>`.
     type Output: Embed;
+    /// Advance the node by one step.
     fn step(&mut self, input: <Self::Input as Embed>::Target) -> <Self::Output as Embed>::Target;
 }

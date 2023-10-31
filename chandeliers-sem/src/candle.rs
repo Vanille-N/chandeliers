@@ -508,6 +508,14 @@ macro_rules! merge {
     }};
 }
 
+/// Read the inputs of the node and immediately return if
+/// the implicit clock is inactive, i.e. if the first element of the arguments
+/// is `nil`.
+///
+/// `implicit_clock!(inputs);`
+///
+/// This should definitely be called before `tick!`, and preferably
+/// before any computation.
 #[macro_export]
 macro_rules! implicit_clock {
     ( $inputs:expr ) => {{

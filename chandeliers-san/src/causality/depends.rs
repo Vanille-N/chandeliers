@@ -38,6 +38,7 @@ use proc_macro2::Span;
 /// The macros used here for easy implementation are tailore for these
 /// kinds of behaviors.
 pub trait Depends {
+    /// The type of elementary dependencies (e.g. variable names)
     type Output;
     /// List all the basic building blocks that this element defines.
     fn provides(&self, v: &mut Vec<Self::Output>);
@@ -50,8 +51,6 @@ pub trait Depends {
 pub enum Reference {
     /// A node.
     FunName(Sp<String>),
-    /// An instanciation of a node.
-    NodeId(Sp<usize>),
     /// A variable.
     LocalVarName(Sp<String>),
     /// A global constant.
@@ -61,7 +60,6 @@ pub enum Reference {
 impl fmt::Display for Reference {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::NodeId(id) => write!(f, "Block #{id}"),
             Self::FunName(fun) => write!(f, "Node `{fun}`"),
             Self::LocalVarName(var) => write!(f, "Variable `{var}`"),
             Self::GlobalVarName(var) => write!(f, "Global `{var}`"),
@@ -72,7 +70,6 @@ impl fmt::Display for Reference {
 impl err::TrySpan for Reference {
     fn try_span(&self) -> Option<Span> {
         match self {
-            Reference::NodeId(i) => i.try_span(),
             Reference::FunName(i) => i.try_span(),
             Reference::LocalVarName(i) => i.try_span(),
             Reference::GlobalVarName(i) => i.try_span(),
@@ -253,16 +250,11 @@ impl Depends for stmt::Statement {
         // `target = ...` provides target
         Self::Let { target, .. } => target;
         // Pure, provides nothing.
-        Self::Trace { .. } => ;
-        // Pure, provides nothing.
         Self::Assert(_) => ;
     }
     require_by_match! {
         // `_ = source` requires the value to be assigned.
         Self::Let { source, .. } => source;
-        // FIXME: the fact that this is empty is more
-        // unimplemented than on purpose.
-        Self::Trace { .. } => ;
         // Assertion is a wrapper.
         Self::Assert(e) => e;
     }
@@ -312,13 +304,6 @@ impl Depends for expr::Reference {
     }
 }
 
-/// `NodeId` is a leaf.
-impl Depends for expr::NodeId {
-    type Output = Reference;
-    provide_this!(|this: &Self| Reference::NodeId(this.id));
-    require_this!(|this: &Self| Reference::NodeId(this.id));
-}
-
 /// `ClockVar` is only used for accesses, so it provides nothing.
 /// Nonzero clocks are not subject to acyclicity checks and are instead
 /// handled by the positivity check, so `ClockVar` introduces a dependency
@@ -327,7 +312,7 @@ impl Depends for expr::PastVar {
     type Output = Reference;
     provide_nothing!();
     fn requires(&self, v: &mut Vec<Reference>) {
-        if self.depth.dt == 0 {
+        if self.depth.t.dt == 0 {
             self.var.requires(v);
         }
     }

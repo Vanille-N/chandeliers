@@ -1,8 +1,11 @@
 //! Tools for defining the semantics of Lustre.
 
 // `candle` may generate comparisons `n >= 0` for `n: u64`
-#![allow(unused_comparisons)]
 #![feature(concat_idents)]
+#![allow(unused_comparisons)]
+#![warn(missing_docs)]
+#![warn(clippy::missing_docs_in_private_items)]
+#![warn(clippy::pedantic)]
 
 #[cfg(test)]
 mod tests;

@@ -22,6 +22,7 @@ use crate::nillable::*;
 /// Current value of type `T`.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct O<T> {
+    /// Latest value.
     pub current: Nillable<T>,
 }
 
@@ -31,7 +32,9 @@ pub struct O<T> {
 /// a `S<S<S<S<..., T>, T>, T>, T>`.
 #[derive(Debug, Clone, Default)]
 pub struct S<N, T> {
+    /// Latest value.
     pub current: Nillable<T>,
+    /// Stream of past values.
     pub previous: N,
 }
 
@@ -89,6 +92,7 @@ macro_rules! s {
 /// Fetch value from `dt` instants ago.
 #[allow(private_bounds)]
 pub trait Ago<T>: Counting<T> {
+    /// Read a past value.
     fn ago(&self, dt: usize) -> &Nillable<T>;
 }
 

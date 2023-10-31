@@ -562,7 +562,7 @@ impl decl::NodeName {
 
 impl decl::TyVar {
     fn strictly_positive(&self) -> bool {
-        self.ty.t.depth.dt > 0
+        self.ty.t.depth.t.dt > 0
     }
 }
 
@@ -741,6 +741,7 @@ impl ToTokens for expr::PastVar {
     fn to_tokens(&self, toks: &mut TokenStream) {
         let Self { var, depth } = self;
         let var = var.as_sanitized_ident();
+        let depth = depth.as_lit();
         toks.extend(quote! {
             ::chandeliers_sem::var!(self <~ #depth; #var)
         });
@@ -775,7 +776,7 @@ impl ToTokens for ty::Stream {
     fn to_tokens(&self, toks: &mut TokenStream) {
         let ty = self.ty.t.inner.as_lustre_ty();
         let mut pluses = Vec::new();
-        for _ in 0..self.depth.dt {
+        for _ in 0..self.depth.t.dt {
             pluses.push(quote!( + ));
         }
         toks.extend(quote! {
@@ -812,9 +813,6 @@ impl ToTokens for stmt::Statement {
                     #pretty;
                     let #target = #source
                 });
-            }
-            Self::Trace { .. } => {
-                unimplemented!("Trace");
             }
             Self::Assert(e) => {
                 let pretty = format!("Assertion: {e}");
@@ -880,6 +878,7 @@ impl ToTokens for expr::Expr {
                 quote!(::chandeliers_sem::cmp!(#op; #lhs, #rhs))
             }
             Self::Later { clk, before, after } => {
+                let clk = clk.as_lit();
                 quote!(::chandeliers_sem::later!(self <~ #clk; #before, #after))
             }
             Self::Ifx { cond, yes, no } => {
@@ -920,9 +919,10 @@ impl ToTokens for expr::ClockOp {
     }
 }
 
-impl ToTokens for past::Depth {
-    fn to_tokens(&self, toks: &mut TokenStream) {
-        let lit = syn::Lit::Int(syn::LitInt::new(&format!("{}", self.dt), self.span));
-        toks.extend(quote!( #lit ));
+crate::sp::transparent_impl!(fn as_lit return TokenStream where past::Depth);
+impl past::Depth {
+    fn as_lit(&self, span: Span) -> TokenStream {
+        let lit = syn::Lit::Int(syn::LitInt::new(&format!("{}", self.dt), span));
+        quote!( #lit )
     }
 }

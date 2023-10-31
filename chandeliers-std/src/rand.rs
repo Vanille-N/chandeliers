@@ -1,8 +1,12 @@
+//! Random primitives for Lustre.
+
 use rand::{rngs::ThreadRng, Rng};
 
 use chandeliers_sem::traits::*;
 use chandeliers_sem::*;
 
+/// Lustre node that returns a random `int` uniformly between
+/// `i64::MIN` and `i64::MAX`.
 #[derive(Debug, Default, Clone)]
 pub struct random_int {
     rng: ThreadRng,
@@ -16,6 +20,8 @@ impl Step for random_int {
     }
 }
 
+/// Lustre node that returns a random `float` uniformly between
+/// `f64::MIN` and `f64::MAX`.
 #[derive(Debug, Default, Clone)]
 pub struct random_float {
     rng: ThreadRng,
@@ -29,6 +35,7 @@ impl Step for random_float {
     }
 }
 
+/// Lustre node that returns a random `bool` uniformly.
 #[derive(Debug, Default, Clone)]
 pub struct random_bool {
     rng: ThreadRng,

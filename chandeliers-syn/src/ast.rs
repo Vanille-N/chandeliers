@@ -838,6 +838,7 @@ pub mod expr {
 
     /// Any expression.
     pub struct Expr {
+        /// `or` has the lowest precedence.
         pub inner: Sp<OrExpr>,
     }
     span_end_on_field!(Expr.inner);
@@ -1210,9 +1211,10 @@ span_end_by_match! {
         Node(n) => n;
 }
 
+/// A Lustre program.
 #[derive(syn_derive::Parse)]
 pub struct Prog {
     #[parse(Punctuated::parse_terminated)]
-    pub decls: Punctuated<Sp<AttrDecl>, Token![;]>,
+    pub(crate) decls: Punctuated<Sp<AttrDecl>, Token![;]>,
 }
 span_end_on_field!(Prog.decls);

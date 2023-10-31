@@ -1,4 +1,12 @@
+//! Declarative macros of the Chandeliers suite.
+//!
+//! This crate defines the `proc_macro`s provided to compile Lustre code.
+//! For now only the `decl` macro is available to compile an entire program.
+
 #![feature(proc_macro_diagnostic)]
+#![warn(missing_docs)]
+#![warn(clippy::missing_docs_in_private_items)]
+#![warn(clippy::pedantic)]
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -15,11 +23,31 @@ fn new_run_uid() -> usize {
     RUN_UID.fetch_add(1, Ordering::SeqCst)
 }
 
+/// Frontend of `chandeliers_lus`.
+///
+/// Usage:
+/// ```
+/// chandeliers_lus::decl! {
+///     #[trace] // This means that every invocation of the node will print
+///              // debug information.
+///     node foo() returns (n : int);
+///     let n = 0 fby n + 1; tel;
+///
+///     #[main(15)] // This means that this is the main function of the program.
+///                 // It must have signature () -> () and will run 15 times.
+///     node system() returns ();
+///     var n : int;
+///     let
+///         n = count;
+///         assert n > 0;
+///     tel
+/// }
+/// ```
 #[proc_macro]
 pub fn decl(i: proc_macro::TokenStream) -> proc_macro::TokenStream {
     use quote::ToTokens;
     use syn::parse_macro_input;
-    let prog = parse_macro_input!(i as Sp<syntax::ast::Prog>);
+    let prog = parse_macro_input!(i as Sp<syntax::Prog>);
     let prog = match prog_pipeline(prog) {
         Ok(prog) => prog,
         Err(e) => return emit(e).into(),
@@ -29,9 +57,7 @@ pub fn decl(i: proc_macro::TokenStream) -> proc_macro::TokenStream {
     toks.into()
 }
 
-fn prog_pipeline(
-    prog: Sp<syntax::ast::Prog>,
-) -> Result<Sp<sanitizer::ast::decl::Prog>, err::Error> {
+fn prog_pipeline(prog: Sp<syntax::Prog>) -> Result<Sp<sanitizer::ast::decl::Prog>, err::Error> {
     use sanitizer::causality::Causality;
     use sanitizer::positivity::MakePositive;
     use syntax::translate::SpanTranslate;
