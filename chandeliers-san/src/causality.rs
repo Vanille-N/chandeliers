@@ -60,12 +60,12 @@ impl Causality for ast::decl::Node {
     fn causality(self) -> Result<Self> {
         let Self {
             name,
+            options,
             inputs,
             outputs,
             locals,
             blocks,
             stmts,
-            options,
         } = self;
         let mut g = Graph::default();
         for i in inputs.t.iter() {
@@ -87,12 +87,12 @@ impl Causality for ast::decl::Node {
         let stmts = g.scheduling()?;
         Ok(Self {
             name,
+            options,
             inputs,
             outputs,
             locals,
             blocks,
             stmts,
-            options,
         })
     }
 }

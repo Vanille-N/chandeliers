@@ -1,10 +1,15 @@
+// This lint falsely flags some `|x| x.foo()` that are actually helpful
+// because the alternative would require specifying the explicit type of
+// `foo` which is overloaded on `Sp<T>` for several different `T`.
+#![allow(clippy::redundant_closure_for_method_calls)]
+
 //! Generate actual Candle statements from an AST.
 
 use crate::sp::{Sp, Span, Spanned};
 use proc_macro2::{Ident, TokenStream};
 use quote::{quote, quote_spanned, ToTokens};
 
-use super::ast::*;
+use super::ast::{decl, expr, past, stmt, ty, Tuple};
 
 trait ConstExprTokens {
     fn const_expr_tokens(&self, span: Span) -> TokenStream;
@@ -83,7 +88,7 @@ trait OptionsTraces {
         inputs: Sp<&Tuple<Sp<decl::TyVar>>>,
         outputs: Sp<&Tuple<Sp<decl::TyVar>>>,
     ) -> (TokenStream, TokenStream) {
-        let name = format!("{}", name);
+        let name = format!("{name}");
         let inputs = inputs.as_values();
         let outputs = outputs.as_values();
         if self.active() {
@@ -555,7 +560,7 @@ impl decl::NodeName {
         quote!( #id )
     }
     fn as_raw_ident(&self, _span: Span) -> TokenStream {
-        let id = Ident::new_raw(&format!("{}", &self.repr.t), self.repr.span);
+        let id = Ident::new_raw(&self.repr.t.to_string(), self.repr.span);
         quote!( #id )
     }
 }
@@ -578,7 +583,7 @@ impl expr::GlobalVar {
     }
 
     fn as_raw_ident(&self, _span: Span) -> TokenStream {
-        let id = Ident::new_raw(&format!("{}", &self.repr.t), self.repr.span);
+        let id = Ident::new_raw(&self.repr.t.to_string(), self.repr.span);
         quote!( #id )
     }
 }
@@ -692,8 +697,8 @@ impl ToTokens for expr::CmpOp {
 impl ConstExprTokens for expr::Lit {
     fn const_expr_tokens(&self, span: Span) -> TokenStream {
         let lit = match self {
-            Self::Int(i) => syn::Lit::Int(syn::LitInt::new(&format!("{}i64", i), span)),
-            Self::Float(f) => syn::Lit::Float(syn::LitFloat::new(&format!("{}f64", f), span)),
+            Self::Int(i) => syn::Lit::Int(syn::LitInt::new(&format!("{i}i64"), span)),
+            Self::Float(f) => syn::Lit::Float(syn::LitFloat::new(&format!("{f}f64"), span)),
             Self::Bool(b) => syn::Lit::Bool(syn::LitBool::new(*b, span)),
         };
         quote!( #lit )
@@ -702,9 +707,9 @@ impl ConstExprTokens for expr::Lit {
 
 /// Part by convention and part by necessity,
 /// we display local variables as
-///     _local_v
+///    `_local_v`
 /// and globals as
-///    lit!(X)
+///    `lit!(X)`
 ///
 /// This minimizes name collisions and provides the correct typing.
 impl ToTokens for expr::Reference {
@@ -787,7 +792,8 @@ impl ToTokens for ty::Stream {
 
 crate::sp::transparent_impl!(fn as_defined_ty return TokenStream where ty::TyBase);
 impl ty::TyBase {
-    fn as_defined_ty(&self, span: Span) -> TokenStream {
+    /// Pass a type through `ty_mapping` to get `i64`/`f64`/`bool`.
+    fn as_defined_ty(self, span: Span) -> TokenStream {
         let ty = self.as_lustre_ty(span);
         quote! {
             ::chandeliers_sem::ty_mapping!(#ty)
@@ -797,8 +803,9 @@ impl ty::TyBase {
 
 crate::sp::transparent_impl!(fn as_lustre_ty return TokenStream where ty::TyBase);
 impl ty::TyBase {
-    fn as_lustre_ty(&self, span: Span) -> TokenStream {
-        let id = Ident::new(&format!("{}", self), span);
+    /// Print a type as the `ty_mapping` macro would expect it: `int`/`float`/`bool`.
+    fn as_lustre_ty(self, span: Span) -> TokenStream {
+        let id = Ident::new(&format!("{self}"), span);
         quote!( #id )
     }
 }
@@ -816,11 +823,11 @@ impl ToTokens for stmt::Statement {
             }
             Self::Assert(e) => {
                 let pretty = format!("Assertion: {e}");
-                let s = format!("{}", &e);
+                let s = format!("{e}");
                 toks.extend(quote! {
                     #pretty;
                     ::chandeliers_sem::truth!(#e, #s);
-                })
+                });
             }
         }
     }
@@ -906,7 +913,7 @@ impl ToTokens for expr::Expr {
                 // `#op` expands to `when` or `whenot` which are Candle macros.
                 quote!(::chandeliers_sem::#op!(#activate; #inner))
             }
-        })
+        });
     }
 }
 
@@ -915,13 +922,14 @@ impl ToTokens for expr::ClockOp {
         toks.extend(match self {
             Self::When => quote!(when),
             Self::Whenot => quote!(whenot),
-        })
+        });
     }
 }
 
 crate::sp::transparent_impl!(fn as_lit return TokenStream where past::Depth);
 impl past::Depth {
-    fn as_lit(&self, span: Span) -> TokenStream {
+    /// Generate a literal token representing the depth.
+    fn as_lit(self, span: Span) -> TokenStream {
         let lit = syn::Lit::Int(syn::LitInt::new(&format!("{}", self.dt), span));
         quote!( #lit )
     }

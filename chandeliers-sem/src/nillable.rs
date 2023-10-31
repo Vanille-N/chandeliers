@@ -30,7 +30,7 @@ pub use Nillable::*;
 
 /// The default value of a `Nillable` is always `Nil`.
 impl<T> Default for Nillable<T> {
-    #[inline(always)]
+    #[inline]
     fn default() -> Self {
         Nil
     }
@@ -40,7 +40,7 @@ impl<T: fmt::Display> fmt::Display for Nillable<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Nil => write!(f, "nil"),
-            Defined(t) => write!(f, "{}", t),
+            Defined(t) => write!(f, "{t}"),
         }
     }
 }
@@ -48,7 +48,8 @@ impl<T: fmt::Display> fmt::Display for Nillable<T> {
 impl<T> Nillable<T> {
     /// This function is the identity, but its type constraints
     /// can help the compiler determine the associated type `T` for `Nil`.
-    pub fn with_type_of(self, _other: Self) -> Self {
+    #[must_use]
+    pub fn with_type_of(self, _other: &Self) -> Self {
         self
     }
 }
@@ -56,8 +57,10 @@ impl<T> Nillable<T> {
 impl<T> Nillable<T> {
     /// Extract the inner value.
     ///
-    /// Panics: if `self` is `Nil`.
-    #[inline(always)]
+    /// # Panics
+    ///
+    /// if `self` is `Nil`.
+    #[inline]
     #[track_caller]
     pub fn unwrap(self) -> T {
         match self {
@@ -69,14 +72,14 @@ impl<T> Nillable<T> {
 
 impl<T> Nillable<T> {
     /// Apply the given function to the inner value.
-    #[inline(always)]
+    #[inline]
     pub fn map<F, U>(self, f: F) -> Nillable<U>
     where
         F: FnOnce(T) -> U,
     {
         match self {
             Defined(t) => Defined(f(t)),
-            _ => Nil,
+            Nil => Nil,
         }
     }
 }
@@ -144,7 +147,7 @@ where
     /// all expressions it is a part of.
     /// The function `eq` implements only a partial equality that
     /// is not reflexive where `Nil` is not comparable to itself.
-    #[inline(always)]
+    #[inline]
     pub fn eq(self, other: Self) -> Option<bool> {
         match (self, other) {
             (Defined(this), Defined(other)) => Some(this == other),
@@ -157,7 +160,7 @@ where
     /// Determines whether `self` and `other` are identical.
     /// `Nil` is identical to itself, and two `Defined(_)` are
     /// identical if their inner values are `PartialEq`.
-    #[inline(always)]
+    #[inline]
     pub fn is(&self, other: Self) -> bool {
         match (self, other) {
             (Defined(this), Defined(other)) => this == &other,
@@ -189,7 +192,7 @@ where
     ///
     /// Similarly to equality, `Nillable` does not implement `PartialOrd`
     /// because `Nil` is incomparable with every other value.
-    #[inline(always)]
+    #[inline]
     pub fn cmp(self, other: Self) -> Option<std::cmp::Ordering> {
         match (self, other) {
             (Defined(this), Defined(other)) => this.partial_cmp(&other),
@@ -216,6 +219,7 @@ impl<T> AllNil for Nillable<T> {
     }
 }
 
+/// Default implementation for a tuple: maps to all elements.
 macro_rules! all_nil_for_tuple {
     ( ( $( $T:ty ),* ) with $($decl:tt)*) => {
         impl$($decl)* AllNil for ( $( $T, )* )
@@ -270,6 +274,8 @@ impl<T> FirstIsNil for Nillable<T> {
         matches!(self, Nil)
     }
 }
+
+/// Default implementation for a tuple: projects to the first element.
 macro_rules! first_is_nil_for_tuple {
     ( ( $( $T:ty ),* ) with $($decl:tt)*) => {
         impl$($decl)* FirstIsNil for ( $( $T, )* )

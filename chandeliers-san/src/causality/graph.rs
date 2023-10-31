@@ -250,10 +250,9 @@ where
                             prior_site: &self.elements[prov],
                         }
                         .into_err());
-                    } else {
-                        // Constraint is valid, record its provider.
-                        provider[p.contents] = Some(id);
                     }
+                    // Constraint is valid, record its provider.
+                    provider[p.contents] = Some(id);
                     // Check for cycles of length 1.
                     // This is the best time to do it since the default SCC algorithm
                     // is fine with connected components of size 1.
@@ -362,14 +361,13 @@ where
                 // Oops, here's a loop.
                 let looping = c.iter().map(|l| self.atomics.0[*l].elements());
                 return Err(err::Cycle { items: looping }.into_err());
-            } else {
-                // Correctly of size 1, we can use it next.
-                let id = *c.last().expect("Length == 1");
-                // This is faillible because we have `Unit`s that are not provided by anyone.
-                if let Some(Some(prov)) = provider.get(id) {
-                    if let Some(obj) = unused[*prov].take() {
-                        schedule.push(obj);
-                    }
+            }
+            // Correctly of size 1, we can use it next.
+            let id = *c.last().expect("Length == 1");
+            // This is faillible because we have `Unit`s that are not provided by anyone.
+            if let Some(Some(prov)) = provider.get(id) {
+                if let Some(obj) = unused[*prov].take() {
+                    schedule.push(obj);
                 }
             }
         }

@@ -45,7 +45,7 @@
 //! errors.
 //!
 //! Be careful that some steps take `&mut ast::Prog` and return
-//! `Result<(), TokenStream>, while some steps instead take `ast::Prog`
+//! `Result<(), TokenStream>`, while some steps instead take `ast::Prog`
 //! and return `Result<ast::Prog, TokenStream>`.
 //! There are internal implementation details that make these things difficult
 //! to implement in other ways, but you should be careful not to drop your

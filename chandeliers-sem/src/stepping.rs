@@ -7,7 +7,7 @@
 //! `Step` is the general trait for all lustre nodes, and the inputs
 //! and outputs of the node are described in terms of trusted and embed.
 
-use crate::nillable::*;
+use crate::nillable::{Defined, Nillable};
 
 /// Generalized conversion from a `T` to a `Nillable<T>`.
 ///
@@ -48,6 +48,9 @@ impl<T> Embed for Nillable<T> {
     }
 }
 
+/// Implement `Embed` for a tuple of values by projecting `Embed` to each field.
+/// This only applies to tuples of length 1 and above, since `()` is itself
+/// nillable and handled separately.
 macro_rules! embed_for_tuple {
     ( ( $( $i:tt : $T:ty ),* ) with $($decl:tt)*) => {
         impl$($decl)* Embed for ( $( $T, )* )
@@ -87,6 +90,9 @@ impl<T> Trusted for Nillable<T> {
     }
 }
 
+/// Implement `Trusted` for a tuple of values by projecting `Trusted` to each field.
+/// This only applies to tuples of length 1 and above, since `()` is itself
+/// nillable and handled separately.
 macro_rules! trusted_for_tuple {
     ( ( $( $i:tt : $T:ty ),* ) with $($decl:tt)*) => {
         impl$($decl)* Trusted for ( $( $T, )* )

@@ -17,7 +17,7 @@
 
 use std::fmt;
 
-use crate::nillable::*;
+use crate::nillable::{Defined, Nillable};
 
 /// Current value of type `T`.
 #[derive(Debug, Clone, Copy, Default)]
@@ -101,7 +101,7 @@ where
     T: Sealed,
 {
     #[track_caller]
-    #[inline(always)]
+    #[inline]
     fn ago(&self, dt: usize) -> &Nillable<T> {
         match dt {
             0 => panic!(
@@ -119,7 +119,7 @@ where
     N: Ago<T>,
 {
     #[track_caller]
-    #[inline(always)]
+    #[inline]
     fn ago(&self, dt: usize) -> &Nillable<T> {
         match dt {
             0 => panic!(
@@ -133,6 +133,7 @@ where
 
 /// Forget the most ancient value to remove one level of `S<_, _>` to the type.
 trait Downcast<N, T>: Counting<T> {
+    /// Extract the contents.
     fn downcast(self) -> N;
 }
 
@@ -140,7 +141,7 @@ impl<T> Downcast<O<T>, T> for S<O<T>, T>
 where
     T: Sealed,
 {
-    #[inline(always)]
+    #[inline]
     fn downcast(self) -> O<T> {
         o!(self.current)
     }
@@ -152,7 +153,7 @@ where
     N: Counting<T>,
     S<N, T>: Downcast<N, T>,
 {
-    #[inline(always)]
+    #[inline]
     fn downcast(self) -> S<N, T> {
         s!(self.current, self.previous.downcast())
     }
@@ -171,7 +172,7 @@ pub trait Extend<N, T>: Sized {
 }
 
 impl<T> Extend<S<O<T>, T>, T> for O<T> {
-    #[inline(always)]
+    #[inline]
     fn extend(self, new: Nillable<T>) -> S<O<T>, T> {
         s!(new, self)
     }
@@ -181,7 +182,7 @@ impl<N, T> Extend<S<S<N, T>, T>, T> for S<N, T>
 where
     N: Extend<S<N, T>, T>,
 {
-    #[inline(always)]
+    #[inline]
     fn extend(self, new: Nillable<T>) -> S<S<N, T>, T> {
         s!(new, self.previous.extend(self.current))
     }
@@ -194,6 +195,7 @@ where
 #[allow(private_bounds)]
 pub trait Update<T>: Counting<T> {
     /// Prepend a new value.
+    #[must_use]
     fn update(self, new: Nillable<T>) -> Self;
 
     /// Mutable prepend a new value in-place.
@@ -202,6 +204,7 @@ pub trait Update<T>: Counting<T> {
     }
 
     /// Prepend an uninitialized value.
+    #[must_use]
     fn update_undefined(self) -> Self {
         self.update(Nillable::Nil)
     }
@@ -216,7 +219,7 @@ impl<T> Update<T> for O<T>
 where
     T: Sealed,
 {
-    #[inline(always)]
+    #[inline]
     fn update(self, new: Nillable<T>) -> Self {
         Self { current: new }
     }
@@ -228,7 +231,7 @@ where
     N: Counting<T>,
     S<N, T>: Downcast<N, T>,
 {
-    #[inline(always)]
+    #[inline]
     fn update(self, new: Nillable<T>) -> Self {
         s!(new, self.downcast())
     }
@@ -238,13 +241,15 @@ where
 #[allow(private_bounds)]
 pub trait IntoHistory: Sealed {
     /// History of size one (always an `O<_>`).
-    #[inline(always)]
+    #[inline]
+    #[must_use]
     fn into_history(self) -> O<Self> {
         o!(Defined(self))
     }
 
     /// History of size zero (also an `O<_>`, but this time it contains a `Nil`).
-    #[inline(always)]
+    #[inline]
+    #[must_use]
     fn empty_history() -> O<Self> {
         o!(Nillable::Nil)
     }

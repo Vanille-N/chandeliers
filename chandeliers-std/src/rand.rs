@@ -2,13 +2,14 @@
 
 use rand::{rngs::ThreadRng, Rng};
 
-use chandeliers_sem::traits::*;
-use chandeliers_sem::*;
+use chandeliers_sem::traits::{Embed, Step};
+use chandeliers_sem::{implicit_clock, ty};
 
 /// Lustre node that returns a random `int` uniformly between
 /// `i64::MIN` and `i64::MAX`.
 #[derive(Debug, Default, Clone)]
 pub struct random_int {
+    /// Internal random number generator.
     rng: ThreadRng,
 }
 impl Step for random_int {
@@ -24,6 +25,7 @@ impl Step for random_int {
 /// `f64::MIN` and `f64::MAX`.
 #[derive(Debug, Default, Clone)]
 pub struct random_float {
+    /// Internal random number generator.
     rng: ThreadRng,
 }
 impl Step for random_float {
@@ -38,6 +40,7 @@ impl Step for random_float {
 /// Lustre node that returns a random `bool` uniformly.
 #[derive(Debug, Default, Clone)]
 pub struct random_bool {
+    /// Internal random number generator.
     rng: ThreadRng,
 }
 impl Step for random_bool {

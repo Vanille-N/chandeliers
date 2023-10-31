@@ -13,13 +13,18 @@ use ast::Tuple;
 /// lets' give it a less confusing alias.
 type SpTyBaseTuple = Sp<Tuple<Sp<TyBase>>>;
 
+/// Representation of an object that has two relevant `Span`s:
+/// one where it is used, and one where it is defined.
 #[derive(Debug)]
 struct WithDefSite<T> {
+    /// Object and its usage site.
     inner: Sp<T>,
+    /// Where the object was first defined.
     def_site: Span,
 }
 
 impl<T> WithDefSite<T> {
+    /// Apply a function to the inner contents.
     fn map<F, U>(self, f: F) -> WithDefSite<U>
     where
         F: FnOnce(Span, T) -> U,
@@ -30,6 +35,8 @@ impl<T> WithDefSite<T> {
         }
     }
 
+    /// Swap `WithDefSite` with a `&` so that `map` can be applied
+    /// without consuming the value.
     fn as_ref(&self) -> WithDefSite<&T> {
         WithDefSite {
             inner: self.inner.as_ref(),
@@ -51,18 +58,19 @@ pub struct TyCtx<'i> {
     /// forgotten the name that blocks bind to and we only know their unique
     /// identifier.
     nodes_in: HashMap<ast::expr::NodeId, SpTyBaseTuple>,
+    /// Outputs, same as the inputs above.
     nodes_out: HashMap<ast::expr::NodeId, SpTyBaseTuple>,
 }
 
-/// Construct a fresh context with known global variables but no
-/// locals or blocks.
 impl<'i> TyCtx<'i> {
+    /// Construct a fresh context with known global variables but no
+    /// locals or blocks.
     fn from_ext(global: &'i HashMap<ast::expr::GlobalVar, WithDefSite<TyBase>>) -> TyCtx<'i> {
         Self {
             global,
-            vars: Default::default(),
-            nodes_in: Default::default(),
-            nodes_out: Default::default(),
+            vars: HashMap::default(),
+            nodes_in: HashMap::default(),
+            nodes_out: HashMap::default(),
         }
     }
 }
@@ -99,9 +107,9 @@ impl TyCtx<'_> {
     }
 
     /// Get the output tuple of a nade.
-    fn get_node_out(&self, node: Sp<&ast::expr::NodeId>) -> Result<Sp<TyTuple>> {
+    fn get_node_out(&self, node: Sp<&ast::expr::NodeId>) -> Sp<TyTuple> {
         match self.nodes_out.get(node.t) {
-            Some(tup) => Ok(tup.as_flat_tytuple()),
+            Some(tup) => tup.as_flat_tytuple(),
             None => {
                 unreachable!("TyCtx is improperly initialized: it does not know {node}");
             }
@@ -113,12 +121,16 @@ impl TyCtx<'_> {
 /// do not introduce type constraints.
 pub trait TypeCheckStmt {
     /// Verify internal consistency.
+    /// # Errors
+    /// Fails if one of the elements of the statement cannot be typed.
     fn typecheck(&mut self, span: Span, ctx: &TyCtx) -> Result<()>;
 }
 
-/// Helper trait for `Sp<T>` to prooject `TypeCheckStmt` to its contents.
+/// Helper trait for `Sp<T>` to project `TypeCheckStmt` to its contents.
 pub trait TypeCheckSpanStmt {
     /// Verify that the inner content is consistent.
+    /// # Errors
+    /// Fails if one of the elements of the statement cannot be typed.
     fn typecheck(&mut self, ctx: &TyCtx) -> Result<Sp<()>>;
 }
 
@@ -136,19 +148,37 @@ pub trait TypeCheckExpr {
     /// Typechecking expressions is slightly more tricky, because we need to check
     /// not only if the expression is internally consistent, but also we need to
     /// compute its type to check it against the immediate context.
+    ///
+    /// # Errors
+    /// Fails if the expression is not internally consistent
+    /// (e.g. operators applied to the wrong type, incompatible left- and right-
+    /// hand side, ...)
     fn typecheck(&self, span: Span, ctx: &TyCtx) -> Result<TyTuple>;
-    /// Also we want to detect as early as possible consrtucts that are
-    /// not valid in const contexts.
+    /// Verify that the expression is valid as a `const`.
+    ///
+    /// # Errors
+    /// Fails when the expression contains some constructors that are not
+    /// valid in const contexts, such as function calls or temporal operators.
     fn is_const(&self, span: Span) -> Result<()>;
 }
 
 /// Helper trait for `Sp<T>` to project `TypeCheckExpr` to its contents.
 pub trait TypeCheckSpanExpr {
     /// Get the inner type.
+    ///
+    /// # Errors
+    /// Fails if the expression is not internally consistent
+    /// (e.g. operators applied to the wrong type, incompatible left- and right-
+    /// hand side, ...)
     fn typecheck(&self, ctx: &TyCtx) -> Result<Sp<TyTuple>>;
     /// Verify that the inner contents are const computable.
+    ///
+    /// # Errors
+    /// Fails when the expression contains some constructors that are not
+    /// valid in const contexts, such as function calls or temporal operators.
     fn is_const(&self) -> Result<Sp<()>>;
 }
+
 impl<T: TypeCheckExpr> TypeCheckSpanExpr for Sp<T> {
     fn typecheck(&self, ctx: &TyCtx) -> Result<Sp<TyTuple>> {
         self.as_ref()
@@ -253,7 +283,7 @@ impl TypeCheckExpr for ast::expr::Expr {
                 expected_tys
                     .as_flat_tytuple()
                     .identical(&actual_tys, span)?;
-                Ok(ctx.get_node_out(id.as_ref()).unwrap().t)
+                Ok(ctx.get_node_out(id.as_ref()).t)
             }
             Self::ClockOp {
                 op: _,
@@ -280,9 +310,7 @@ impl TypeCheckExpr for ast::expr::Expr {
 
     fn is_const(&self, span: Span) -> Result<()> {
         match self {
-            Self::Lit(_) => Ok(()),
-            Self::Reference(_) => Ok(()),
-            Self::Tuple(_) => Ok(()),
+            Self::Lit(_) | Self::Reference(_) | Self::Tuple(_) => Ok(()),
             Self::BinOp { lhs, rhs, .. } => {
                 lhs.is_const()?;
                 rhs.is_const()?;
@@ -364,6 +392,7 @@ impl TypeCheckExpr for ast::expr::Reference {
 impl TypeCheckExpr for ast::stmt::VarTuple {
     fn typecheck(&self, _span: Span, ctx: &TyCtx) -> Result<TyTuple> {
         use ast::stmt::VarTuple;
+        /// Recursion helper: applies `typecheck` to every element of the tuple.
         fn aux_multiple(span: Span, vs: &Tuple<Sp<VarTuple>>, ctx: &TyCtx) -> Result<TyTuple> {
             let ts = vs.try_map(|v| v.typecheck(ctx))?;
             Ok(TyTuple::Multiple(ts.spanned(span)))
@@ -381,9 +410,8 @@ impl TypeCheckExpr for ast::stmt::VarTuple {
 
 impl ast::expr::BinOp {
     /// Determines if the binary operator can be applied to these arguments.
-    fn accepts(&self, left: Sp<TyBase>, right: Sp<TyBase>) -> Result<()> {
-        use ast::expr::BinOp::*;
-        use TyBase::*;
+    fn accepts(self, left: Sp<TyBase>, right: Sp<TyBase>) -> Result<()> {
+        use ast::expr::BinOp;
         let span = left.span.join(right.span).unwrap();
         if left.t != right.t {
             return Err(err::BinopMismatch {
@@ -396,15 +424,17 @@ impl ast::expr::BinOp {
             .into_err());
         }
         match (self, left.t) {
-            (Add | Mul | Div | Sub, Bool) => Err(err::BinopMismatch {
-                oper: self,
-                site: span,
-                expect: "type int or float, found bool",
-                left: &left,
-                right: &right,
+            (BinOp::Add | BinOp::Mul | BinOp::Div | BinOp::Sub, TyBase::Bool) => {
+                Err(err::BinopMismatch {
+                    oper: self,
+                    site: span,
+                    expect: "type int or float, found bool",
+                    left: &left,
+                    right: &right,
+                }
+                .into_err())
             }
-            .into_err()),
-            (Rem, Bool | Float) => Err(err::BinopMismatch {
+            (BinOp::Rem, TyBase::Bool | TyBase::Float) => Err(err::BinopMismatch {
                 oper: self,
                 site: span,
                 expect: format!("type int, found {left}"),
@@ -412,14 +442,16 @@ impl ast::expr::BinOp {
                 right: &right,
             }
             .into_err()),
-            (BitAnd | BitOr | BitXor, Float) => Err(err::BinopMismatch {
-                oper: self,
-                site: span,
-                expect: "type int or bool, found float".to_string(),
-                left: &left,
-                right: &right,
+            (BinOp::BitAnd | BinOp::BitOr | BinOp::BitXor, TyBase::Float) => {
+                Err(err::BinopMismatch {
+                    oper: self,
+                    site: span,
+                    expect: "type int or bool, found float".to_string(),
+                    left: &left,
+                    right: &right,
+                }
+                .into_err())
             }
-            .into_err()),
             _ => Ok(()),
         }
     }
@@ -427,18 +459,17 @@ impl ast::expr::BinOp {
 
 impl ast::expr::UnOp {
     /// Determines if the unary operator can be applied to this argument.
-    fn accepts(&self, span: Span, inner: Sp<TyBase>) -> Result<()> {
-        use ast::expr::UnOp::*;
-        use TyBase::*;
+    fn accepts(self, span: Span, inner: Sp<TyBase>) -> Result<()> {
+        use ast::expr::UnOp;
         match (self, inner.t) {
-            (Neg, Bool) => Err(err::UnopMismatch {
+            (UnOp::Neg, TyBase::Bool) => Err(err::UnopMismatch {
                 oper: self,
                 site: span,
                 expect: "type int or float, found bool",
                 inner: &inner,
             }
             .into_err()),
-            (Not, Float) => Err(err::UnopMismatch {
+            (UnOp::Not, TyBase::Float) => Err(err::UnopMismatch {
                 oper: self,
                 site: span,
                 expect: "type bool or int, found float",
@@ -452,9 +483,8 @@ impl ast::expr::UnOp {
 
 impl ast::expr::CmpOp {
     /// Determines if the comparison operator can be applied to these arguments.
-    fn accepts(&self, left: Sp<TyBase>, right: Sp<TyBase>) -> Result<()> {
-        use ast::expr::CmpOp::*;
-        use TyBase::*;
+    fn accepts(self, left: Sp<TyBase>, right: Sp<TyBase>) -> Result<()> {
+        use ast::expr::CmpOp;
         let span = left.span.join(right.span).unwrap();
         if left.t != right.t {
             return Err(err::BinopMismatch {
@@ -467,7 +497,7 @@ impl ast::expr::CmpOp {
             .into_err());
         }
         match (self, left.t) {
-            (Ne | Eq, Float) => Err(err::BinopMismatch {
+            (CmpOp::Ne | CmpOp::Eq, TyBase::Float) => Err(err::BinopMismatch {
                 oper: self,
                 site: span,
                 expect: "type int or bool, not float because equality on float is not reliable",
@@ -481,6 +511,7 @@ impl ast::expr::CmpOp {
 }
 
 impl Sp<TyBase> {
+    /// Verify that this is a boolean
     fn is_bool(self, req: &str, span: Span) -> Result<()> {
         match self.t {
             TyBase::Bool => Ok(()),
@@ -503,10 +534,12 @@ impl Sp<TyTuple> {
     /// is such that `(T,)` and `T` are known to be isomorphic, you should
     /// compress `Multiple`s of size 1 earlier in the AST generation.
     fn identical(&self, other: &Self, source: Span) -> Result<()> {
-        use TyTuple::*;
+        use TyTuple::{Multiple, Single};
         match (&self.t, &other.t) {
             (Single(left), Single(right)) => {
-                if left.t != right.t {
+                if left.t == right.t {
+                    Ok(())
+                } else {
                     let msg =
                         format!("Base types should be identical: expected {left}, got {right}");
                     Err(err::TypeMismatch {
@@ -516,8 +549,6 @@ impl Sp<TyTuple> {
                         msg,
                     }
                     .into_err())
-                } else {
-                    Ok(())
                 }
             }
             (Multiple(ts), Multiple(us)) => {
@@ -566,11 +597,10 @@ impl Sp<TyTuple> {
     /// an error. If your language is such that `(T,)` is a valid scalar,
     /// you should compress `Multiple`s of size 1 earlier in the AST generation.
     fn is_primitive(&self) -> Result<Sp<TyBase>> {
-        use TyTuple::*;
         self.as_ref()
             .map(|_, t| match t {
-                Single(t) => Ok(t.t),
-                Multiple(_) => {
+                TyTuple::Single(t) => Ok(t.t),
+                TyTuple::Multiple(_) => {
                     let s = "expected a scalar type, got a tuple type".to_string();
                     Err(err::Basic {
                         span: self.span,
@@ -584,23 +614,41 @@ impl Sp<TyTuple> {
 }
 
 impl SpTyBaseTuple {
+    /// Reinterpret a `Tuple<TyBase>` as a non-nested `TyTuple`.
     fn as_flat_tytuple(&self) -> Sp<TyTuple> {
         self.as_ref().map(|span, tup| {
-            if tup.len() != 1 {
+            if tup.len() == 1 {
+                TyTuple::Single(tup.iter().last().expect("Length == 1").t.spanned(span))
+            } else {
                 TyTuple::Multiple(
                     tup.map_ref(|t| t.map(|span, t| TyTuple::Single(t.spanned(span))))
                         .spanned(span),
                 )
-            } else {
-                TyTuple::Single(tup.iter().last().expect("Length == 1").t.spanned(span))
             }
         })
     }
 }
 
+impl Sp<ast::decl::Node> {
+    /// Projection of `typecheck`: verify the internal consistency of a node.
+    fn typecheck(
+        &mut self,
+        extfun: &HashMap<ast::decl::NodeName, (SpTyBaseTuple, SpTyBaseTuple)>,
+        extvar: &HashMap<ast::expr::GlobalVar, WithDefSite<TyBase>>,
+    ) -> Result<()> {
+        self.t.typecheck(extfun, extvar)
+    }
+
+    /// Projection of `signature`: get inputs and outputs of a node.
+    fn signature(&self) -> (SpTyBaseTuple, SpTyBaseTuple) {
+        self.t.signature()
+    }
+}
+
 /// Typechecking a node involves first building the context that it makes available
 /// to its statements, and then checking those.
-impl Sp<ast::decl::Node> {
+impl ast::decl::Node {
+    /// Verify inner consistency.
     fn typecheck(
         &mut self,
         extfun: &HashMap<ast::decl::NodeName, (SpTyBaseTuple, SpTyBaseTuple)>,
@@ -608,25 +656,25 @@ impl Sp<ast::decl::Node> {
     ) -> Result<()> {
         let mut ctx = TyCtx::from_ext(extvar);
         // FIXME: prettify
-        if self.t.options.main.is_some() {
-            if !self.t.inputs.t.is_empty() {
+        if self.options.main.is_some() {
+            if !self.inputs.t.is_empty() {
                 return Err(err::Basic {
                     msg: "Node declared as main should not have any inputs".to_string(),
-                    span: self.t.inputs.span,
+                    span: self.inputs.span,
                 }
                 .into_err());
             }
-            if !self.t.outputs.t.is_empty() {
+            if !self.outputs.t.is_empty() {
                 return Err(err::Basic {
                     msg: "Node declared as main should not have any outputs".to_string(),
-                    span: self.t.inputs.span,
+                    span: self.inputs.span,
                 }
                 .into_err());
             }
         }
         // These are all the extra variables that we provide in addition
         // to `extvar`.
-        for vs in &[&self.t.inputs, &self.t.outputs, &self.t.locals] {
+        for vs in &[&self.inputs, &self.outputs, &self.locals] {
             for v in vs.t.iter() {
                 if let Some(prior) = ctx.vars.get(&v.t.name.t) {
                     return Err(err::GraphUnitDeclTwice {
@@ -636,19 +684,18 @@ impl Sp<ast::decl::Node> {
                         prior_site: prior.def_site,
                     }
                     .into_err());
-                } else {
-                    ctx.vars.insert(
-                        v.t.name.t.clone(),
-                        WithDefSite {
-                            def_site: v.span,
-                            inner: v.t.ty.as_ref().map(|_, t| t.ty.t.inner.t),
-                        },
-                    );
                 }
+                ctx.vars.insert(
+                    v.t.name.t.clone(),
+                    WithDefSite {
+                        def_site: v.span,
+                        inner: v.t.ty.as_ref().map(|_, t| t.ty.t.inner.t),
+                    },
+                );
             }
         }
         // Then also register the per-NodeId types of the blocks.
-        for (id, blk) in self.t.blocks.iter().enumerate() {
+        for (id, blk) in self.blocks.iter().enumerate() {
             let Some((i, o)) = extfun.get(&blk.t) else {
                 let s = format!("Block {blk} is not defined");
                 return Err(err::Basic {
@@ -664,27 +711,26 @@ impl Sp<ast::decl::Node> {
             ctx.nodes_in.insert(id.clone(), i.clone());
             ctx.nodes_out.insert(id, o.clone());
         }
-        for st in &mut self.t.stmts {
+        for st in &mut self.stmts {
             st.typecheck(&ctx)?;
         }
         Ok(())
     }
 
     /// Fetch the input and output tuple types of this node.
+    #[must_use]
     pub fn signature(&self) -> (SpTyBaseTuple, SpTyBaseTuple) {
         let inputs = self
-            .t
             .inputs
             .t
             .map_ref(|v| v.t.ty.as_ref().map(|_, t| t.ty.t.inner.t));
         let outputs = self
-            .t
             .outputs
             .t
             .map_ref(|v| v.t.ty.as_ref().map(|_, t| t.ty.t.inner.t));
         (
-            inputs.spanned(self.t.inputs.span),
-            outputs.spanned(self.t.outputs.span),
+            inputs.spanned(self.inputs.span),
+            outputs.spanned(self.outputs.span),
         )
     }
 }
@@ -693,7 +739,7 @@ impl Sp<ast::decl::ExtNode> {
     /// Same signature as `Node` but we trust its type as there are no contents to check.
     /// We still checkt that there are no duplicate declarations of variables.
     fn typecheck(&mut self) -> Result<()> {
-        let extvar = Default::default();
+        let extvar = HashMap::default();
         let mut ctx = TyCtx::from_ext(&extvar);
         // FIXME: prettify
         if self.t.options.main.is_some() {
@@ -724,15 +770,14 @@ impl Sp<ast::decl::ExtNode> {
                         prior_site: prior.def_site,
                     }
                     .into_err());
-                } else {
-                    ctx.vars.insert(
-                        v.t.name.t.clone(),
-                        WithDefSite {
-                            def_site: v.span,
-                            inner: v.t.ty.as_ref().map(|_, t| t.ty.t.inner.t),
-                        },
-                    );
                 }
+                ctx.vars.insert(
+                    v.t.name.t.clone(),
+                    WithDefSite {
+                        def_site: v.span,
+                        inner: v.t.ty.as_ref().map(|_, t| t.ty.t.inner.t),
+                    },
+                );
             }
         }
         Ok(())
@@ -740,7 +785,8 @@ impl Sp<ast::decl::ExtNode> {
 
     /// Get the declared inputs and outputs of this node, assuming that
     /// they have already been checked to be internally consistent.
-    pub fn signature(&self) -> (SpTyBaseTuple, SpTyBaseTuple) {
+    #[must_use]
+    fn signature(&self) -> (SpTyBaseTuple, SpTyBaseTuple) {
         let inputs = self
             .t
             .inputs
@@ -759,25 +805,42 @@ impl Sp<ast::decl::ExtNode> {
 }
 
 impl Sp<ast::decl::Const> {
+    /// Projection of `typecheck`: verify internal consistency.
     fn typecheck(&self, varctx: &HashMap<ast::expr::GlobalVar, WithDefSite<TyBase>>) -> Result<()> {
-        self.t.value.is_const()?;
-        let e = self.t.value.typecheck(&TyCtx::from_ext(varctx))?;
-        self.t
-            .ty
+        self.t.typecheck(self.span, varctx)
+    }
+
+    /// Projection of `signature`: get name and type of a global variable.
+    fn signature(&self) -> (Sp<ast::expr::GlobalVar>, Sp<TyBase>) {
+        self.t.signature()
+    }
+}
+impl ast::decl::Const {
+    /// Verify inner consistency.
+    fn typecheck(
+        &self,
+        span: Span,
+        varctx: &HashMap<ast::expr::GlobalVar, WithDefSite<TyBase>>,
+    ) -> Result<()> {
+        self.value.is_const()?;
+        let e = self.value.typecheck(&TyCtx::from_ext(varctx))?;
+        self.ty
             .map(|span, t| TyTuple::Single(t.spanned(span)))
-            .identical(&e, self.span)?;
+            .identical(&e, span)?;
         Ok(())
     }
 
     /// The (name, type) pair that we need to add to the context.
-    pub fn signature(&self) -> (Sp<ast::expr::GlobalVar>, Sp<TyBase>) {
-        (self.t.name.clone(), self.t.ty)
+    #[must_use]
+    fn signature(&self) -> (Sp<ast::expr::GlobalVar>, Sp<TyBase>) {
+        (self.name.clone(), self.ty)
     }
 }
 
 impl Sp<ast::decl::ExtConst> {
     /// The (name, type) pair that we need to add to the context.
-    pub fn signature(&self) -> (Sp<ast::expr::GlobalVar>, Sp<TyBase>) {
+    #[must_use]
+    fn signature(&self) -> (Sp<ast::expr::GlobalVar>, Sp<TyBase>) {
         (self.t.name.clone(), self.t.ty)
     }
 }
@@ -786,8 +849,10 @@ impl Sp<ast::decl::Prog> {
     /// Iterate through declarations and iteratively build the context
     /// to check subsequent declarations against.
     ///
-    /// Will also report duplicate definitions, although most redefinitions
-    /// should already be caught by the causality check.
+    /// # Errors
+    /// If any of the internal declarations are not consistent
+    /// with their types, will return a typing error to be printed by the compiler.
+    /// Will also report duplicate definitions.
     pub fn typecheck(&mut self) -> Result<()> {
         let mut varctx = HashMap::new();
         let mut functx = HashMap::new();
@@ -806,7 +871,7 @@ impl Sp<ast::decl::Prog> {
                         )
                         .is_some()
                     {
-                        let s = format!("Redefinition of const {}", name);
+                        let s = format!("Redefinition of const {name}");
                         return Err(err::Basic {
                             span: c.span,
                             msg: s,
@@ -838,7 +903,7 @@ impl Sp<ast::decl::Prog> {
                         )
                         .is_some()
                     {
-                        let s = format!("Redefinition of const {}", name);
+                        let s = format!("Redefinition of const {name}");
                         return Err(err::Basic {
                             span: c.span,
                             msg: s,

@@ -9,29 +9,43 @@ use std::collections::HashMap;
 
 use chandeliers_err::{self as err, IntoError, Result};
 
-use crate::ast::*;
+use crate::ast::{decl, expr, stmt, Tuple};
 use crate::sp::Sp;
 
-struct VarsDepth<'i> {
+/// Helper to record the depth during the traversal.
+struct DepthCtx<'i> {
+    /// Maximum observed depth for each known variable.
     max_known: &'i mut HashMap<expr::LocalVar, usize>,
+    /// Current depth of the exploration.
     current: usize,
 }
 
+/// Duplicate a `DepthCtx` (which is not `Clone` or `Copy` so
+/// duplication produces a reborrow).
 macro_rules! fork {
     ($depths:ident) => {
-        VarsDepth {
+        DepthCtx {
             max_known: &mut *$depths.max_known,
             current: $depths.current,
         }
     };
 }
 
-impl VarsDepth<'_> {
+impl DepthCtx<'_> {
+    /// Visit at depth `nb` from now on.
     fn with(mut self, nb: usize) -> Self {
         self.current = nb;
         self
     }
 
+    /// Check if the depth required is smaller than the current depth
+    /// of the exploration.
+    fn allows(&self, req: usize) -> bool {
+        req <= self.current
+    }
+
+    /// Record a new depth `depth` observed for variable `var`,
+    /// and update the known maximum if it is greater.
     fn update(self, var: &expr::LocalVar, depth: usize) {
         if let Some(old) = self.max_known.get(var) {
             if *old >= depth {
@@ -42,8 +56,11 @@ impl VarsDepth<'_> {
     }
 }
 
+/// Without modifying the object, check that the depth of variables is
+/// acceptable and that no uninitialized variables are accessed.
 trait CheckPositive {
-    fn check_positive(&self, depth: VarsDepth<'_>) -> Result<()>;
+    /// Verify that this item is deep enough.
+    fn check_positive(&self, depth: DepthCtx<'_>) -> Result<()>;
 }
 
 /// Compute the required depth of variables so that the program is positive
@@ -52,17 +69,22 @@ trait CheckPositive {
 /// everywhere in the tree.
 pub trait MakePositive {
     /// Mutate this object to make all its streams deep enough.
+    ///
+    /// # Errors
+    /// Failure means that it is impossible to make this positive and can
+    /// occur in exactly one place: putting too many `pre` in front of a variable
+    /// with not enough `->` before.
     fn make_positive(&mut self) -> Result<()>;
 }
 
 impl<T: CheckPositive> CheckPositive for Sp<T> {
-    fn check_positive(&self, depth: VarsDepth<'_>) -> Result<()> {
+    fn check_positive(&self, depth: DepthCtx<'_>) -> Result<()> {
         self.t.check_positive(depth)
     }
 }
 
 impl<T: CheckPositive> CheckPositive for Box<T> {
-    fn check_positive(&self, depth: VarsDepth<'_>) -> Result<()> {
+    fn check_positive(&self, depth: DepthCtx<'_>) -> Result<()> {
         self.as_ref().check_positive(depth)
     }
 }
@@ -85,10 +107,8 @@ impl MakePositive for decl::Prog {
 impl MakePositive for decl::Decl {
     fn make_positive(&mut self) -> Result<()> {
         match self {
-            Self::Const(_) => Ok(()),
-            Self::ExtConst(_) => Ok(()),
-            Self::ExtNode(_) => Ok(()),
             Self::Node(n) => n.make_positive(),
+            _ => Ok(()),
         }
     }
 }
@@ -96,7 +116,7 @@ impl MakePositive for decl::Decl {
 impl MakePositive for decl::Node {
     fn make_positive(&mut self) -> Result<()> {
         let mut depths = HashMap::new();
-        let view = VarsDepth {
+        let view = DepthCtx {
             max_known: &mut depths,
             current: 0,
         };
@@ -113,7 +133,7 @@ impl MakePositive for decl::Node {
 }
 
 impl CheckPositive for stmt::Statement {
-    fn check_positive(&self, depths: VarsDepth<'_>) -> Result<()> {
+    fn check_positive(&self, depths: DepthCtx<'_>) -> Result<()> {
         assert_eq!(depths.current, 0, "Statement expects depth to be 0");
         match self {
             Self::Let { source, .. } => source.check_positive(depths),
@@ -123,7 +143,7 @@ impl CheckPositive for stmt::Statement {
 }
 
 impl CheckPositive for expr::Expr {
-    fn check_positive(&self, depths: VarsDepth<'_>) -> Result<()> {
+    fn check_positive(&self, depths: DepthCtx<'_>) -> Result<()> {
         match self {
             // First let's get all the trivial cases out of the picture.
             Self::Lit(_) => Ok(()),
@@ -176,7 +196,7 @@ impl CheckPositive for expr::Expr {
 }
 
 impl<T: CheckPositive> CheckPositive for Tuple<T> {
-    fn check_positive(&self, depths: VarsDepth<'_>) -> Result<()> {
+    fn check_positive(&self, depths: DepthCtx<'_>) -> Result<()> {
         for elem in self.iter() {
             elem.check_positive(fork!(depths))?;
         }
@@ -185,7 +205,7 @@ impl<T: CheckPositive> CheckPositive for Tuple<T> {
 }
 
 impl CheckPositive for expr::Reference {
-    fn check_positive(&self, depths: VarsDepth<'_>) -> Result<()> {
+    fn check_positive(&self, depths: DepthCtx<'_>) -> Result<()> {
         match self {
             // We get globals for free.
             Self::Global(_) => Ok(()),
@@ -193,7 +213,7 @@ impl CheckPositive for expr::Reference {
             // to how many `pre` we found before the variable when performing
             // the translation.
             Self::Var(v) => {
-                if v.t.depth.t.dt <= depths.current {
+                if depths.allows(v.t.depth.t.dt) {
                     depths.update(&v.t.var.t, v.t.depth.t.dt);
                     Ok(())
                 } else {
