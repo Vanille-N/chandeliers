@@ -10,6 +10,8 @@
 //! A node has inputs, outputs, and a body constituted of definitions of
 //! outputs from inputs.
 
+#![allow(clippy::missing_docs_in_private_items)]
+
 use std::fmt;
 
 use proc_macro2::Span;
@@ -211,57 +213,61 @@ impl fmt::Display for LusIdent {
 
 span_end_on_field!(LusIdent.inner);
 
-/// A scalar type: `int`, `bool`, `float`.
-#[derive(syn_derive::Parse)]
-pub enum BaseType {
-    #[parse(peek = kw::int)]
-    Int(kw::int),
-    #[parse(peek = kw::bool)]
-    Bool(kw::bool),
-    #[parse(peek = kw::float)]
-    Float(kw::float),
-}
-span_end_by_match! {
-    BaseType.
-        Int(i) => i;
-        Bool(b) => b;
-        Float(f) => f;
-}
+pub mod ty {
+    use super::{kw, LusIdent, Sp, Span, SpanEnd};
 
-#[derive(syn_derive::Parse)]
-pub struct WhenClock {
-    _when: kw::when,
-    pub clock: Sp<LusIdent>,
-}
-span_end_on_field!(WhenClock.clock);
+    /// A scalar type: `int`, `bool`, `float`.
+    #[derive(syn_derive::Parse)]
+    pub enum Base {
+        #[parse(peek = kw::int)]
+        Int(kw::int),
+        #[parse(peek = kw::bool)]
+        Bool(kw::bool),
+        #[parse(peek = kw::float)]
+        Float(kw::float),
+    }
+    span_end_by_match! {
+        Base.
+            Int(i) => i;
+            Bool(b) => b;
+            Float(f) => f;
+    }
 
-#[derive(syn_derive::Parse)]
-pub struct WhenotClock {
-    _whenot: kw::whenot,
-    pub clock: Sp<LusIdent>,
-}
-span_end_on_field!(WhenotClock.clock);
+    #[derive(syn_derive::Parse)]
+    pub struct When {
+        _when: kw::when,
+        pub clock: Sp<LusIdent>,
+    }
+    span_end_on_field!(When.clock);
 
-#[derive(syn_derive::Parse)]
-pub enum TypeClock {
-    #[parse(peek = kw::when)]
-    When(Sp<WhenClock>),
-    #[parse(peek = kw::whenot)]
-    Whenot(Sp<WhenotClock>),
-    None,
-}
-span_end_by_match! {
-    TypeClock.
-        When(c) => c;
-        Whenot(c) => c;
-}
+    #[derive(syn_derive::Parse)]
+    pub struct Whenot {
+        _whenot: kw::whenot,
+        pub clock: Sp<LusIdent>,
+    }
+    span_end_on_field!(Whenot.clock);
 
-#[derive(syn_derive::Parse)]
-pub struct Type {
-    pub base: Sp<BaseType>,
-    pub clock: Sp<TypeClock>,
+    #[derive(syn_derive::Parse)]
+    pub enum Clock {
+        #[parse(peek = kw::when)]
+        When(Sp<When>),
+        #[parse(peek = kw::whenot)]
+        Whenot(Sp<Whenot>),
+        None,
+    }
+    span_end_by_match! {
+        Clock.
+            When(c) => c;
+            Whenot(c) => c;
+    }
+
+    #[derive(syn_derive::Parse)]
+    pub struct Type {
+        pub base: Sp<Base>,
+        pub clock: Sp<Clock>,
+    }
+    span_end_on_field!(Type./*clock or*/ base);
 }
-span_end_on_field!(Type./*clock or*/ base);
 
 /// A comma-separated list of idents.
 ///
@@ -288,7 +294,7 @@ span_end_on_field!(Decls.ids);
 pub struct ArgsTy {
     pub args: Sp<Decls>,
     _colon: Token![:],
-    pub ty: Sp<Type>,
+    pub ty: Sp<ty::Type>,
 }
 span_end_on_field!(ArgsTy.ty);
 
@@ -419,7 +425,72 @@ where
     Ok(punctuated)
 }
 
+pub mod op {
+    use super::{kw, punct, ParseStream, Token};
+
+    pub use kw::and as And;
+    pub use kw::fby as Fby;
+    pub use kw::or as Or;
+    pub type Arrow = Token![->];
+
+    /// Multiplicative operators: `*`, `/`, `%`, all with the same precedence.
+    #[allow(clippy::enum_variant_names)]
+    #[derive(syn_derive::Parse)]
+    pub enum Mul {
+        #[parse(peek = Token![*])]
+        Mul(Token![*]),
+        #[parse(peek = Token![/])]
+        Div(Token![/]),
+        #[parse(peek = Token![%])]
+        Rem(Token![%]),
+    }
+
+    /// Do not confuse an actual `-` with the beginning of a `->`.
+    fn exactly_token_neg(s: ParseStream) -> bool {
+        s.peek(Token![-]) && !s.peek2(Token![>])
+    }
+
+    /// Additive operators: `+`, `-`, all with the same precedence.
+    #[derive(syn_derive::Parse)]
+    pub enum Add {
+        #[parse(peek = Token![+])]
+        Add(Token![+]),
+        #[parse(peek_func = exactly_token_neg)]
+        Sub(Token![-]),
+    }
+
+    /// Comparison operators: `<=`, `>=`, `<`, `>`, `=`, `<>`.
+    ///
+    /// NOTE: these operators are associative at the parsing level,
+    /// but the typechecker will ensure that they are exactly binary.
+    #[derive(syn_derive::Parse)]
+    pub enum Cmp {
+        #[parse(peek = punct::Neq)]
+        Ne(punct::Neq),
+        #[parse(peek = Token![<=])]
+        Le(Token![<=]),
+        #[parse(peek = Token![>=])]
+        Ge(Token![>=]),
+        #[parse(peek = Token![<])]
+        Lt(Token![<]),
+        #[parse(peek = Token![>])]
+        Gt(Token![>]),
+        #[parse(peek = Token![=])]
+        Eq(Token![=]),
+    }
+
+    /// Clock operators: `when` and `whenot`.
+    #[derive(syn_derive::Parse)]
+    pub enum Clock {
+        #[parse(peek = kw::when)]
+        When(kw::when),
+        #[parse(peek = kw::whenot)]
+        Whenot(kw::whenot),
+    }
+}
+
 /// Parsing expressions.
+#[allow(clippy::module_name_repetitions)]
 pub mod expr {
     //! Expressions by order of decreasing precedence
     //!    [ _ or _ ] (<-)
@@ -438,6 +509,7 @@ pub mod expr {
     //!    [ v ]
     //!    [ not _ ]
 
+    #[allow(clippy::wildcard_imports)]
     use super::*;
 
     /// A literal.
@@ -450,11 +522,11 @@ pub mod expr {
     /// ^lit
     /// ```
     #[derive(syn_derive::Parse)]
-    pub struct LitExpr {
-        pub lit: Sp<Lit>,
+    pub struct Lit {
+        pub lit: Sp<syn::Lit>,
     }
-    span_end_on_field!(LitExpr.lit);
-    impl Hint for LitExpr {
+    span_end_on_field!(Lit.lit);
+    impl Hint for Lit {
         fn hint(s: ParseStream) -> bool {
             s.peek(Lit)
         }
@@ -479,16 +551,16 @@ pub mod expr {
     /// ^Var
     /// ```
     #[derive(syn_derive::Parse)]
-    pub enum AtomicExpr {
-        #[parse(peek_func = ParenExpr::hint)]
-        Paren(Sp<ParenExpr>),
-        #[parse(peek_func = LitExpr::hint)]
-        Lit(Sp<LitExpr>),
-        #[parse(peek_func = VarExpr::hint)]
-        Var(Sp<VarExpr>),
+    pub enum Atomic {
+        #[parse(peek_func = Paren::hint)]
+        Paren(Sp<Paren>),
+        #[parse(peek_func = Lit::hint)]
+        Lit(Sp<Lit>),
+        #[parse(peek_func = Var::hint)]
+        Var(Sp<Var>),
     }
     span_end_by_match! {
-        AtomicExpr.
+        Atomic.
             Paren(p) => p;
             Lit(l) => l;
             Var(v) => v;
@@ -514,23 +586,23 @@ pub mod expr {
     /// ^^^^^^^^^^^^^^Merge
     /// ```
     #[derive(syn_derive::Parse)]
-    pub enum PositiveExpr {
-        #[parse(peek_func = CallExpr::hint)]
-        Call(Sp<CallExpr>),
-        #[parse(peek_func = IfExpr::hint)]
-        If(Sp<IfExpr>),
-        #[parse(peek_func = MergeExpr::hint)]
-        Merge(Sp<MergeExpr>),
-        #[parse(peek_func = PreExpr::hint)]
-        Pre(Sp<PreExpr>),
-        #[parse(peek_func = NegExpr::hint)]
-        Neg(Sp<NegExpr>),
-        #[parse(peek_func = NotExpr::hint)]
-        Not(Sp<NotExpr>),
-        Atomic(Sp<AtomicExpr>),
+    pub enum Positive {
+        #[parse(peek_func = Call::hint)]
+        Call(Sp<Call>),
+        #[parse(peek_func = If::hint)]
+        If(Sp<If>),
+        #[parse(peek_func = Merge::hint)]
+        Merge(Sp<Merge>),
+        #[parse(peek_func = Pre::hint)]
+        Pre(Sp<Pre>),
+        #[parse(peek_func = Neg::hint)]
+        Neg(Sp<Neg>),
+        #[parse(peek_func = Not::hint)]
+        Not(Sp<Not>),
+        Atomic(Sp<Atomic>),
     }
     span_end_by_match! {
-        PositiveExpr.
+        Positive.
             If(i) => i;
             Merge(m) => m;
             Call(c) => c;
@@ -545,11 +617,11 @@ pub mod expr {
     /// It can have any name accepted under the rules defined by `LusIdent`
     /// (i.e. everything except Lustre keywords and some Rust keywords)
     #[derive(syn_derive::Parse)]
-    pub struct VarExpr {
+    pub struct Var {
         pub name: Sp<LusIdent>,
     }
-    span_end_on_field!(VarExpr.name);
-    impl Hint for VarExpr {
+    span_end_on_field!(Var.name);
+    impl Hint for Var {
         fn hint(s: ParseStream) -> bool {
             LusIdent::peek(s)
         }
@@ -563,18 +635,18 @@ pub mod expr {
     ///    ^^^^^^^^^args
     /// ```
     ///
-    /// Notice how the arguments are a `ParenExpr` and not a
+    /// Notice how the arguments are a `Paren` and not a
     /// `Punctuated<Expr, Token![,]>`: this is to accomodate some identifications
     /// between `foo(())` and `foo()` at the translation level.
     #[derive(syn_derive::Parse)]
-    pub struct CallExpr {
+    pub struct Call {
         pub fun: Sp<LusIdent>,
-        pub args: Sp<ParenExpr>,
+        pub args: Sp<Paren>,
     }
-    span_end_on_field!(CallExpr.args);
-    impl Hint for CallExpr {
+    span_end_on_field!(Call.args);
+    impl Hint for Call {
         fn hint(s: ParseStream) -> bool {
-            fn is_parenthesized(s: ParseStream) -> Result<Paren> {
+            fn is_parenthesized(s: ParseStream) -> Result<syn::token::Paren> {
                 s.parse::<LusIdent>()?;
                 let _content;
                 let p = syn::parenthesized!(_content in s);
@@ -592,17 +664,17 @@ pub mod expr {
     ///  ^^^^^^^inner
     /// ```
     #[derive(syn_derive::Parse)]
-    pub struct ParenExpr {
+    pub struct Paren {
         #[syn(parenthesized)]
-        pub _paren: Paren,
-        #[syn(in = _paren)]
+        pub paren: syn::token::Paren,
+        #[syn(in = paren)]
         #[parse(Punctuated::parse_terminated)]
         pub inner: Punctuated<Sp<Box<Expr>>, Token![,]>,
     }
-    span_end_on_field!(ParenExpr._paren);
-    impl Hint for ParenExpr {
+    span_end_on_field!(Paren.paren);
+    impl Hint for Paren {
         fn hint(s: ParseStream) -> bool {
-            fn is_parenthesized(s: ParseStream) -> Result<Paren> {
+            fn is_parenthesized(s: ParseStream) -> Result<syn::token::Paren> {
                 let _content;
                 let p = syn::parenthesized!(_content in s);
                 Ok(p)
@@ -619,12 +691,12 @@ pub mod expr {
     ///     ^inner
     /// ```
     #[derive(syn_derive::Parse)]
-    pub struct PreExpr {
+    pub struct Pre {
         pub _pre: kw::pre,
-        pub inner: Sp<Box<PositiveExpr>>,
+        pub inner: Sp<Box<Positive>>,
     }
-    span_end_on_field!(PreExpr.inner);
-    impl Hint for PreExpr {
+    span_end_on_field!(Pre.inner);
+    impl Hint for Pre {
         fn hint(s: ParseStream) -> bool {
             s.peek(kw::pre)
         }
@@ -638,12 +710,12 @@ pub mod expr {
     ///  ^inner
     /// ```
     #[derive(syn_derive::Parse)]
-    pub struct NegExpr {
+    pub struct Neg {
         pub _neg: Token![-],
-        pub inner: Sp<Box<PositiveExpr>>,
+        pub inner: Sp<Box<Positive>>,
     }
-    span_end_on_field!(NegExpr.inner);
-    impl Hint for NegExpr {
+    span_end_on_field!(Neg.inner);
+    impl Hint for Neg {
         fn hint(s: ParseStream) -> bool {
             s.peek(Token![-])
         }
@@ -657,134 +729,80 @@ pub mod expr {
     ///     ^inner
     /// ```
     #[derive(syn_derive::Parse)]
-    pub struct NotExpr {
+    pub struct Not {
         pub _not: kw::not,
-        pub inner: Sp<Box<PositiveExpr>>,
+        pub inner: Sp<Box<Positive>>,
     }
-    span_end_on_field!(NotExpr.inner);
-    impl Hint for NotExpr {
+    span_end_on_field!(Not.inner);
+    impl Hint for Not {
         fn hint(s: ParseStream) -> bool {
             s.peek(kw::not)
         }
     }
 
-    /// Multiplicative operators: `*`, `/`, `%`, all with the same precedence.
+    /// A clocked expression as a `Clock`-separated list of atomic expressions.
     #[derive(syn_derive::Parse)]
-    pub enum MulOp {
-        #[parse(peek = Token![*])]
-        Mul(Token![*]),
-        #[parse(peek = Token![/])]
-        Div(Token![/]),
-        #[parse(peek = Token![%])]
-        Rem(Token![%]),
-    }
-
-    /// Do not confuse an actual `-` with the beginning of a `->`.
-    fn exactly_token_neg(s: ParseStream) -> bool {
-        s.peek(Token![-]) && !s.peek2(Token![>])
-    }
-
-    /// Additive operators: `+`, `-`, all with the same precedence.
-    #[derive(syn_derive::Parse)]
-    pub enum AddOp {
-        #[parse(peek = Token![+])]
-        Add(Token![+]),
-        #[parse(peek_func = exactly_token_neg)]
-        Sub(Token![-]),
-    }
-
-    /// Comparison operators: `<=`, `>=`, `<`, `>`, `=`, `<>`.
-    ///
-    /// NOTE: these operators are associative at the parsing level,
-    /// but the typechecker will ensure that they are exactly binary.
-    #[derive(syn_derive::Parse)]
-    pub enum CmpOp {
-        #[parse(peek = punct::Neq)]
-        Ne(punct::Neq),
-        #[parse(peek = Token![<=])]
-        Le(Token![<=]),
-        #[parse(peek = Token![>=])]
-        Ge(Token![>=]),
-        #[parse(peek = Token![<])]
-        Lt(Token![<]),
-        #[parse(peek = Token![>])]
-        Gt(Token![>]),
-        #[parse(peek = Token![=])]
-        Eq(Token![=]),
-    }
-
-    /// Clock operators: `when` and `whenot`.
-    #[derive(syn_derive::Parse)]
-    pub enum ClockOp {
-        #[parse(peek = kw::when)]
-        When(kw::when),
-        #[parse(peek = kw::whenot)]
-        Whenot(kw::whenot),
-    }
-
-    /// A clocked expression as a `ClockOp`-separated list of atomic expressions.
-    #[derive(syn_derive::Parse)]
-    pub struct ClockExpr {
+    pub struct Clock {
         #[parse(punctuated_parse_separated_nonempty_costly)]
-        pub items: Punctuated<Sp<PositiveExpr>, ClockOp>,
+        pub items: Punctuated<Sp<Positive>, op::Clock>,
     }
-    span_end_on_field!(ClockExpr.items);
+    span_end_on_field!(Clock.items);
 
-    /// A multiplicative expression as a `MulOp`-separated list of clocked expressions.
+    /// A multiplicative expression as a `Mul`-separated list of clocked expressions.
     #[derive(syn_derive::Parse)]
-    pub struct MulExpr {
+    pub struct Mul {
         #[parse(punctuated_parse_separated_nonempty_costly)]
-        pub items: Punctuated<Sp<ClockExpr>, MulOp>,
+        pub items: Punctuated<Sp<Clock>, op::Mul>,
     }
-    span_end_on_field!(MulExpr.items);
+    span_end_on_field!(Mul.items);
 
-    /// An additive expression as an `AddOp`-separated list of multiplicative expressions.
+    /// An additive expression as an `Add`-separated list of multiplicative expressions.
     #[derive(syn_derive::Parse)]
-    pub struct AddExpr {
+    pub struct Add {
         #[parse(punctuated_parse_separated_nonempty_costly)]
-        pub items: Punctuated<Sp<MulExpr>, AddOp>,
+        pub items: Punctuated<Sp<Mul>, op::Add>,
     }
-    span_end_on_field!(AddExpr.items);
+    span_end_on_field!(Add.items);
 
     /// A "Then" temporal expression as a `->`-separated list of additive expressions.
     #[derive(syn_derive::Parse)]
-    pub struct ThenExpr {
+    pub struct Then {
         #[parse(punctuated_parse_separated_nonempty_costly)]
-        pub items: Punctuated<Sp<AddExpr>, Token![->]>,
+        pub items: Punctuated<Sp<Add>, op::Arrow>,
     }
-    span_end_on_field!(ThenExpr.items);
+    span_end_on_field!(Then.items);
 
     /// A "Fby" temporal expression as a `fby`-separated list of then expressions.
     #[derive(syn_derive::Parse)]
-    pub struct FbyExpr {
+    pub struct Fby {
         #[parse(punctuated_parse_separated_nonempty_costly)]
-        pub items: Punctuated<Sp<ThenExpr>, kw::fby>,
+        pub items: Punctuated<Sp<Then>, op::Fby>,
     }
-    span_end_on_field!(FbyExpr.items);
+    span_end_on_field!(Fby.items);
 
-    /// A comparison expression as a `CmpOp`-separated list of temporal expressions.
+    /// A comparison expression as a `Cmp`-separated list of temporal expressions.
     #[derive(syn_derive::Parse)]
-    pub struct CmpExpr {
+    pub struct Cmp {
         #[parse(punctuated_parse_separated_nonempty_costly)]
-        pub items: Punctuated<Sp<FbyExpr>, CmpOp>,
+        pub items: Punctuated<Sp<Fby>, op::Cmp>,
     }
-    span_end_on_field!(CmpExpr.items);
+    span_end_on_field!(Cmp.items);
 
     /// A conjunction as an `and`-separated list of comparisons.
     #[derive(syn_derive::Parse)]
-    pub struct AndExpr {
+    pub struct And {
         #[parse(Punctuated::parse_separated_nonempty)]
-        pub items: Punctuated<Sp<CmpExpr>, kw::and>,
+        pub items: Punctuated<Sp<Cmp>, op::And>,
     }
-    span_end_on_field!(AndExpr.items);
+    span_end_on_field!(And.items);
 
     /// A disjunction as an `or`-separated list of conjunctions.
     #[derive(syn_derive::Parse)]
-    pub struct OrExpr {
+    pub struct Or {
         #[parse(Punctuated::parse_separated_nonempty)]
-        pub items: Punctuated<Sp<AndExpr>, kw::or>,
+        pub items: Punctuated<Sp<And>, op::Or>,
     }
-    span_end_on_field!(OrExpr.items);
+    span_end_on_field!(Or.items);
 
     /// A conditional expression.
     ///
@@ -798,7 +816,7 @@ pub mod expr {
     ///                  ^no
     /// ```
     #[derive(syn_derive::Parse)]
-    pub struct IfExpr {
+    pub struct If {
         pub _if: Token![if],
         pub cond: Sp<Expr>,
         pub _then: kw::then,
@@ -806,12 +824,12 @@ pub mod expr {
         pub _else: Token![else],
         pub no: Sp<Expr>,
     }
-    impl Hint for IfExpr {
+    impl Hint for If {
         fn hint(s: ParseStream) -> bool {
             s.peek(Token![if])
         }
     }
-    span_end_on_field!(IfExpr.no);
+    span_end_on_field!(If.no);
 
     /// A merge of two clocks.
     ///
@@ -823,29 +841,29 @@ pub mod expr {
     ///            ^^^off
     /// ```
     #[derive(syn_derive::Parse)]
-    pub struct MergeExpr {
+    pub struct Merge {
         pub _merge: kw::merge,
-        pub clk: Sp<Box<AtomicExpr>>,
-        pub on: Sp<Box<AtomicExpr>>,
-        pub off: Sp<Box<AtomicExpr>>,
+        pub clk: Sp<Box<Atomic>>,
+        pub on: Sp<Box<Atomic>>,
+        pub off: Sp<Box<Atomic>>,
     }
-    impl Hint for MergeExpr {
+    impl Hint for Merge {
         fn hint(s: ParseStream) -> bool {
             s.peek(kw::merge)
         }
     }
-    span_end_on_field!(MergeExpr.off);
+    span_end_on_field!(Merge.off);
 
     /// Any expression.
     pub struct Expr {
         /// `or` has the lowest precedence.
-        pub inner: Sp<OrExpr>,
+        pub inner: Sp<Or>,
     }
     span_end_on_field!(Expr.inner);
 
     impl Parse for Expr {
         fn parse(input: ParseStream) -> Result<Self> {
-            let inner: Sp<OrExpr> = input.parse()?;
+            let inner: Sp<Or> = input.parse()?;
             Ok(Self { inner })
         }
     }
@@ -981,9 +999,9 @@ pub struct Node {
     #[parse(punctuated_parse_separated_trailing_until::<Sp<Statement>, Token![;], kw::tel>)]
     pub defs: Punctuated<Sp<Statement>, Token![;]>,
 
-    _kwtel: kw::tel,
+    kwtel: kw::tel,
 }
-span_end_on_field!(Node._kwtel);
+span_end_on_field!(Node.kwtel);
 
 /// Definition of a global constant.
 ///
@@ -1001,7 +1019,7 @@ pub struct Const {
     _const: Token![const],
     pub name: Sp<LusIdent>,
     _colon: Token![:],
-    pub ty: Sp<Type>,
+    pub ty: Sp<ty::Type>,
     _equal: Token![=],
     pub value: Sp<Expr>,
 }
@@ -1057,7 +1075,7 @@ pub struct ExtConst {
     _const: Token![const],
     pub name: Sp<LusIdent>,
     _colon: Token![:],
-    pub ty: Sp<Type>,
+    pub ty: Sp<ty::Type>,
 }
 span_end_on_field!(ExtConst.ty);
 
@@ -1090,12 +1108,12 @@ span_end_by_match! {
 #[derive(syn_derive::Parse)]
 pub struct AttrTargets {
     #[syn(parenthesized)]
-    _paren: Paren,
-    #[syn(in = _paren)]
+    paren: Paren,
+    #[syn(in = paren)]
     #[parse(Punctuated::parse_terminated)]
     targets: Punctuated<syn::Lit, Token![,]>,
 }
-span_end_on_field!(AttrTargets._paren);
+span_end_on_field!(AttrTargets.paren);
 impl Hint for AttrTargets {
     fn hint(s: ParseStream) -> bool {
         fn is_parenthesized(s: ParseStream) -> Result<Paren> {
@@ -1121,12 +1139,12 @@ span_end_by_match! {
 #[derive(syn_derive::Parse)]
 pub struct AttrParams {
     #[syn(bracketed)]
-    _brack: Bracket,
-    #[syn(in = _brack)]
+    brack: Bracket,
+    #[syn(in = brack)]
     #[parse(Punctuated::parse_terminated)]
     params: Punctuated<LusIdent, Token![,]>,
 }
-span_end_on_field!(AttrParams._brack);
+span_end_on_field!(AttrParams.brack);
 impl Hint for AttrParams {
     fn hint(s: ParseStream) -> bool {
         fn is_bracketed(s: ParseStream) -> Result<Bracket> {

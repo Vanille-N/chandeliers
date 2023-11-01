@@ -11,11 +11,12 @@ use crate::causality::depends::Depends;
 use std::fmt;
 use std::hash::Hash;
 
-crate::sp::derive_spanned!(Tuple<T> where <T>);
+crate::sp::derive_with_span!(Tuple<T> where <T>);
 /// Because `Vec` does not implement `Parse` as we want,
 /// `Tuple` is used to for sequences.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Tuple<T> {
+    /// Internals, intended to be interpreted as comma-separated.
     elems: Vec<T>,
 }
 
@@ -39,6 +40,8 @@ impl<T> Tuple<T> {
     }
 
     /// Map a faillible funciton by reference to a tuple.
+    /// # Errors
+    /// Fails if the function fails on any of the elements.
     pub fn try_map<F, U, E>(&self, f: F) -> Result<Tuple<U>, E>
     where
         F: Fn(&T) -> Result<U, E>,
@@ -101,7 +104,7 @@ impl<T: Depends> Depends for Tuple<T> {
 pub mod past {
     use std::fmt;
 
-    crate::sp::derive_spanned!(Depth);
+    crate::sp::derive_with_span!(Depth);
     /// The depth of a variable (how many `pre`/`fby` are in front)
     #[derive(Debug, Clone, Copy)]
     pub struct Depth {
@@ -136,14 +139,13 @@ where
 /// Types of expressions.
 pub mod ty {
     use super::past;
-    use super::Tuple;
     use crate::sp::Sp;
     use std::fmt;
 
-    crate::sp::derive_spanned!(TyBase);
+    crate::sp::derive_with_span!(Base);
     /// A basic scalar type.
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-    pub enum TyBase {
+    pub enum Base {
         /// Integer type (parsed from `int`, represented by `i64`)
         Int,
         /// Float type (parsed from `float`, represented by `f64`)
@@ -168,7 +170,7 @@ pub mod ty {
         Adaptative,
     }
 
-    impl fmt::Display for TyBase {
+    impl fmt::Display for Base {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
             match self {
                 Self::Int => write!(f, "int"),
@@ -178,7 +180,7 @@ pub mod ty {
         }
     }
 
-    crate::sp::derive_spanned!(Clocked<T> where <T>);
+    crate::sp::derive_with_span!(Clocked<T> where <T>);
     /// A clock bound to an object (typically a `TyBase`).
     #[derive(Debug, Clone)]
     pub struct Clocked<T> {
@@ -193,25 +195,25 @@ pub mod ty {
     #[derive(Debug, Clone)]
     pub struct Stream {
         /// Inner type.
-        pub ty: Sp<Clocked<TyBase>>,
+        pub ty: Sp<Clocked<Base>>,
         /// How many steps into the past this variable is used
         /// (computed by `MakePositive`).
         pub depth: Sp<past::Depth>,
     }
 
-    crate::sp::derive_spanned!(TyTuple);
+    crate::sp::derive_with_span!(Tuple);
     /// A composite type of several values arbitrarily deeply nested.
     #[derive(Debug, Clone)]
-    pub enum TyTuple {
+    pub enum Tuple {
         /// End of the nesting by a singleton element.
         /// Covers both `x` and `(x)`.
-        Single(Sp<TyBase>),
+        Single(Sp<Base>),
         /// A tuple of any number of elements.
         /// E.g. `()`, `(x,)`, `(x, y, z)`, ...
-        Multiple(Sp<Tuple<Sp<TyTuple>>>),
+        Multiple(Sp<super::Tuple<Sp<Tuple>>>),
     }
 
-    impl fmt::Display for TyTuple {
+    impl fmt::Display for Tuple {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
             match self {
                 Self::Single(t) => write!(f, "{t}"),
@@ -234,14 +236,215 @@ pub mod ty {
     }
 }
 
-/// Definitions of expressions.
-pub mod expr {
-    use super::past;
-    use super::Tuple;
+/// Variables and other kinds of referencese to external values.
+pub mod var {
     use crate::sp::Sp;
     use std::fmt;
 
-    crate::sp::derive_spanned!(Lit);
+    crate::sp::derive_with_span!(Local);
+    /// A local variable.
+    #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+    pub struct Local {
+        /// Name.
+        pub repr: Sp<String>,
+        /// Number to generate unique identifiers.
+        pub run_uid: usize,
+    }
+
+    crate::sp::derive_with_span!(Global);
+    /// A global constant.
+    #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+    pub struct Global {
+        /// Name.
+        pub repr: Sp<String>,
+        /// Number to generate unique identifiers.
+        pub run_uid: usize,
+    }
+
+    impl fmt::Display for Local {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            write!(f, "{}", self.repr)
+        }
+    }
+
+    impl fmt::Display for Global {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            write!(f, "{}", self.repr)
+        }
+    }
+
+    crate::sp::derive_with_span!(Past);
+    /// A past value of a variable.
+    #[derive(Debug, Clone)]
+    pub struct Past {
+        /// Variable.
+        pub var: Sp<Local>,
+        /// How many steps in the past.
+        pub depth: Sp<super::past::Depth>,
+    }
+
+    crate::sp::derive_with_span!(Node);
+    /// A subnode.
+    #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+    pub struct Node {
+        /// Index in the `struct`'s `__node` field.
+        pub id: Sp<usize>,
+        /// Name of the call.
+        pub repr: Sp<String>,
+    }
+
+    impl fmt::Display for Past {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            if self.depth.t.dt > 0 {
+                write!(f, "{}@{}", self.var, self.depth)
+            } else {
+                write!(f, "{}", self.var)
+            }
+        }
+    }
+
+    impl fmt::Display for Node {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            write!(f, "{}", self.repr)
+        }
+    }
+
+    crate::sp::derive_with_span!(Reference);
+    /// An extern value, i.e. not composed of primitive literals
+    /// and operators.
+    #[derive(Debug, Clone)]
+    pub enum Reference {
+        /// A global variable.
+        Global(Sp<Global>),
+        /// A local variable, possibly in the past.
+        Var(Sp<Past>),
+    }
+
+    impl fmt::Display for Reference {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            match self {
+                Self::Var(v) => write!(f, "{v}"),
+                Self::Global(g) => write!(f, "{g}"),
+            }
+        }
+    }
+}
+
+/// Operators.
+pub mod op {
+    use std::fmt;
+
+    /// A binary operator.
+    #[derive(Debug, Clone, Copy)]
+    pub enum Bin {
+        /// `+`
+        Add,
+        /// `*`
+        Mul,
+        /// `-` (binary)
+        Sub,
+        /// `/`
+        Div,
+        /// `%`
+        Rem,
+        /// `and`
+        BitAnd,
+        /// `or`
+        BitOr,
+        /// Not currently representable.
+        BitXor,
+    }
+
+    impl fmt::Display for Bin {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            match self {
+                Self::Add => write!(f, "+"),
+                Self::Mul => write!(f, "*"),
+                Self::Sub => write!(f, "-"),
+                Self::Div => write!(f, "/"),
+                Self::Rem => write!(f, "%"),
+                Self::BitAnd => write!(f, "and"),
+                Self::BitOr => write!(f, "or"),
+                Self::BitXor => write!(f, "^"),
+            }
+        }
+    }
+
+    /// A unary operator.
+    #[derive(Debug, Clone, Copy)]
+    pub enum Un {
+        /// `-` (unary)
+        Neg,
+        /// `not`
+        Not,
+    }
+
+    impl fmt::Display for Un {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            match self {
+                Self::Neg => write!(f, "-"),
+                Self::Not => write!(f, "not"),
+            }
+        }
+    }
+
+    /// A comparison operator.
+    #[derive(Debug, Clone, Copy)]
+    pub enum Cmp {
+        /// `<=`
+        Le,
+        /// `>=`
+        Ge,
+        /// `<`
+        Lt,
+        /// `>`
+        Gt,
+        /// `=`
+        Eq,
+        /// `<>`
+        Ne,
+    }
+
+    impl fmt::Display for Cmp {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            match self {
+                Self::Le => write!(f, "<="),
+                Self::Ge => write!(f, ">="),
+                Self::Lt => write!(f, "<"),
+                Self::Gt => write!(f, ">"),
+                Self::Eq => write!(f, "="),
+                Self::Ne => write!(f, "<>"),
+            }
+        }
+    }
+
+    /// A clock operator applied to an expression.
+    #[derive(Debug, Clone, Copy)]
+    pub enum Clock {
+        /// `when`
+        When,
+        /// `whenot`
+        Whenot,
+    }
+
+    impl fmt::Display for Clock {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            match self {
+                Self::When => write!(f, "when"),
+                Self::Whenot => write!(f, "whenot"),
+            }
+        }
+    }
+}
+
+/// Definitions of expressions.
+pub mod expr {
+    use super::Tuple;
+    use super::{op, past};
+    use crate::sp::Sp;
+    use std::fmt;
+
+    crate::sp::derive_with_span!(Lit);
     /// A literal.
     #[derive(Debug, Clone, Copy)]
     pub enum Lit {
@@ -263,235 +466,45 @@ pub mod expr {
         }
     }
 
-    crate::sp::derive_spanned!(LocalVar);
-    /// A local variable.
-    #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-    pub struct LocalVar {
-        /// Name.
-        pub repr: Sp<String>,
-        /// Number to generate unique identifiers.
-        pub run_uid: usize,
-    }
-
-    crate::sp::derive_spanned!(GlobalVar);
-    /// A global constant.
-    #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-    pub struct GlobalVar {
-        /// Name.
-        pub repr: Sp<String>,
-        /// Number to generate unique identifiers.
-        pub run_uid: usize,
-    }
-
-    impl fmt::Display for LocalVar {
-        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-            write!(f, "{}", self.repr)
-        }
-    }
-
-    impl fmt::Display for GlobalVar {
-        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-            write!(f, "{}", self.repr)
-        }
-    }
-
-    crate::sp::derive_spanned!(PastVar);
-    /// A past value of a variable.
-    #[derive(Debug, Clone)]
-    pub struct PastVar {
-        /// Variable.
-        pub var: Sp<LocalVar>,
-        /// How many steps in the past.
-        pub depth: Sp<past::Depth>,
-    }
-
-    crate::sp::derive_spanned!(NodeId);
-    /// A subnode.
-    #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-    pub struct NodeId {
-        /// Index in the `struct`'s `__node` field.
-        pub id: Sp<usize>,
-        /// Name of the call.
-        pub repr: Sp<String>,
-    }
-
-    impl fmt::Display for PastVar {
-        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-            if self.depth.t.dt > 0 {
-                write!(f, "{}@{}", self.var, self.depth)
-            } else {
-                write!(f, "{}", self.var)
-            }
-        }
-    }
-
-    impl fmt::Display for NodeId {
-        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-            write!(f, "{}", self.repr)
-        }
-    }
-
-    crate::sp::derive_spanned!(Reference);
-    /// An extern value, i.e. not composed of primitive literals
-    /// and operators.
-    #[derive(Debug, Clone)]
-    pub enum Reference {
-        /// A global variable.
-        Global(Sp<GlobalVar>),
-        /// A local variable, possibly in the past.
-        Var(Sp<PastVar>),
-    }
-
-    impl fmt::Display for Reference {
-        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-            match self {
-                Self::Var(v) => write!(f, "{v}"),
-                Self::Global(g) => write!(f, "{g}"),
-            }
-        }
-    }
-
-    /// A binary operator.
-    #[derive(Debug, Clone, Copy)]
-    pub enum BinOp {
-        /// `+`
-        Add,
-        /// `*`
-        Mul,
-        /// `-` (binary)
-        Sub,
-        /// `/`
-        Div,
-        /// `%`
-        Rem,
-        /// `and`
-        BitAnd,
-        /// `or`
-        BitOr,
-        /// Not currently representable.
-        BitXor,
-    }
-
-    impl fmt::Display for BinOp {
-        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-            match self {
-                Self::Add => write!(f, "+"),
-                Self::Mul => write!(f, "*"),
-                Self::Sub => write!(f, "-"),
-                Self::Div => write!(f, "/"),
-                Self::Rem => write!(f, "%"),
-                Self::BitAnd => write!(f, "and"),
-                Self::BitOr => write!(f, "or"),
-                Self::BitXor => write!(f, "^"),
-            }
-        }
-    }
-
-    /// A unary operator.
-    #[derive(Debug, Clone, Copy)]
-    pub enum UnOp {
-        /// `-` (unary)
-        Neg,
-        /// `not`
-        Not,
-    }
-
-    impl fmt::Display for UnOp {
-        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-            match self {
-                Self::Neg => write!(f, "-"),
-                Self::Not => write!(f, "not"),
-            }
-        }
-    }
-
-    /// A comparison operator.
-    #[derive(Debug, Clone, Copy)]
-    pub enum CmpOp {
-        /// `<=`
-        Le,
-        /// `>=`
-        Ge,
-        /// `<`
-        Lt,
-        /// `>`
-        Gt,
-        /// `=`
-        Eq,
-        /// `<>`
-        Ne,
-    }
-
-    impl fmt::Display for CmpOp {
-        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-            match self {
-                Self::Le => write!(f, "<="),
-                Self::Ge => write!(f, ">="),
-                Self::Lt => write!(f, "<"),
-                Self::Gt => write!(f, ">"),
-                Self::Eq => write!(f, "="),
-                Self::Ne => write!(f, "<>"),
-            }
-        }
-    }
-
-    /// A clock operator applied to an expression.
-    #[derive(Debug, Clone, Copy)]
-    pub enum ClockOp {
-        /// `when`
-        When,
-        /// `whenot`
-        Whenot,
-    }
-
-    impl fmt::Display for ClockOp {
-        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-            match self {
-                Self::When => write!(f, "when"),
-                Self::Whenot => write!(f, "whenot"),
-            }
-        }
-    }
-
-    crate::sp::derive_spanned!(Expr);
+    crate::sp::derive_with_span!(Expr);
     /// An expression.
     #[derive(Debug, Clone)]
     pub enum Expr {
         /// Literals `1.0`, `42`, `true`, ...
         Lit(Sp<Lit>),
         /// External values `x`, `_0`, ...
-        Reference(Sp<Reference>),
+        Reference(Sp<super::var::Reference>),
         /// Tuples `(1, 2.0, x)`.
         Tuple(Sp<Tuple<Sp<Expr>>>),
         /// Application of a binary operator `a + b`.
-        BinOp {
+        Bin {
             /// Binary operator (e.g. `+`).
-            op: BinOp,
+            op: op::Bin,
             /// Left-hand-side (e.g. `a`).
             lhs: Sp<Box<Expr>>,
             /// Right-hand-side (e.g. `b`).
             rhs: Sp<Box<Expr>>,
         },
         /// Application of a unary operator `not b`.
-        UnOp {
+        Un {
             /// Unary operator (e.g. `not`).
-            op: UnOp,
+            op: op::Un,
             /// Contents (e.g. `b`).
             inner: Sp<Box<Expr>>,
         },
         /// Application of a comparison function `a <> b`.
-        CmpOp {
+        Cmp {
             /// Comparison operator (e.g. `<>`).
-            op: CmpOp,
+            op: op::Cmp,
             /// Left-hand-side (e.g. `a`).
             lhs: Sp<Box<Expr>>,
             /// Right-hand-side (e.g. `b`).
             rhs: Sp<Box<Expr>>,
         },
         /// A when or whenot expression `e when b`.
-        ClockOp {
+        Clock {
             /// Clock operator (e.g. `when`).
-            op: ClockOp,
+            op: op::Clock,
             /// Expression being clocked (e.g. `e`).
             inner: Sp<Box<Expr>>,
             /// Clock variable (e.g. `b`).
@@ -530,7 +543,7 @@ pub mod expr {
             /// Number of steps to wait before activating for the first time.
             clk: usize,
             /// Index in the `struct`'s `__nodes` field.
-            id: Sp<NodeId>,
+            id: Sp<super::var::Node>,
             /// Arguments of the function call (parenthesized but not a tuple).
             args: Sp<Box<Expr>>,
         },
@@ -542,9 +555,9 @@ pub mod expr {
                 Self::Lit(l) => write!(f, "{l}"),
                 Self::Reference(r) => write!(f, "{r}"),
                 Self::Tuple(t) => write!(f, "{t}"),
-                Self::BinOp { op, lhs, rhs } => write!(f, "({lhs} {op} {rhs})"),
-                Self::UnOp { op, inner } => write!(f, "({op} {inner})"),
-                Self::CmpOp { op, lhs, rhs } => write!(f, "({lhs} {op} {rhs})"),
+                Self::Bin { op, lhs, rhs } => write!(f, "({lhs} {op} {rhs})"),
+                Self::Un { op, inner } => write!(f, "({op} {inner})"),
+                Self::Cmp { op, lhs, rhs } => write!(f, "({lhs} {op} {rhs})"),
                 Self::Later { clk, before, after } => write!(f, "({before} ->{clk} {after})"),
                 Self::Ifx { cond, yes, no } => {
                     write!(f, "if {cond} {{ {yes} }} else {{ {no} }}")
@@ -556,7 +569,7 @@ pub mod expr {
                         write!(f, "{id}{args}")
                     }
                 }
-                Self::ClockOp {
+                Self::Clock {
                     op,
                     inner,
                     activate,
@@ -569,8 +582,8 @@ pub mod expr {
 
 /// Statements and operations with side-effects.
 pub mod stmt {
-    use super::expr;
     use super::Tuple;
+    use super::{expr, var};
     use crate::sp::Sp;
     use std::fmt;
 
@@ -579,7 +592,7 @@ pub mod stmt {
     #[derive(Debug, Clone)]
     pub enum VarTuple {
         /// End of the recursion through a single variable.
-        Single(Sp<expr::LocalVar>),
+        Single(Sp<var::Local>),
         /// Comma-separated tuple.
         Multiple(Sp<Tuple<Sp<VarTuple>>>),
     }
@@ -593,7 +606,7 @@ pub mod stmt {
         }
     }
 
-    crate::sp::derive_spanned!(Statement);
+    crate::sp::derive_with_span!(Statement);
     /// A statement.
     #[derive(Debug, Clone)]
     pub enum Statement {
@@ -611,11 +624,8 @@ pub mod stmt {
 
 /// Toplevel declarations.
 pub mod decl {
-    use super::expr;
-    use super::stmt;
-    use super::ty;
-    use super::ty::TyBase;
     use super::Tuple;
+    use super::{expr, stmt, ty, var};
     use crate::sp::Sp;
     use std::fmt;
 
@@ -623,12 +633,12 @@ pub mod decl {
     #[derive(Debug, Clone)]
     pub struct TyVar {
         /// Name of the variable.
-        pub name: Sp<expr::LocalVar>,
+        pub name: Sp<var::Local>,
         /// Type of the variable (including the temporal depth and clock).
         pub ty: Sp<ty::Stream>,
     }
 
-    crate::sp::derive_spanned!(NodeName);
+    crate::sp::derive_with_span!(NodeName);
     /// A node name (either for a declaration or for an invocation)
     #[derive(Debug, Clone, PartialEq, Eq, Hash)]
     pub struct NodeName {
@@ -711,11 +721,11 @@ pub mod decl {
     #[derive(Debug, Clone)]
     pub struct Const {
         /// Public name of the constant (`X`).
-        pub name: Sp<expr::GlobalVar>,
+        pub name: Sp<var::Global>,
         /// Compilation options attached (in the form `#[...]` as per the standard Rust notation)
         pub options: ConstOptions,
         /// Type of the constant (`int`).
-        pub ty: Sp<TyBase>,
+        pub ty: Sp<ty::Base>,
         /// Const-computable value (`0`).
         pub value: Sp<expr::Expr>,
     }
@@ -741,9 +751,9 @@ pub mod decl {
     #[derive(Debug, Clone)]
     pub struct ExtConst {
         /// Public name of the constant (`X`).
-        pub name: Sp<expr::GlobalVar>,
+        pub name: Sp<var::Global>,
         /// Type of the constant (`int`).
-        pub ty: Sp<TyBase>,
+        pub ty: Sp<ty::Base>,
         /// Compilation options attached (in the form `#[...]` as per the standard Rust notation)
         pub options: ExtConstOptions,
     }

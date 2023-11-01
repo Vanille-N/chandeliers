@@ -60,13 +60,19 @@ struct UnitIdx(usize);
 #[derive(Debug, Clone, Copy)]
 struct ObjIdx(usize);
 
+/// Data that may be accompanied by a span, typically representing the place
+/// that the value was constructed so that the definition site can be shown
+/// in error messages.
 #[derive(Debug, Clone, Copy)]
 struct WithDefSite<Unit> {
+    /// Payload (may itself contain a span, usually the place that it is being used).
     contents: Unit,
+    /// Where it was defined.
     def_site: Option<Span>,
 }
 
 impl<Unit> WithDefSite<Unit> {
+    /// Wrap data without span.
     fn without(o: &Unit) -> Self
     where
         Unit: Clone,
@@ -77,6 +83,7 @@ impl<Unit> WithDefSite<Unit> {
         }
     }
 
+    /// Wrap data with something that might be a span.
     fn try_with(o: &Unit, sp: impl TrySpan) -> Self
     where
         Unit: Clone,
@@ -87,6 +94,8 @@ impl<Unit> WithDefSite<Unit> {
         }
     }
 
+    /// Replace the span, but only if there is not already a span
+    /// defined.
     fn try_override_span(&mut self, o: &Unit)
     where
         Unit: TrySpan,
@@ -96,6 +105,7 @@ impl<Unit> WithDefSite<Unit> {
         }
     }
 
+    /// Explode this into the data and the span separately.
     fn elements(&self) -> (&Unit, Option<Span>) {
         (&self.contents, self.def_site)
     }
@@ -122,12 +132,107 @@ pub struct Graph<Obj, Unit> {
 impl<O, U> Default for Graph<O, U> {
     fn default() -> Self {
         Self {
-            elements: Default::default(),
+            elements: Vec::default(),
             atomics: Default::default(),
-            provide: Default::default(),
-            require: Default::default(),
-            provided_by_ext: Default::default(),
-            provided_for_ext: Default::default(),
+            provide: Vec::default(),
+            require: Vec::default(),
+            provided_by_ext: HashMap::default(),
+            provided_for_ext: HashSet::default(),
+        }
+    }
+}
+
+/// Exploration helper.
+///
+/// This has no knowledge of the objects that it is working on, so at the
+/// level of this module all nodes are `usize`.
+///
+/// It expects a graph represented as a `[[usize]]` where `graph[i]` is the
+/// list of vertices accessible from `i`, and will produce a vector of SCCs.
+mod explore {
+    /// Per-node information on the status of the traversal.
+    #[derive(Default, Clone)]
+    struct Extra {
+        /// This node is currently being explored.
+        on_stack: bool,
+        /// Best temporary approximation of the lowest index
+        /// of a node in this one's SCC.
+        low_link: Option<usize>,
+        /// Unique identifier.
+        index: Option<usize>,
+    }
+
+    /// Stack of the traversal, and other mutable state.
+    pub struct SccExplorer {
+        /// Count nodes and attribute IDs by order of DFS traversal.
+        index: usize,
+        /// Nodes left to handle.
+        stk: Vec<usize>,
+        /// Extra info for each node (visited status).
+        extra: Vec<Extra>,
+        /// Building the SCC.
+        scc: Vec<Vec<usize>>,
+    }
+
+    impl SccExplorer {
+        /// Exploration procedure for one node.
+        pub fn run(&mut self, v: usize, graph: &[Vec<super::WithDefSite<usize>>]) {
+            // Register unique identifiers for this new node.
+            self.extra[v].index = Some(self.index);
+            self.extra[v].low_link = Some(self.index);
+            self.index += 1;
+            self.stk.push(v);
+            self.extra[v].on_stack = true;
+
+            // Explore all children.
+            // Compare `low_link` to find cycles: because `low_link` is initially
+            // the (unique) index, a child with a smaller `low_link` gives a cycle.
+            for w in &graph[v] {
+                if self.extra[w.contents].index.is_none() {
+                    // Not explored at all, explore it.
+                    self.run(w.contents, graph);
+                    self.extra[v].low_link =
+                        self.extra[v].low_link.min(self.extra[w.contents].low_link);
+                } else if self.extra[w.contents].on_stack {
+                    // Exploration still ongoing, `low_link` has not yet been fully computed,
+                    // so use `index` instead.
+                    self.extra[v].low_link =
+                        self.extra[v].low_link.min(self.extra[w.contents].index);
+                }
+            }
+
+            // Pop the scc, as given by all the nodes above `v` on the stack.
+            if self.extra[v].low_link == self.extra[v].index {
+                let mut scc = Vec::new();
+                while let Some(w) = self.stk.pop() {
+                    self.extra[w].on_stack = false;
+                    scc.push(w);
+                    if w == v {
+                        break;
+                    }
+                }
+                self.scc.push(scc);
+            }
+        }
+
+        /// Construct a new explorer for a graph of given size.
+        pub fn for_graph_of_size(nb: usize) -> Self {
+            Self {
+                index: 0,
+                stk: Vec::new(),
+                extra: vec![Extra::default(); nb],
+                scc: Vec::new(),
+            }
+        }
+
+        /// Determine if a vertex was already explored or not.
+        pub fn unexplored(&self, idx: usize) -> bool {
+            self.extra[idx].index.is_none()
+        }
+
+        /// Get the SCC out at the end of the exploration.
+        pub fn extract(self) -> Vec<Vec<usize>> {
+            self.scc
         }
     }
 }
@@ -141,17 +246,17 @@ where
 {
     /// Get the identifier of a `Unit` if it exists,
     /// or insert a new one with a fresh id.
-    fn get_or_insert_atomic(&mut self, o: Unit, override_span: bool) -> usize {
-        let uid = if let Some(uid) = self.atomics.1.get(&o) {
+    fn get_or_insert_atomic(&mut self, o: &Unit, override_span: bool) -> usize {
+        let uid = if let Some(uid) = self.atomics.1.get(o) {
             *uid
         } else {
             let uid = self.atomics.0.len();
-            self.atomics.0.push(WithDefSite::without(&o));
+            self.atomics.0.push(WithDefSite::without(o));
             self.atomics.1.insert(o.clone(), uid);
             uid
         };
         if override_span {
-            self.atomics.0[uid].try_override_span(&o);
+            self.atomics.0[uid].try_override_span(o);
         }
         uid
     }
@@ -163,7 +268,7 @@ where
     /// so it is fine to provide these constraints before or after
     /// all `insert`.
     pub fn already_provided(&mut self, o: Unit) {
-        let uid = self.get_or_insert_atomic(o.clone(), true);
+        let uid = self.get_or_insert_atomic(&o, true);
         self.provided_by_ext
             .insert(uid, WithDefSite::try_with(&(), o));
     }
@@ -171,21 +276,23 @@ where
     /// Verify that a given `Unit` has already been provided by
     /// some `Obj`.
     ///
-    /// This verification is not deferred and will immediately error
+    /// # Errors
+    /// This fails if the `Unit` has not been defined.
+    /// The verification is not deferred and will immediately error
     /// if the `Unit` in question has not already been encountered,
     /// so this method should be called after all insertions are
     /// complete.
-    pub fn must_provide(&mut self, o: Unit) -> Result<()> {
-        let uid = self.get_or_insert_atomic(o.clone(), false);
-        if !self.provided_for_ext.contains(&uid) {
-            Err(err::GraphUnitUndeclared { unit: &o }.into_err())
-        } else {
+    pub fn must_provide(&mut self, o: &Unit) -> Result<()> {
+        let uid = self.get_or_insert_atomic(o, false);
+        if self.provided_for_ext.contains(&uid) {
             Ok(())
+        } else {
+            Err(err::GraphUnitUndeclared { unit: &o }.into_err())
         }
     }
 
     /// Declare a new set of constraints.
-    pub fn insert(&mut self, t: Obj) -> Result<()> {
+    pub fn insert(&mut self, t: Obj) {
         let mut provide_units = Vec::new();
         let mut require_units = Vec::new();
         let mut provide_uids = Vec::new();
@@ -193,12 +300,12 @@ where
         t.provides(&mut provide_units);
         t.requires(&mut require_units);
         for prov in provide_units {
-            let uid = self.get_or_insert_atomic(prov.clone(), true);
+            let uid = self.get_or_insert_atomic(&prov, true);
             provide_uids.push(WithDefSite::try_with(&uid, prov));
             self.provided_for_ext.insert(uid);
         }
         for req in require_units {
-            let uid = self.get_or_insert_atomic(req.clone(), false);
+            let uid = self.get_or_insert_atomic(&req, false);
             require_uids.push(WithDefSite::try_with(&uid, req));
         }
         if self.elements.len() != self.provide.len() || self.elements.len() != self.require.len() {
@@ -207,11 +314,13 @@ where
         self.provide.push(provide_uids);
         self.require.push(require_uids);
         self.elements.push(t);
-        Ok(())
     }
 
     /// Resolve all previously inserted constraints and return a scheduling
     /// without temporal inconsistencies.
+    ///
+    /// # Errors
+    /// Fails if a cycle is encountered.
     pub fn scheduling(self) -> Result<Vec<Obj>> {
         let nb = self.atomics.0.len();
         let (provider, constraints) = {
@@ -276,82 +385,13 @@ where
         //   1. an SCC of size >1 is a cycle, we don't want those.
         //   2. the order in which the SCCs are closed gives a scheduling.
         let scc = {
-            /// Per-node information on the status of the traversal.
-            #[derive(Default, Clone)]
-            struct Extra {
-                /// This node is currently being explored.
-                on_stack: bool,
-                /// Best temporary approximation of the lowest index
-                /// of a node in this one's SCC.
-                low_link: Option<usize>,
-                /// Unique identifier.
-                index: Option<usize>,
-            }
-            /// Stack of the traversal, and other mutable state.
-            struct SccExplorer {
-                /// Count nodes and attribute IDs by order of DFS traversal.
-                index: usize,
-                /// Nodes left to handle.
-                stk: Vec<usize>,
-                /// Extra info for each node (visited status).
-                extra: Vec<Extra>,
-                /// Building the SCC.
-                scc: Vec<Vec<usize>>,
-            }
-
-            /// Exploration procedure for one node.
-            fn explore_scc(v: usize, graph: &[Vec<WithDefSite<usize>>], expl: &mut SccExplorer) {
-                // Register unique identifiers for this new node.
-                expl.extra[v].index = Some(expl.index);
-                expl.extra[v].low_link = Some(expl.index);
-                expl.index += 1;
-                expl.stk.push(v);
-                expl.extra[v].on_stack = true;
-
-                // Explore all children.
-                // Compare `low_link` to find cycles: because `low_link` is initially
-                // the (unique) index, a child with a smaller `low_link` gives a cycle.
-                for w in &graph[v] {
-                    if expl.extra[w.contents].index.is_none() {
-                        // Not explored at all, explore it.
-                        explore_scc(w.contents, graph, expl);
-                        expl.extra[v].low_link =
-                            expl.extra[v].low_link.min(expl.extra[w.contents].low_link);
-                    } else if expl.extra[w.contents].on_stack {
-                        // Exploration still ongoing, `low_link` has not yet been fully computed,
-                        // so use `index` instead.
-                        expl.extra[v].low_link =
-                            expl.extra[v].low_link.min(expl.extra[w.contents].index);
-                    }
-                }
-
-                // Pop the scc, as given by all the nodes above `v` on the stack.
-                if expl.extra[v].low_link == expl.extra[v].index {
-                    let mut scc = Vec::new();
-                    while let Some(w) = expl.stk.pop() {
-                        expl.extra[w].on_stack = false;
-                        scc.push(w);
-                        if w == v {
-                            break;
-                        }
-                    }
-                    expl.scc.push(scc);
-                }
-            }
-
-            let mut expl = SccExplorer {
-                index: 0,
-                stk: Vec::new(),
-                extra: vec![Extra::default(); nb],
-                scc: Vec::new(),
-            };
+            let mut expl = explore::SccExplorer::for_graph_of_size(nb);
             for v in 0..nb {
-                if expl.extra[v].index.is_none() {
-                    explore_scc(v, &constraints, &mut expl);
+                if expl.unexplored(v) {
+                    expl.run(v, &constraints);
                 }
             }
-
-            expl.scc
+            expl.extract()
         };
         // Check that all |scc| = 1
         let mut schedule = Vec::new();
@@ -433,7 +473,7 @@ mod test {
     fn schedule(pairs: Vec<Triplet>) -> Result<Vec<Triplet>, Vec<String>> {
         let mut g = Graph::default();
         for pair in pairs {
-            g.insert(pair).map_err(vec_proj1)?;
+            g.insert(pair);
         }
         Ok(g.scheduling().map_err(vec_proj1)?)
     }

@@ -19,7 +19,7 @@ use graph::Graph;
 /// typechecking in the right order.
 pub trait Causality: Sized {
     /// Rearrange the internal contents in a causally consistent ordering.
-    /// # Error
+    /// # Errors
     /// Fails if there is a cycle (including of length 1).
     fn causality(self) -> Result<Self>;
 }
@@ -30,7 +30,7 @@ impl Causality for ast::decl::Prog {
         let Self { decls } = self;
         let mut g = Graph::default();
         for decl in decls {
-            g.insert(decl.causality()?)?;
+            g.insert(decl.causality()?);
         }
         let decls = g.scheduling()?;
         Ok(Self { decls })
@@ -76,15 +76,15 @@ impl Causality for ast::decl::Node {
             ));
         }
         for stmt in stmts {
-            g.insert(stmt)?;
+            g.insert(stmt);
         }
         for l in locals.t.iter() {
             let unit = Reference::LocalVarName(l.t.name.as_ref().map(|_, t| t.repr.t.clone()));
-            g.must_provide(unit)?;
+            g.must_provide(&unit)?;
         }
         for o in outputs.t.iter() {
             let unit = Reference::LocalVarName(o.t.name.as_ref().map(|_, t| t.repr.t.clone()));
-            g.must_provide(unit)?;
+            g.must_provide(&unit)?;
         }
         let stmts = g.scheduling()?;
         Ok(Self {

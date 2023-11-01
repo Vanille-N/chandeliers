@@ -14,7 +14,7 @@
 
 use std::fmt;
 
-use crate::ast::{decl, expr, stmt};
+use crate::ast::{decl, expr, stmt, var};
 use crate::sp::Sp;
 use chandeliers_err as err;
 use proc_macro2::Span;
@@ -269,33 +269,33 @@ impl Depends for expr::Expr {
         Self::Lit(_) => ;
         Self::Reference(r) => r;
         Self::Tuple(t) => t;
-        Self::BinOp { lhs, rhs, .. } => lhs, rhs;
-        Self::CmpOp { lhs, rhs, .. } => lhs, rhs;
-        Self::UnOp { inner, .. } => inner;
+        Self::Bin { lhs, rhs, .. } => lhs, rhs;
+        Self::Cmp { lhs, rhs, .. } => lhs, rhs;
+        Self::Un { inner, .. } => inner;
         Self::Later { before, after, .. } => before, after;
         Self::Ifx { cond, yes, no } => cond, yes, no;
         Self::Substep { args, .. } => args;
-        Self::ClockOp { inner, activate, .. } => inner, activate;
+        Self::Clock { inner, activate, .. } => inner, activate;
         Self::Merge { switch, on, off } => switch, on, off;
     }
 }
 
-/// `LocalVar` is a leaf.
-impl Depends for expr::LocalVar {
+/// `var::Local` is a leaf.
+impl Depends for var::Local {
     type Output = Reference;
     provide_this!(|this: &Self| Reference::LocalVarName(this.repr.clone()));
     require_this!(|this: &Self| Reference::LocalVarName(this.repr.clone()));
 }
 
-/// `GlobalVar` is a leaf.
-impl Depends for expr::GlobalVar {
+/// `var::Global` is a leaf.
+impl Depends for var::Global {
     type Output = Reference;
     provide_this!(|this: &Self| Reference::GlobalVarName(this.repr.clone()));
     require_this!(|this: &Self| Reference::GlobalVarName(this.repr.clone()));
 }
 
 /// `Reference` is a wrapper.
-impl Depends for expr::Reference {
+impl Depends for var::Reference {
     type Output = Reference;
     provide_nothing!();
     require_by_match! {
@@ -308,7 +308,7 @@ impl Depends for expr::Reference {
 /// Nonzero clocks are not subject to acyclicity checks and are instead
 /// handled by the positivity check, so `ClockVar` introduces a dependency
 /// only if it is at the root depth.
-impl Depends for expr::PastVar {
+impl Depends for var::Past {
     type Output = Reference;
     provide_nothing!();
     fn requires(&self, v: &mut Vec<Reference>) {

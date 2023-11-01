@@ -9,13 +9,13 @@ use std::collections::HashMap;
 
 use chandeliers_err::{self as err, IntoError, Result};
 
-use crate::ast::{decl, expr, stmt, Tuple};
+use crate::ast::{decl, expr, stmt, var, Tuple};
 use crate::sp::Sp;
 
 /// Helper to record the depth during the traversal.
 struct DepthCtx<'i> {
     /// Maximum observed depth for each known variable.
-    max_known: &'i mut HashMap<expr::LocalVar, usize>,
+    max_known: &'i mut HashMap<var::Local, usize>,
     /// Current depth of the exploration.
     current: usize,
 }
@@ -46,7 +46,7 @@ impl DepthCtx<'_> {
 
     /// Record a new depth `depth` observed for variable `var`,
     /// and update the known maximum if it is greater.
-    fn update(self, var: &expr::LocalVar, depth: usize) {
+    fn update(self, var: &var::Local, depth: usize) {
         if let Some(old) = self.max_known.get(var) {
             if *old >= depth {
                 return;
@@ -148,13 +148,13 @@ impl CheckPositive for expr::Expr {
             // First let's get all the trivial cases out of the picture.
             Self::Lit(_) => Ok(()),
             Self::Tuple(tup) => tup.check_positive(depths),
-            Self::BinOp { lhs, rhs, .. } => {
+            Self::Bin { lhs, rhs, .. } => {
                 lhs.check_positive(fork!(depths))?;
                 rhs.check_positive(fork!(depths))?;
                 Ok(())
             }
-            Self::UnOp { inner, .. } => inner.check_positive(depths),
-            Self::CmpOp { lhs, rhs, .. } => {
+            Self::Un { inner, .. } => inner.check_positive(depths),
+            Self::Cmp { lhs, rhs, .. } => {
                 lhs.check_positive(fork!(depths))?;
                 rhs.check_positive(fork!(depths))?;
                 Ok(())
@@ -176,7 +176,7 @@ impl CheckPositive for expr::Expr {
             Self::Substep { args, .. } => args.check_positive(depths),
             // Reference is also an interesting case, but its impl is separate.
             Self::Reference(refer) => refer.check_positive(depths),
-            Self::ClockOp {
+            Self::Clock {
                 activate,
                 op: _,
                 inner,
@@ -204,7 +204,7 @@ impl<T: CheckPositive> CheckPositive for Tuple<T> {
     }
 }
 
-impl CheckPositive for expr::Reference {
+impl CheckPositive for var::Reference {
     fn check_positive(&self, depths: DepthCtx<'_>) -> Result<()> {
         match self {
             // We get globals for free.

@@ -7,17 +7,22 @@
 //! Macros are provided to facilitate this usage.
 //!
 //! Note: yous should generally prefer putting the `Sp` on the outside
-//! in function arguments, and on the inside on return values.
+//! in public function arguments, and on the inside on return values.
 //! That is,
 //! - use `Sp<&T>`, `Sp<Box<T>>`, `Sp<Result<T, E>>` in inputs and struct fields,
 //! - use `&Sp<T>`, `Box<Sp<T>>`, `Result<Sp<T>, E>>` in outputs.
 //! The reason is that `Sp` implements the following conversions:
 //! - `&Sp<T> -> Sp<&T>` through `as_ref`,
-//! - `&mut Sp<T>` -> Sp<&mut T>` through `as_ref_mut`,
+//! - `&mut Sp<T> -> Sp<&mut T>` through `as_ref_mut`,
 //! - `Box<Sp<T>> -> Sp<Box<T>>` through `boxed`,
 //! - `Sp<Result<T, E>> -> Result<Sp<T>, E>` through `transpose`.
 //! Thus a function that takes as input a `Sp<&T>` is more general than
 //! a function that takes a `&Sp<T>`.
+//!
+//! The above does not necessarily apply to functions that are strictly for
+//! internal use, since if all callers are known the benefit of the generality
+//! is lessened, and passing `&Sp<T>` may reduce copies of `Span` that come with
+//! each invocation of `as_ref`.
 
 use chandeliers_err as err;
 pub use proc_macro2::Span;
@@ -43,6 +48,7 @@ pub struct Sp<T> {
 }
 
 impl<T> err::TrySpan for Sp<T> {
+    /// `Sp` always has a span, so `TrySpan` is guaranteed to succeed.
     fn try_span(&self) -> Option<Span> {
         Some(self.span)
     }
@@ -99,6 +105,8 @@ impl<T> Sp<T> {
 
 impl<T, E> Sp<Result<T, E>> {
     /// Monad combinator to map faillible functions on a `Sp`.
+    /// # Errors
+    /// If the internal data already contains an error.
     pub fn transpose(self) -> Result<Sp<T>, E> {
         match self.t {
             Ok(t) => Ok(Sp { t, span: self.span }),
@@ -198,9 +206,12 @@ impl<T: fmt::Display> fmt::Display for Sp<T> {
     }
 }
 
-/// Implement `SpanEnd` from `Spanned`.
+/// Implement `SpanEnd` from `syn::Spanned`.
 /// Only recommended for items whose `span` is trivial, others should
 /// be wrapped in a `Sp<_>` to alleviate the computation.
+///
+/// Usage: if your type `T` has an infaillible `span()` function,
+/// then you can use `span_end_from_spanned!(T);`.
 macro_rules! span_end_from_spanned {
     ( $($ty:tt)* ) => {
         impl SpanEnd for $($ty)* {
@@ -229,20 +240,22 @@ impl SpanEnd for syn::token::Bracket {
 /// This defines how types should look when they have an attached span.
 /// For most types `T` this would be `Sp<T>`, however they may be some variants,
 /// most notably `TokenStream` with a `Span` is still a `TokenStream`.
-pub trait Spanned: Sized {
+pub trait WithSpan: Sized {
     /// Self after wrapping, typically but not necessarily `Sp<Self>`.
     type Output;
     /// Add a span.
-    fn spanned(self, span: Span) -> Self::Output;
+    fn with_span(self, span: Span) -> Self::Output;
 }
-macro_rules! derive_spanned {
+
+/// Implement `Spanned`
+macro_rules! derive_with_span {
     ( $T:ty ) => {
         #[doc = "Default implementation of Spanned for"]
         #[doc = stringify!($T)]
         #[doc = "wraps in `Sp`"]
-        impl $crate::sp::Spanned for $T {
+        impl $crate::sp::WithSpan for $T {
             type Output = $crate::sp::Sp<Self>;
-            fn spanned(self, span: $crate::sp::Span) -> $crate::sp::Sp<Self> {
+            fn with_span(self, span: $crate::sp::Span) -> $crate::sp::Sp<Self> {
                 $crate::sp::Sp { t: self, span }
             }
         }
@@ -251,27 +264,27 @@ macro_rules! derive_spanned {
         #[doc = "Default implementation of Spanned for"]
         #[doc = stringify!($T)]
         #[doc = "wraps in `Sp`"]
-        impl$($t)* $crate::sp::Spanned for $T {
+        impl$($t)* $crate::sp::WithSpan for $T {
             type Output = $crate::sp::Sp<Self>;
-            fn spanned(self, span: $crate::sp::Span) -> $crate::sp::Sp<Self> {
+            fn with_span(self, span: $crate::sp::Span) -> $crate::sp::Sp<Self> {
                 $crate::sp::Sp { t: self, span }
             }
         }
     };
 
 }
-pub(crate) use derive_spanned;
+pub(crate) use derive_with_span;
 
-impl Spanned for TokenStream {
+impl WithSpan for TokenStream {
     type Output = TokenStream;
-    fn spanned(self, span: Span) -> TokenStream {
+    fn with_span(self, span: Span) -> TokenStream {
         quote_spanned! {span=>
             #self
         }
     }
 }
-derive_spanned!(usize);
-derive_spanned!(String);
+derive_with_span!(usize);
+derive_with_span!(String);
 
 /// Helper to implement projections through `Sp`.
 ///
@@ -287,10 +300,10 @@ derive_spanned!(String);
 macro_rules! transparent_impl {
     ( fn $fn:ident return $T:ty where $ty:ty ) => {
         impl Sp<$ty> {
-            fn $fn(&self) -> <$T as $crate::sp::Spanned>::Output {
-                use $crate::sp::Spanned;
+            fn $fn(&self) -> <$T as $crate::sp::WithSpan>::Output {
+                use $crate::sp::WithSpan;
                 let inner = self.t.$fn(self.span);
-                inner.spanned(self.span)
+                inner.with_span(self.span)
             }
         }
     };

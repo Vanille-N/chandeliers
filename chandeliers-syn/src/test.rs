@@ -23,10 +23,10 @@ macro_rules! parse_as {
 
 #[test]
 fn type_keywords() {
-    success!(parse_as!(BaseType, "bool"));
-    success!(parse_as!(BaseType, "int"));
-    success!(parse_as!(BaseType, "float"));
-    failure!(parse_as!(BaseType, "foobar"));
+    success!(parse_as!(ty::Base, "bool"));
+    success!(parse_as!(ty::Base, "int"));
+    success!(parse_as!(ty::Base, "float"));
+    failure!(parse_as!(ty::Base, "foobar"));
 }
 
 #[test]
@@ -50,8 +50,8 @@ fn opers() {
 
 #[test]
 fn r#type() {
-    success!(parse_as!(Type, "int"));
-    failure!(parse_as!(Type, "truc"));
+    success!(parse_as!(ty::Type, "int"));
+    failure!(parse_as!(ty::Type, "truc"));
 }
 
 #[test]

@@ -5,22 +5,31 @@
 
 //! Generate actual Candle statements from an AST.
 
-use crate::sp::{Sp, Span, Spanned};
+use crate::sp::{Sp, Span, WithSpan};
 use proc_macro2::{Ident, TokenStream};
 use quote::{quote, quote_spanned, ToTokens};
 
-use super::ast::{decl, expr, past, stmt, ty, Tuple};
+use super::ast::{decl, expr, op, past, stmt, ty, var, Tuple};
 
+/// Trait to generate `const` expressions.
+/// Since fewer constructs are available and since we need to use only
+/// things that Rustc considers const-computable, we represent expressions in
+/// a different way depending on whether they are in a `const` or in a local
+/// variable.
 trait ConstExprTokens {
+    /// Generate a `const` value for this expression.
     fn const_expr_tokens(&self, span: Span) -> TokenStream;
 }
 
+/// Helper trait for `Sp<_>` to impement `ConstExprTokens` with an added span.
 trait ConstExprSpanTokens {
+    /// Generate a `const` value for this expression.
     fn const_expr_tokens(&self) -> TokenStream;
 }
+
 impl<T: ConstExprTokens> ConstExprSpanTokens for Sp<T> {
     fn const_expr_tokens(&self) -> TokenStream {
-        self.t.const_expr_tokens(self.span).spanned(self.span)
+        self.t.const_expr_tokens(self.span).with_span(self.span)
     }
 }
 
@@ -56,8 +65,11 @@ impl ToTokens for decl::Decl {
     }
 }
 
+/// Options that control the visibility of an item.
 trait OptionsPubQualifier {
+    /// Whether the item is public.
     fn active(&self) -> bool;
+    /// How to make the item public.
     fn pub_qualifier(&self) -> TokenStream {
         if self.active() {
             quote!(pub)
@@ -79,8 +91,11 @@ impl OptionsPubQualifier for decl::NodeOptions {
     }
 }
 
+/// Options that allow printing debug information.
 trait OptionsTraces {
+    /// Whether a trace should be printed.
     fn active(&self) -> bool;
+    /// How to print a trace.
     fn traces(
         &self,
         prefix: &str,
@@ -89,15 +104,19 @@ trait OptionsTraces {
         outputs: Sp<&Tuple<Sp<decl::TyVar>>>,
     ) -> (TokenStream, TokenStream) {
         let name = format!("{name}");
-        let inputs = inputs.as_values();
-        let outputs = outputs.as_values();
+        let input_var_fmt = inputs.fmt_strings();
+        let output_var_fmt = outputs.fmt_strings();
+        let inputs = inputs.flattened_trailing_comma();
+        let outputs = outputs.flattened_trailing_comma();
+        let input_fmt = format!("{{}}{{}} <- {input_var_fmt}");
+        let output_fmt = format!("{{}}{{}} -> {output_var_fmt}",);
         if self.active() {
             (
                 quote! {
-                    println!("{}{:?} -> {}", #prefix, #inputs, #name);
+                    println!(#input_fmt, #prefix, #name, #inputs);
                 },
                 quote! {
-                    println!("{}{} -> {:?}", #prefix, #name, #outputs);
+                    println!(#output_fmt, #prefix, #name, #outputs);
                 },
             )
         } else {
@@ -113,6 +132,51 @@ impl OptionsTraces for decl::NodeOptions {
 impl OptionsTraces for decl::ExtNodeOptions {
     fn active(&self) -> bool {
         self.trace
+    }
+}
+
+/// Options that allow generating a `main`.
+trait OptionsFnMain {
+    /// Whether a `main` should be generated.
+    fn active(&self) -> Option<usize>;
+    /// How to generate one.
+    fn fn_main(&self, name: &Sp<decl::NodeName>) -> TokenStream {
+        if let Some(nb_iter) = self.active() {
+            let ext_name = name.as_raw_ident();
+            let doc = format!(
+                "Main function automatically generated from {name} (runs for {nb_iter} steps)"
+            );
+            quote! {
+                #[doc = #doc]
+                pub fn main() {
+                    use ::chandeliers_sem::traits::*;
+                    let mut sys = #ext_name::default();
+                    if #nb_iter == 0 {
+                        loop {
+                            sys.step(().embed()).trusted();
+                        }
+                    } else {
+                        for _ in 1..=#nb_iter {
+                            sys.step(().embed()).trusted();
+                        }
+                    }
+                }
+            }
+        } else {
+            quote!()
+        }
+    }
+}
+
+impl OptionsFnMain for decl::NodeOptions {
+    fn active(&self) -> Option<usize> {
+        self.main
+    }
+}
+
+impl OptionsFnMain for decl::ExtNodeOptions {
+    fn active(&self) -> Option<usize> {
+        self.main
     }
 }
 
@@ -241,6 +305,21 @@ impl ToTokens for decl::Node {
     /// See the actual definitions of the language in crate `chandeliers-sem`
     /// if you find the above example confusing.
     fn to_tokens(&self, toks: &mut TokenStream) {
+        let int = self.internal_decl();
+        let ext = self.external_decl();
+
+        toks.extend(int);
+        toks.extend(ext);
+        toks.extend(self.options.fn_main(&self.name));
+    }
+}
+
+impl decl::Node {
+    /// Generate the node declaration and implementation
+    /// with the sanitized name for internal use only.
+    /// This is not expected to be used by either other Lustre blocks
+    /// or the interfacing Rust code.
+    fn internal_decl(&self) -> TokenStream {
         let Self {
             name,
             inputs,
@@ -254,8 +333,6 @@ impl ToTokens for decl::Node {
         let outputs = outputs.as_ref();
         let locals = locals.as_ref();
 
-        let name_span = name.span;
-        let ext_name = name.as_raw_ident();
         let uid_name = name.as_sanitized_ident();
 
         let pos_inputs_decl = inputs.strictly_positive();
@@ -273,31 +350,29 @@ impl ToTokens for decl::Node {
             .strictly_positive()
             .map(|v| v.name_of().as_sanitized_ident());
         let inputs_ty_3 = inputs.as_defined_tys();
-        let inputs_ty_4 = inputs.as_defined_tys();
-        let expected_input_tys_decl = inputs.as_embedded_tys();
         let expected_input_tys_impl = inputs.as_embedded_tys();
-        let expected_output_tys_decl = outputs.as_embedded_tys();
         let expected_output_tys_impl = outputs.as_embedded_tys();
 
         let inputs_vs_asst = inputs.as_assignment_target();
 
         let outputs_ty_3 = outputs.as_defined_tys();
-        let outputs_ty_4 = outputs.as_defined_tys();
         let outputs_vs_2 = outputs.as_values();
 
         let pub_qualifier = options.pub_qualifier();
 
-        let (trace_pre, trace_post) = options.traces("", name, inputs, outputs);
-        let rustc_allow = options.rustc_allow.iter();
+        let (trace_pre, trace_post) = options.traces("      ", name, inputs, outputs);
+        let rustc_allow_1 = options.rustc_allow.iter();
+        let rustc_allow_2 = options.rustc_allow.iter();
 
         let doc_name = format!(" `{name}` ");
-        toks.extend(quote! {
+        let declaration = quote! {
             #[doc = " Node definition"]
             #[doc = #doc_name]
             #[doc = "(for internal use)"]
             #[derive(Debug, Default)]
             #[allow(non_camel_case_types)]
             #[allow(non_snake_case)]
+            #( #[allow( #rustc_allow_1 )] )*
             #pub_qualifier struct #uid_name {
                 __clock: usize,
                 #[doc = " Strictly positive variables of"]
@@ -309,12 +384,13 @@ impl ToTokens for decl::Node {
                 #[doc = #doc_name]
                 __nodes: ( #( #blocks , )* ),
             }
-        });
+        };
 
-        toks.extend(quote! {
+        let implementation = quote! {
             #[doc = " Implementation of Step for"]
             #[doc = #doc_name]
             #[allow(non_snake_case)]
+            #( #[allow( #rustc_allow_2 )] )*
             #[allow(clippy::unused_unit)]
             impl ::chandeliers_sem::traits::Step for #uid_name {
                 type Input = #inputs_ty_3;
@@ -342,13 +418,45 @@ impl ToTokens for decl::Node {
                     #outputs_vs_2.embed()
                 }
             }
-        });
+        };
 
-        let ext_declaration = quote_spanned! {name_span=>
+        quote! {
+            #declaration
+            #implementation
+        }
+    }
+
+    /// Generate the publicly visible wraper and its implementation.
+    fn external_decl(&self) -> TokenStream {
+        let Self {
+            name,
+            inputs,
+            outputs,
+            options,
+            ..
+        } = self;
+        let inputs = inputs.as_ref();
+        let outputs = outputs.as_ref();
+
+        let ext_name = name.as_raw_ident();
+        let uid_name = name.as_sanitized_ident();
+
+        let inputs_ty_4 = inputs.as_defined_tys();
+        let expected_input_tys_decl = inputs.as_embedded_tys();
+        let expected_output_tys_decl = outputs.as_embedded_tys();
+
+        let outputs_ty_4 = outputs.as_defined_tys();
+
+        let pub_qualifier = options.pub_qualifier();
+
+        let rustc_allow = options.rustc_allow.iter();
+
+        let doc_name = format!(" `{name}` ");
+        let ext_declaration = quote_spanned! {name.span=>
             #pub_qualifier struct #ext_name { inner: #uid_name }
         };
 
-        let ext_annotated_declaration = quote_spanned! {name_span=>
+        let ext_annotated_declaration = quote_spanned! {name.span=>
             #[derive(Debug, Default)]
             #[allow(non_camel_case_types)]
             #[allow(dead_code)]
@@ -356,14 +464,7 @@ impl ToTokens for decl::Node {
             #ext_declaration
         };
 
-        toks.extend(quote! {
-            #[doc = " Wrapper declaration of"]
-            #[doc = #doc_name]
-            #[doc = " (part of the public interface)"]
-            #ext_annotated_declaration
-        });
-
-        let ext_step_impl = quote_spanned! {name_span=>
+        let ext_step_impl = quote_spanned! {name.span=>
             #[allow(clippy::unused_unit)]
             impl ::chandeliers_sem::traits::Step for #ext_name {
                 type Input = #inputs_ty_4;
@@ -381,33 +482,16 @@ impl ToTokens for decl::Node {
             }
         };
 
-        toks.extend(quote! {
+        quote! {
+            #[doc = " Wrapper declaration of"]
+            #[doc = #doc_name]
+            #[doc = " (part of the public interface)"]
+            #ext_annotated_declaration
+
             #[doc = " Implementation of Step for"]
             #[doc = #doc_name]
             #[doc = " (immediately defers to Step for inner)"]
             #ext_step_impl
-        });
-
-        if let Some(nb_iter) = options.main {
-            let doc = format!(
-                "Main function automatically generated from {name} (runs for {nb_iter} steps)"
-            );
-            toks.extend(quote! {
-                #[doc = #doc]
-                pub fn main() {
-                    use ::chandeliers_sem::traits::*;
-                    let mut sys = #ext_name::default();
-                    if #nb_iter == 0 {
-                        loop {
-                            sys.step(().embed()).trusted();
-                        }
-                    } else {
-                        for _ in 1..=#nb_iter {
-                            sys.step(().embed()).trusted();
-                        }
-                    }
-                }
-            });
         }
     }
 }
@@ -446,6 +530,24 @@ impl Sp<&Tuple<Sp<decl::TyVar>>> {
                 ( #( #tup ),* )
             }
         }
+    }
+
+    /// Simply a comma-separated flat tuple.
+    fn flattened_trailing_comma(&self) -> TokenStream {
+        let tup = self.t.iter().map(|sv| sv.name_of().as_sanitized_ident());
+        quote_spanned! {self.span=>
+            #( #tup, )*
+        }
+    }
+
+    /// Generate a formatting string for this tuple, in the form
+    /// "(a={}, b={}, c={})"
+    fn fmt_strings(&self) -> String {
+        let mut accum = Vec::new();
+        for v in self.t.iter() {
+            accum.push(format!("{}={{}}", v.name_of()));
+        }
+        format!("({})", accum.join(", "))
     }
 
     /// For an assignment, we turn `()` into `_`
@@ -498,7 +600,7 @@ impl ToTokens for decl::ExtNode {
         let output_asst = outputs.as_assignment_target();
         let output_values = outputs.with_span(name.span).as_values();
 
-        let (trace_pre, trace_post) = options.traces("[pre] ", name, inputs, outputs);
+        let (trace_pre, trace_post) = options.traces("[ext] ", name, inputs, outputs);
 
         toks.extend(quote_spanned! {name.span=>
             #[derive(Debug, Default)]
@@ -529,27 +631,7 @@ impl ToTokens for decl::ExtNode {
             }
         });
 
-        if let Some(nb_iter) = options.main {
-            let doc = format!(
-                "Main function automatically generated from {name} (runs for {nb_iter} steps)"
-            );
-            toks.extend(quote! {
-                #[doc = #doc]
-                pub fn main() {
-                    use ::chandeliers_sem::traits::*;
-                    let mut sys = #ext_name::default();
-                    if #nb_iter == 0 {
-                        loop {
-                            sys.step(().embed()).trusted();
-                        }
-                    } else {
-                        for _ in 1..=#nb_iter {
-                            sys.step(().embed()).trusted();
-                        }
-                    }
-                }
-            });
-        }
+        toks.extend(options.fn_main(&self.name));
     }
 }
 
@@ -584,9 +666,9 @@ impl decl::TyVar {
     }
 }
 
-crate::sp::transparent_impl!(fn as_sanitized_ident return TokenStream where expr::GlobalVar);
-crate::sp::transparent_impl!(fn as_raw_ident return TokenStream where expr::GlobalVar);
-impl expr::GlobalVar {
+crate::sp::transparent_impl!(fn as_sanitized_ident return TokenStream where var::Global);
+crate::sp::transparent_impl!(fn as_raw_ident return TokenStream where var::Global);
+impl var::Global {
     /// Format as a name that cannot have collisions with other global
     /// variables, including those of the same name in other invocations of
     /// the macro.
@@ -606,8 +688,8 @@ impl expr::GlobalVar {
     }
 }
 
-crate::sp::transparent_impl!(fn as_sanitized_ident return TokenStream where expr::LocalVar);
-impl expr::LocalVar {
+crate::sp::transparent_impl!(fn as_sanitized_ident return TokenStream where var::Local);
+impl var::Local {
     /// Format as a name that cannot have collisions with existing global variables.
     fn as_sanitized_ident(&self, _span: Span) -> TokenStream {
         let id = Ident::new(&format!("__local_{}", &self.repr.t), self.repr.span);
@@ -635,16 +717,16 @@ impl ConstExprTokens for expr::Expr {
                 let refer = refer.const_expr_tokens();
                 quote!( #refer )
             }
-            Self::BinOp { op, lhs, rhs } => {
+            Self::Bin { op, lhs, rhs } => {
                 let lhs = lhs.const_expr_tokens();
                 let rhs = rhs.const_expr_tokens();
                 quote!( (#lhs #op #rhs) )
             }
-            Self::UnOp { op, inner } => {
+            Self::Un { op, inner } => {
                 let inner = inner.const_expr_tokens();
                 quote!( (#op #inner) )
             }
-            Self::CmpOp { op, lhs, rhs } => {
+            Self::Cmp { op, lhs, rhs } => {
                 let lhs = lhs.const_expr_tokens();
                 let rhs = rhs.const_expr_tokens();
                 quote!( (#lhs #op #rhs) )
@@ -667,12 +749,12 @@ impl ConstExprTokens for expr::Expr {
                 }
             }
             Self::Merge { .. } => unreachable!("Merge is not valid in const contexts"),
-            Self::ClockOp { .. } => unreachable!("ClockOp is not valid in const contexts"),
+            Self::Clock { .. } => unreachable!("Clock is not valid in const contexts"),
         }
     }
 }
 
-impl ToTokens for expr::BinOp {
+impl ToTokens for op::Bin {
     fn to_tokens(&self, toks: &mut TokenStream) {
         toks.extend(match self {
             Self::Add => quote!( + ),
@@ -687,7 +769,7 @@ impl ToTokens for expr::BinOp {
     }
 }
 
-impl ToTokens for expr::UnOp {
+impl ToTokens for op::Un {
     fn to_tokens(&self, toks: &mut TokenStream) {
         toks.extend(match self {
             Self::Not => quote!(!),
@@ -696,7 +778,7 @@ impl ToTokens for expr::UnOp {
     }
 }
 
-impl ToTokens for expr::CmpOp {
+impl ToTokens for op::Cmp {
     fn to_tokens(&self, toks: &mut TokenStream) {
         toks.extend(match self {
             Self::Eq => quote!( == ),
@@ -731,7 +813,7 @@ impl ConstExprTokens for expr::Lit {
 ///    `lit!(X)`
 ///
 /// This minimizes name collisions and provides the correct typing.
-impl ToTokens for expr::Reference {
+impl ToTokens for var::Reference {
     fn to_tokens(&self, toks: &mut TokenStream) {
         match self {
             Self::Var(v) => {
@@ -747,7 +829,7 @@ impl ToTokens for expr::Reference {
     }
 }
 
-impl ConstExprTokens for expr::Reference {
+impl ConstExprTokens for var::Reference {
     fn const_expr_tokens(&self, _span: Span) -> TokenStream {
         match self {
             Self::Var(_) => unreachable!("Var is invalid in const contexts"),
@@ -761,7 +843,7 @@ impl ConstExprTokens for expr::Reference {
 
 /// Candle specifies that variables in the past can be invoqued through the
 /// notation `var!(self <~ dt; v)`.
-impl ToTokens for expr::PastVar {
+impl ToTokens for var::Past {
     fn to_tokens(&self, toks: &mut TokenStream) {
         let Self { var, depth } = self;
         let var = var.as_sanitized_ident();
@@ -782,16 +864,16 @@ impl ToTokens for decl::TyVar {
     }
 }
 
-crate::sp::transparent_impl!(fn base_type_of return ty::TyBase where decl::TyVar);
-crate::sp::transparent_impl!(fn name_of return expr::LocalVar where decl::TyVar);
+crate::sp::transparent_impl!(fn base_type_of return ty::Base where decl::TyVar);
+crate::sp::transparent_impl!(fn name_of return var::Local where decl::TyVar);
 impl decl::TyVar {
     /// A `TyVar` is a pair of a name and a type. This extracts the type.
-    fn base_type_of(&self, _: Span) -> ty::TyBase {
+    fn base_type_of(&self, _: Span) -> ty::Base {
         self.ty.t.ty.t.inner.t
     }
 
     /// A `TyVar` is a pair of a name and a type. This extracts the name.
-    fn name_of(&self, _: Span) -> expr::LocalVar {
+    fn name_of(&self, _: Span) -> var::Local {
         self.name.t.clone()
     }
 }
@@ -811,8 +893,8 @@ impl ToTokens for ty::Stream {
     }
 }
 
-crate::sp::transparent_impl!(fn as_defined_ty return TokenStream where ty::TyBase);
-impl ty::TyBase {
+crate::sp::transparent_impl!(fn as_defined_ty return TokenStream where ty::Base);
+impl ty::Base {
     /// Pass a type through `ty_mapping` to get `i64`/`f64`/`bool`.
     fn as_defined_ty(self, span: Span) -> TokenStream {
         let ty = self.as_lustre_ty(span);
@@ -822,8 +904,8 @@ impl ty::TyBase {
     }
 }
 
-crate::sp::transparent_impl!(fn as_lustre_ty return TokenStream where ty::TyBase);
-impl ty::TyBase {
+crate::sp::transparent_impl!(fn as_lustre_ty return TokenStream where ty::Base);
+impl ty::Base {
     /// Print a type as the `ty_mapping` macro would expect it: `int`/`float`/`bool`.
     fn as_lustre_ty(self, span: Span) -> TokenStream {
         let id = Ident::new(&format!("{self}"), span);
@@ -896,13 +978,13 @@ impl ToTokens for expr::Expr {
                 let elems = t.t.iter();
                 quote!( ( #( #elems ),* ).embed() )
             }
-            Self::BinOp { op, lhs, rhs } => {
+            Self::Bin { op, lhs, rhs } => {
                 quote!(::chandeliers_sem::binop!(#op; #lhs, #rhs))
             }
-            Self::UnOp { op, inner } => {
+            Self::Un { op, inner } => {
                 quote!(::chandeliers_sem::unop!(#op; #inner))
             }
-            Self::CmpOp { op, lhs, rhs } => {
+            Self::Cmp { op, lhs, rhs } => {
                 quote!(::chandeliers_sem::cmp!(#op; #lhs, #rhs))
             }
             Self::Later { clk, before, after } => {
@@ -926,7 +1008,7 @@ impl ToTokens for expr::Expr {
             Self::Merge { switch, on, off } => {
                 quote!(::chandeliers_sem::merge!(#switch; #on, #off))
             }
-            Self::ClockOp {
+            Self::Clock {
                 op,
                 inner,
                 activate,
@@ -938,7 +1020,7 @@ impl ToTokens for expr::Expr {
     }
 }
 
-impl ToTokens for expr::ClockOp {
+impl ToTokens for op::Clock {
     fn to_tokens(&self, toks: &mut TokenStream) {
         toks.extend(match self {
             Self::When => quote!(when),

@@ -45,7 +45,7 @@ impl<T: TrySpan> TrySpan for &T {
 /// Trivial projection.
 impl<T: TrySpan> TrySpan for Option<T> {
     fn try_span(&self) -> Option<Span> {
-        self.as_ref().and_then(|t| t.try_span())
+        self.as_ref().and_then(TrySpan::try_span)
     }
 }
 
@@ -151,13 +151,10 @@ where
                 self.var.try_span(),
             ),
             (
-                format!("Perhaps you meant one of the local variables: {}", suggest1),
+                format!("Perhaps you meant one of the local variables: {suggest1}"),
                 None,
             ),
-            (
-                format!("or one of the global variables: {}", suggest2),
-                None,
-            ),
+            (format!("or one of the global variables: {suggest2}"), None),
         ]
     }
 }

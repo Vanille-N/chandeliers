@@ -18,8 +18,9 @@ use sanitizer::sp::Sp;
 
 /// Generate unique identifiers for each macro invocation. We need this to avoid
 /// name collisions in `extern node` and `extern const` declarations.
-static RUN_UID: AtomicUsize = AtomicUsize::new(0);
 fn new_run_uid() -> usize {
+    /// Mutable state to generate unique identifiers.
+    static RUN_UID: AtomicUsize = AtomicUsize::new(0);
     RUN_UID.fetch_add(1, Ordering::SeqCst)
 }
 
@@ -57,6 +58,8 @@ pub fn decl(i: proc_macro::TokenStream) -> proc_macro::TokenStream {
     toks.into()
 }
 
+/// Run the entire process on the program: translation + causality check + typechecking +
+/// positivity + clockchecking.
 fn prog_pipeline(prog: Sp<syntax::Prog>) -> Result<Sp<sanitizer::ast::decl::Prog>, err::Error> {
     use sanitizer::causality::Causality;
     use sanitizer::positivity::MakePositive;
@@ -66,9 +69,12 @@ fn prog_pipeline(prog: Sp<syntax::Prog>) -> Result<Sp<sanitizer::ast::decl::Prog
     let mut prog = prog.causality()?;
     prog.typecheck()?;
     prog.make_positive()?;
+    // FIXME: clockchecking coming soon.
     Ok(prog)
 }
 
+/// Generate a run of trybuild test cases.
+/// Usage: `compiling!(test_name with expected_outcome in path/to/test/folder)`.
 macro_rules! compiling {
     ($fun:ident with $testing:ident in $($dir:ident / )*) => {
         #[test]
@@ -93,6 +99,7 @@ compiling!(pass_fromslides with pass in pass/fromslides/);
 compiling!(pass_given with pass in pass/given/);
 compiling!(pass_options with pass in pass/options/);
 
+/// Emit one error message from a sequence of spans and associated hint messages.
 fn emit(elements: Vec<(String, Option<proc_macro2::Span>)>) -> proc_macro2::TokenStream {
     let mut elements = elements.into_iter();
     let (msg, span) = elements.next().unwrap();
@@ -100,9 +107,9 @@ fn emit(elements: Vec<(String, Option<proc_macro2::Span>)>) -> proc_macro2::Toke
         proc_macro::Diagnostic::spanned(span.unwrap().unwrap(), proc_macro::Level::Error, msg);
     for (msg, span) in elements {
         if let Some(span) = span {
-            d = d.span_note(span.unwrap(), msg)
+            d = d.span_note(span.unwrap(), msg);
         } else {
-            d = d.note(msg)
+            d = d.note(msg);
         }
     }
     d.emit();
