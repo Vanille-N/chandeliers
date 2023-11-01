@@ -1,4 +1,5 @@
 use crate::macros::*;
+// FIXME: should implement Step
 
 #[allow(non_camel_case_types)]
 #[derive(Debug, Clone, Default)]
@@ -26,7 +27,7 @@ fn fib_behavior() {
     let mut fib = fib::default();
     let mut vals = vec![];
     for _ in 0..10 {
-        vals.push(fib.update_mut().trusted());
+        vals.push(fib.update_mut().unwrap());
     }
     assert_eq!(&vals, &[0, 1, 1, 2, 3, 5, 8, 13, 21, 34]);
 }

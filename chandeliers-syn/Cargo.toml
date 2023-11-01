@@ -1,6 +1,6 @@
 [package]
 name = "chandeliers-syn"
-version = "0.4.0"
+version = "0.4.1"
 edition = "2021"
 authors = [ "Neven <vanille@crans.org>" ]
 description = "Syntax of the Lustre language, to be parsed by procedural macros"
@@ -15,5 +15,5 @@ syn = { version = "2.0", features = ["full"] }
 quote = "1.0"
 proc-macro2 = "1.0"
 syn_derive = "0.1.7"
-chandeliers-err = { path = "../chandeliers-err", version = "0.4.0" }
-chandeliers-san = { path = "../chandeliers-san", version = "0.4.0" }
+chandeliers-err = { path = "../chandeliers-err", version = "0.4.1" }
+chandeliers-san = { path = "../chandeliers-san", version = "0.4.1" }
