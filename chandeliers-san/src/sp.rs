@@ -180,7 +180,9 @@ where
         let end = t.span_end().unwrap_or(begin);
         Ok(Self {
             t,
-            span: begin.join(end).unwrap(),
+            span: begin
+                .join(end)
+                .unwrap_or_else(|| err::panic!("Malformed span between {begin:?} and {end:?}")),
         })
     }
 }

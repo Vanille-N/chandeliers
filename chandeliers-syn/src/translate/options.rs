@@ -102,7 +102,9 @@ impl<T> SetOpt<T> {
                     "The attribute {} is not valid here (does not apply to {current})",
                     self.message
                 ),
-                span: self.span.unwrap(),
+                span: self.span.unwrap_or_else(|| {
+                    err::panic!("Malformed `SetOpt`: it has a `value` but no `span`")
+                }),
             }
             .into_err())
         } else {
@@ -213,7 +215,11 @@ impl Decl {
             ("trace", [], []) => self.trace.set(true, attr.span),
             ("export", [], []) => self.export.set(true, attr.span),
             ("main", [], []) => self.main.some(100, attr.span),
-            ("main", [], [Lit::Int(i)]) => self.main.some(i.base10_parse().unwrap(), attr.span),
+            ("main", [], [Lit::Int(i)]) => self.main.some(
+                i.base10_parse()
+                    .unwrap_or_else(|e| err::panic!("{i} cannot be parsed in base 10: {e}")),
+                attr.span,
+            ),
             ("rustc_allow", [inner], []) => {
                 self.rustc_allow
                     .push(syn::Ident::new(inner, params.span), attr.span);

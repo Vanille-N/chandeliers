@@ -26,7 +26,7 @@ fn fib_behavior() {
     let mut fib = fib::default();
     let mut vals = vec![];
     for _ in 0..10 {
-        vals.push(fib.update_mut().unwrap());
+        vals.push(fib.update_mut().trusted());
     }
     assert_eq!(&vals, &[0, 1, 1, 2, 3, 5, 8, 13, 21, 34]);
 }

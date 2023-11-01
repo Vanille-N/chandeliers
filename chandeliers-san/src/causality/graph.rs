@@ -46,6 +46,40 @@ use std::hash::Hash;
 use super::depends::Depends;
 use chandeliers_err::{self as err, IntoError, Result, TrySpan};
 
+/// The manipulations in this file are prone to out-of-bounds accesses,
+/// and because we are in a proc macro we won't get a nice error message
+/// if that happens.
+/// It is strongly discouraged to access any array other than through
+/// this macro that will at the very least produce an actionable error message.
+macro_rules! at {
+    ( $arr:expr, $idx:expr ) => {{
+        let arr = &$arr;
+        let idx: usize = $idx;
+        if let Some(val) = arr.get(idx) {
+            val
+        } else {
+            chandeliers_err::panic!(
+                "Out-of-bounds access: no index {} on array of length {}",
+                idx,
+                arr.len()
+            )
+        }
+    }};
+    ( mut $arr:expr, $idx:expr ) => {{
+        let arr = &mut $arr;
+        let idx: usize = $idx;
+        if let Some(val) = arr.get_mut(idx) {
+            val
+        } else {
+            chandeliers_err::panic!(
+                "Out-of-bounds access: no index {} on array of length {}",
+                idx,
+                arr.len()
+            )
+        }
+    }};
+}
+
 /// The identifier of a `Unit`.
 ///
 /// To avoid out of bounds accesses it is very important to only ever use
@@ -178,34 +212,36 @@ mod explore {
         /// Exploration procedure for one node.
         pub fn run(&mut self, v: usize, graph: &[Vec<super::WithDefSite<usize>>]) {
             // Register unique identifiers for this new node.
-            self.extra[v].index = Some(self.index);
-            self.extra[v].low_link = Some(self.index);
+            at!(mut self.extra, v).index = Some(self.index);
+            at!(mut self.extra, v).low_link = Some(self.index);
             self.index += 1;
             self.stk.push(v);
-            self.extra[v].on_stack = true;
+            at!(mut self.extra, v).on_stack = true;
 
             // Explore all children.
             // Compare `low_link` to find cycles: because `low_link` is initially
             // the (unique) index, a child with a smaller `low_link` gives a cycle.
-            for w in &graph[v] {
-                if self.extra[w.contents].index.is_none() {
+            for w in at!(graph, v) {
+                if at!(self.extra, w.contents).index.is_none() {
                     // Not explored at all, explore it.
                     self.run(w.contents, graph);
-                    self.extra[v].low_link =
-                        self.extra[v].low_link.min(self.extra[w.contents].low_link);
-                } else if self.extra[w.contents].on_stack {
+                    at!(mut self.extra, v).low_link = at!(self.extra, v)
+                        .low_link
+                        .min(at!(self.extra, w.contents).low_link);
+                } else if at!(self.extra, w.contents).on_stack {
                     // Exploration still ongoing, `low_link` has not yet been fully computed,
                     // so use `index` instead.
-                    self.extra[v].low_link =
-                        self.extra[v].low_link.min(self.extra[w.contents].index);
+                    at!(mut self.extra, v).low_link = at!(self.extra, v)
+                        .low_link
+                        .min(at!(self.extra, w.contents).index);
                 }
             }
 
             // Pop the scc, as given by all the nodes above `v` on the stack.
-            if self.extra[v].low_link == self.extra[v].index {
+            if at!(self.extra, v).low_link == at!(self.extra, v).index {
                 let mut scc = Vec::new();
                 while let Some(w) = self.stk.pop() {
-                    self.extra[w].on_stack = false;
+                    at!(mut self.extra, w).on_stack = false;
                     scc.push(w);
                     if w == v {
                         break;
@@ -227,7 +263,7 @@ mod explore {
 
         /// Determine if a vertex was already explored or not.
         pub fn unexplored(&self, idx: usize) -> bool {
-            self.extra[idx].index.is_none()
+            at!(self.extra, idx).index.is_none()
         }
 
         /// Get the SCC out at the end of the exploration.
@@ -256,7 +292,7 @@ where
             uid
         };
         if override_span {
-            self.atomics.0[uid].try_override_span(o);
+            at!(mut self.atomics.0, uid).try_override_span(o);
         }
         uid
     }
@@ -344,37 +380,37 @@ where
                     // currently being computed.
                     if let Some(prior) = self.provided_by_ext.get(&p.contents) {
                         return Err(err::GraphUnitDeclTwice {
-                            unit: &self.atomics.0[p.contents].contents,
+                            unit: &at!(self.atomics.0, p.contents).contents,
                             prior: "the context",
-                            new_site: &self.elements[id],
+                            new_site: &at!(self.elements, id),
                             prior_site: prior.def_site,
                         }
                         .into_err());
                     }
-                    if let Some(prov) = provider[p.contents] {
+                    if let Some(prov) = at!(provider, p.contents) {
                         return Err(err::GraphUnitDeclTwice {
-                            unit: &self.atomics.0[p.contents].contents,
+                            unit: &at!(self.atomics.0, p.contents).contents,
                             prior: "a prior item",
-                            new_site: &self.elements[id],
-                            prior_site: &self.elements[prov],
+                            new_site: &at!(self.elements, id),
+                            prior_site: &at!(self.elements, *prov),
                         }
                         .into_err());
                     }
                     // Constraint is valid, record its provider.
-                    provider[p.contents] = Some(id);
+                    *at!(mut provider, p.contents) = Some(id);
                     // Check for cycles of length 1.
                     // This is the best time to do it since the default SCC algorithm
                     // is fine with connected components of size 1.
-                    for r in &self.require[id] {
+                    for r in at!(self.require, id) {
                         if r.contents == p.contents {
                             return Err(err::GraphUnitDependsOnItself {
-                                unit: &self.atomics.0[p.contents].contents,
-                                def_site: &self.elements[id],
+                                unit: &at!(self.atomics.0, p.contents).contents,
+                                def_site: at!(self.elements, id),
                                 usage: r.def_site,
                             }
                             .into_err());
                         }
-                        constraints[p.contents].push(*r);
+                        at!(mut constraints, p.contents).push(*r);
                     }
                 }
             }
@@ -403,7 +439,7 @@ where
             }
             if c.len() > 1 {
                 // Oops, here's a loop.
-                let looping = c.iter().map(|l| self.atomics.0[*l].elements());
+                let looping = c.iter().map(|l| at!(self.atomics.0, *l).elements());
                 return Err(err::Cycle { items: looping }.into_err());
             }
             // Correctly of size 1, we can use it next.
@@ -412,7 +448,7 @@ where
             };
             // This is faillible because we have `Unit`s that are not provided by anyone.
             if let Some(Some(prov)) = provider.get(id) {
-                if let Some(obj) = unused[*prov].take() {
+                if let Some(obj) = at!(mut unused, *prov).take() {
                     schedule.push(obj);
                 }
             }

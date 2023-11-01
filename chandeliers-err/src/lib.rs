@@ -7,6 +7,43 @@
 use proc_macro2::Span;
 use std::fmt::Display;
 
+/// Repository of this project, to be displayed in error messages.
+#[macro_export]
+macro_rules! repo {
+    () => {
+        "https://github.com/Vanille-N/chandeliers"
+    };
+}
+
+/// Generate an error message better than just "proc macro panicked".
+#[macro_export]
+macro_rules! panic {
+    ($($err:tt)*) => {{
+        std::panic!("
+Chandeliers panicked: \x1b[1;31m{}.\x1b[0m
+This error occured in \x1b[1;35m{}:{}:{}\x1b[0m
+
+If you are not a developper of Chandeliers and you see this message then this is a bug.
+I'd be grateful if you could report this error at \x1b[33m{}\x1b[0m
+with the code that produced it and the version of Chandeliers you are using.
+",
+            format!($($err)*),
+            file!(),
+            line!(),
+            column!(),
+            ::chandeliers_err::repo!(),
+        );
+    }};
+}
+
+/// Special instance of `panic` for code that should be trivially unreachable.
+#[macro_export]
+macro_rules! unreachable {
+    () => {{
+        ::chandeliers_err::panic!("Entered unreachable code");
+    }};
+}
+
 /// Anything that went wrong: a sequence of [Span] and associated message.
 pub type Error = Vec<(String, Option<Span>)>;
 

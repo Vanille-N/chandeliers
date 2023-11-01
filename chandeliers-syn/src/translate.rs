@@ -705,7 +705,11 @@ impl Translate for lus::TargetExprTuple {
             vs.push(t.translate(run_uid, ())?);
         }
         if vs.len() == 1 && !trail {
-            Ok(vs.into_iter().next().unwrap().t)
+            Ok(vs
+                .into_iter()
+                .next()
+                .unwrap_or_else(|| chandeliers_err::unreachable!())
+                .t)
         } else {
             Ok(candle::stmt::VarTuple::Multiple(vs.with_span(span)))
         }
@@ -792,18 +796,21 @@ mod assoc {
             Item: Into<Accum>,
         {
             // We always assume that there is a trailing _element_, not a trailing punctuation.
-            assert!(
-                !elems.trailing_punct(),
-                "Bug in the parser: {} should not accept trailing punctuation",
-                self.label
-            );
+            if elems.trailing_punct() {
+                chandeliers_err::panic!(
+                    "Bug in the parser: {} should not accept trailing punctuation",
+                    self.label
+                );
+            };
             let mut pairs = elems.into_pairs().enumerate();
             let mut oper: Punct;
             let mut accum: Sp<Accum>;
             // If the first element is a `Punctuated` we can initialize
             // our accumulator. Otherwise this is a transparent expression
             // and we just defer directly to the translation for the inner type.
-            let (depth, fst) = pairs.next().unwrap();
+            let Some((depth, fst)) = pairs.next() else {
+                chandeliers_err::panic!("Should not be able to get an empty `Pairs` from a `Punctuated::parse_nonempty`");
+            };
             match fst {
                 Pair::Punctuated(elem, punct) => {
                     accum = (self.convert)(elem, depth)?.map(|_, i| i.into());
@@ -820,7 +827,13 @@ mod assoc {
                     // the punctuation to be used in the next iteration.
                     Pair::Punctuated(elem, punct) => {
                         let expr = (self.convert)(elem, depth)?;
-                        let span = expr.span.join(accum.span).unwrap();
+                        let Some(span) = expr.span.join(accum.span) else {
+                            chandeliers_err::panic!(
+                                "Malformed span between {:?} and {:?}",
+                                expr.span,
+                                accum.span
+                            );
+                        };
                         accum = (self.compose)(accum, oper, depth, expr).with_span(span);
                         oper = punct;
                     }
@@ -848,16 +861,21 @@ mod assoc {
             Item: Into<Accum>,
         {
             // We always assume that there is a trailing _element_, not a trailing punctuation.
-            assert!(
-                !elems.trailing_punct(),
-                "Bug in the parser: {} should not accept trailing punctuation",
-                self.label
-            );
+            if elems.trailing_punct() {
+                chandeliers_err::panic!(
+                    "Bug in the parser: {} should not accept trailing punctuation",
+                    self.label
+                );
+            };
+
             let mut pairs = elems.into_pairs().enumerate().rev();
             let mut accum: Sp<Accum>;
             // Because we've reversed the iterator, the first element is always
             // and `End`.
-            let (depth, last) = pairs.next().unwrap();
+            let Some((depth, last)) = pairs.next() else {
+                chandeliers_err::panic!("Should not be able to get an empty `Pairs` from a `Punctuated::parse_nonempty`");
+            };
+
             let Pair::End(elem) = last else {
                 unreachable!()
             };
@@ -871,7 +889,13 @@ mod assoc {
                     unreachable!()
                 };
                 let expr = (self.convert)(elem, depth)?;
-                let span = expr.span.join(accum.span).unwrap();
+                let Some(span) = expr.span.join(accum.span) else {
+                    chandeliers_err::panic!(
+                        "Malformed span between {:?} and {:?}",
+                        expr.span,
+                        accum.span
+                    );
+                };
                 accum = (self.compose)(expr, punct, depth, accum).with_span(span);
             }
             Ok(accum.t)
@@ -954,7 +978,11 @@ impl Translate for lus::expr::Cmp {
         ctx: Self::Ctx<'_>,
     ) -> Result<candle::expr::Expr> {
         use syn::punctuated::Pair;
-        assert!(!self.items.trailing_punct());
+        if self.items.trailing_punct() {
+            chandeliers_err::panic!(
+                "Bug in the parser: Comparisons should not accept trailing punctuation",
+            );
+        };
         let mut it = self.items.into_pairs();
         // We must have a first element
         let first = it.next().expect("CmpExpr should have at least one member");

@@ -102,9 +102,13 @@ compiling!(pass_options with pass in pass/options/);
 /// Emit one error message from a sequence of spans and associated hint messages.
 fn emit(elements: Vec<(String, Option<proc_macro2::Span>)>) -> proc_macro2::TokenStream {
     let mut elements = elements.into_iter();
-    let (msg, span) = elements.next().unwrap();
-    let mut d =
-        proc_macro::Diagnostic::spanned(span.unwrap().unwrap(), proc_macro::Level::Error, msg);
+    let Some((msg, span)) = elements.next() else {
+        err::panic!("This error message is empty")
+    };
+    let Some(span) = span else {
+        err::panic!("The very first error should always have an associated span")
+    };
+    let mut d = proc_macro::Diagnostic::spanned(span.unwrap(), proc_macro::Level::Error, msg);
     for (msg, span) in elements {
         if let Some(span) = span {
             d = d.span_note(span.unwrap(), msg);

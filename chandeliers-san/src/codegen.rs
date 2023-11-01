@@ -368,7 +368,8 @@ impl Sp<&Tuple<Sp<decl::TyVar>>> {
     fn as_defined_tys(&self) -> TokenStream {
         let mut tup = self.t.iter().map(|sv| sv.base_type_of().as_defined_ty());
         if self.t.len() == 1 {
-            tup.next().unwrap()
+            tup.next()
+                .unwrap_or_else(|| chandeliers_err::unreachable!())
         } else {
             quote_spanned! {self.span=>
                 ( #( #tup ),* )
@@ -388,7 +389,9 @@ impl Sp<&Tuple<Sp<decl::TyVar>>> {
     fn as_values(&self) -> TokenStream {
         let mut tup = self.t.iter().map(|sv| sv.name_of().as_sanitized_ident());
         if self.t.len() == 1 {
-            let first = tup.next().unwrap();
+            let first = tup
+                .next()
+                .unwrap_or_else(|| chandeliers_err::unreachable!());
             quote_spanned! {self.span=>
                 #first
             }

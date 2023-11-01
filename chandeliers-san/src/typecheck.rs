@@ -413,7 +413,10 @@ impl ast::op::Bin {
     /// Determines if the binary operator can be applied to these arguments.
     fn accepts(self, left: Sp<ty::Base>, right: Sp<ty::Base>) -> Result<()> {
         use ast::op::Bin;
-        let span = left.span.join(right.span).unwrap();
+        let span = left
+            .span
+            .join(right.span)
+            .unwrap_or_else(|| err::panic!("Malformed span between {left:?} and {right:?}"));
         if left.t != right.t {
             return Err(err::BinopMismatch {
                 oper: self,
@@ -484,7 +487,10 @@ impl ast::op::Cmp {
     /// Determines if the comparison operator can be applied to these arguments.
     fn accepts(self, left: Sp<ty::Base>, right: Sp<ty::Base>) -> Result<()> {
         use ast::op::Cmp;
-        let span = left.span.join(right.span).unwrap();
+        let span = left
+            .span
+            .join(right.span)
+            .unwrap_or_else(|| err::panic!("Malformed span between {left:?} and {right:?}"));
         if left.t != right.t {
             return Err(err::BinopMismatch {
                 oper: self,

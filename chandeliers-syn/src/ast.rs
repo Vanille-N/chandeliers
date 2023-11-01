@@ -188,7 +188,9 @@ impl Parse for LusIdent {
                     // reserved. Because the grammar is not ambiguous we can always tell if "float"
                     // refers to the type or the builtin.
                     _ => {
-                        let _ = input.call(Ident::parse_any).unwrap();
+                        let _ = input.call(Ident::parse_any).unwrap_or_else(|e| {
+                            chandeliers_err::panic!("{input} cannot be parsed as `Ident`: {e}")
+                        });
                         Ok(Self { inner })
                     }
                 }
@@ -313,7 +315,9 @@ impl ArgsTys {
     fn parse_terminated(input: ParseStream) -> Result<Sp<Self>> {
         let mut span = input.span();
         let items = Punctuated::parse_terminated(input)?;
-        span = span.join(input.span()).unwrap();
+        span = span.join(input.span()).unwrap_or_else(|| {
+            chandeliers_err::panic!("Malformed span between {span:?} and {input:?}")
+        });
         Ok(Sp {
             t: Self { items },
             span,
@@ -325,7 +329,10 @@ impl ArgsTys {
         let mut span = input.span();
         let items =
             punctuated_parse_separated_trailing_until::<Sp<ArgsTy>, Token![;], Token![let]>(input)?;
-        span = span.join(input.span()).unwrap();
+        span = span.join(input.span()).unwrap_or_else(|| {
+            chandeliers_err::panic!("Malformed span between {span:?} and {input:?}")
+        });
+
         Ok(Sp {
             t: Self { items },
             span,

@@ -77,16 +77,57 @@
 //! - DO NOT pretend to be someone else by using e.g.
 //!   `opt.fetch::<Typecheck>()` during codegen.
 //!
+//!
+//! # Robustness
+//!
+//! The entire option handling pipeline of the Chandeliers suite should be quite robust
+//! as long as you start from the right place:
+//! 0. Create a file with the right option.
+//!    This will produce a *runtime error* that the option is malformed or missing.
+//! 1. Parse a new option in `chandeliers_syn::translate::options`'s `fn with` for `Decl`.
+//!    This will fix 0. and produce a new *compilation error* in the invocations
+//!    of `project!` that there are fields missing.
+//! 2. Add the field to either `take` or `skip` depending on what is relevant.
+//!    This will fix 1. and produce a new *compilation error* that structs
+//!    from this file do not have the right fields.
+//! 3. In this file, modify `selection_aux_decl` to include the new definition
+//!    and specify its usage site(s).
+//! 4. In this file, update the invocations of `selection!` to project the right
+//!    field. This will fix 2. only if you have added the fields to exactly the
+//!    right option groups, and will produce a new *runtime error* that some
+//!    options are unused.
+//! 5. Add the relevant `fetch` where the option should be used. If you
+//!    make a mistake during this step it will produce a *compilation error*
+//!    that some trait is not implemented.
+//!
+//! As you can see most of the above steps are compilation errors and there
+//! is little room for forgetting to handle an option somewhere.
+//! Nevertheless several steps are runtime errors and thus may not be caught.
+//! To minimize this risk it is recommended to
+//! - keep the parsing in `Decl::with` as simple as possible,
+//! - invoque `fetch` and `assert_used` on the main path and not behind conditionals.
+//!
 
 /// Places where options can be relevant.
 pub mod usage {
-    /// The option is used during code generation.
-    #[derive(Debug, Clone, Copy, Default)]
-    pub struct Codegen {}
+    pub(super) trait ShowTy {
+        const NAME: &'static str;
+    }
 
-    /// The option is used during typechecking.
-    #[derive(Debug, Clone, Copy, Default)]
-    pub struct Typecheck {}
+    macro_rules! site {
+        ( $doc:tt : $name:ident ) => {
+            #[doc = "Indicates that the option is useful during"]
+            #[doc = $doc]
+            #[derive(Debug, Clone, Copy, Default)]
+            pub struct $name {}
+
+            impl ShowTy for $name {
+                const NAME: &'static str = stringify!($name);
+            }
+        };
+    }
+    site!("code generation": Codegen);
+    site!("typechecking": Typecheck);
 }
 
 /// An option that records whether it was used somewhere.
@@ -173,9 +214,11 @@ impl AssertUsed for Over {
     fn assert_used(&self, _: &'static str) {}
 }
 
-impl<Head, Tail: AssertUsed> AssertUsed for Sites<Head, Tail> {
+impl<Head: usage::ShowTy, Tail: AssertUsed> AssertUsed for Sites<Head, Tail> {
     fn assert_used(&self, msg: &'static str) {
-        assert!(self.used, "{}", msg);
+        if !self.used {
+            chandeliers_err::panic!("{} during {}", msg, Head::NAME)
+        }
         self.tail.assert_used(msg);
     }
 }
