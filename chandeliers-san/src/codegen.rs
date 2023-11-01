@@ -5,40 +5,17 @@
 
 //! Generate actual Candle statements from an AST.
 
-use crate::sp::{Sp, Span, WithSpan};
+use crate::sp::{Sp, Span};
 use proc_macro2::{Ident, TokenStream};
 use quote::{quote, quote_spanned, ToTokens};
 
 use super::ast::{decl, expr, op, past, stmt, ty, var, Tuple};
 
-/// Trait to generate `const` expressions.
-/// Since fewer constructs are available and since we need to use only
-/// things that Rustc considers const-computable, we represent expressions in
-/// a different way depending on whether they are in a `const` or in a local
-/// variable.
-trait ConstExprTokens {
-    /// Generate a `const` value for this expression.
-    fn const_expr_tokens(&self, span: Span) -> TokenStream;
-}
+mod constexpr;
+use constexpr::ConstExprSpanTokens;
 
-/// Helper trait for `Sp<_>` to impement `ConstExprTokens` with an added span.
-trait ConstExprSpanTokens {
-    /// Generate a `const` value for this expression.
-    fn const_expr_tokens(&self) -> TokenStream;
-}
-
-impl<T: ConstExprTokens> ConstExprSpanTokens for Sp<T> {
-    fn const_expr_tokens(&self) -> TokenStream {
-        self.t.const_expr_tokens(self.span).with_span(self.span)
-    }
-}
-
-impl<T: ConstExprTokens> ConstExprTokens for Box<T> {
-    fn const_expr_tokens(&self, span: Span) -> TokenStream {
-        let inner = self.as_ref().const_expr_tokens(span);
-        quote!( #inner )
-    }
-}
+pub mod options;
+use options::{FnMain, PubQualifier, Traces};
 
 /// Generate a program simply by generating all declarations.
 impl ToTokens for decl::Prog {
@@ -62,121 +39,6 @@ impl ToTokens for decl::Decl {
             Self::Const(c) => toks.extend(quote!( #c )),
             Self::Node(n) => toks.extend(quote!( #n )),
         }
-    }
-}
-
-/// Options that control the visibility of an item.
-trait OptionsPubQualifier {
-    /// Whether the item is public.
-    fn active(&self) -> bool;
-    /// How to make the item public.
-    fn pub_qualifier(&self) -> TokenStream {
-        if self.active() {
-            quote!(pub)
-        } else {
-            quote!()
-        }
-    }
-}
-
-impl OptionsPubQualifier for decl::ConstOptions {
-    fn active(&self) -> bool {
-        self.export
-    }
-}
-
-impl OptionsPubQualifier for decl::NodeOptions {
-    fn active(&self) -> bool {
-        self.export
-    }
-}
-
-/// Options that allow printing debug information.
-trait OptionsTraces {
-    /// Whether a trace should be printed.
-    fn active(&self) -> bool;
-    /// How to print a trace.
-    fn traces(
-        &self,
-        prefix: &str,
-        name: &Sp<decl::NodeName>,
-        inputs: Sp<&Tuple<Sp<decl::TyVar>>>,
-        outputs: Sp<&Tuple<Sp<decl::TyVar>>>,
-    ) -> (TokenStream, TokenStream) {
-        let name = format!("{name}");
-        let input_var_fmt = inputs.fmt_strings();
-        let output_var_fmt = outputs.fmt_strings();
-        let inputs = inputs.flattened_trailing_comma();
-        let outputs = outputs.flattened_trailing_comma();
-        let input_fmt = format!("{{}}{{}} <- {input_var_fmt}");
-        let output_fmt = format!("{{}}{{}} -> {output_var_fmt}",);
-        if self.active() {
-            (
-                quote! {
-                    println!(#input_fmt, #prefix, #name, #inputs);
-                },
-                quote! {
-                    println!(#output_fmt, #prefix, #name, #outputs);
-                },
-            )
-        } else {
-            (quote!(), quote!())
-        }
-    }
-}
-impl OptionsTraces for decl::NodeOptions {
-    fn active(&self) -> bool {
-        self.trace
-    }
-}
-impl OptionsTraces for decl::ExtNodeOptions {
-    fn active(&self) -> bool {
-        self.trace
-    }
-}
-
-/// Options that allow generating a `main`.
-trait OptionsFnMain {
-    /// Whether a `main` should be generated.
-    fn active(&self) -> Option<usize>;
-    /// How to generate one.
-    fn fn_main(&self, name: &Sp<decl::NodeName>) -> TokenStream {
-        if let Some(nb_iter) = self.active() {
-            let ext_name = name.as_raw_ident();
-            let doc = format!(
-                "Main function automatically generated from {name} (runs for {nb_iter} steps)"
-            );
-            quote! {
-                #[doc = #doc]
-                pub fn main() {
-                    use ::chandeliers_sem::traits::*;
-                    let mut sys = #ext_name::default();
-                    if #nb_iter == 0 {
-                        loop {
-                            sys.step(().embed()).trusted();
-                        }
-                    } else {
-                        for _ in 1..=#nb_iter {
-                            sys.step(().embed()).trusted();
-                        }
-                    }
-                }
-            }
-        } else {
-            quote!()
-        }
-    }
-}
-
-impl OptionsFnMain for decl::NodeOptions {
-    fn active(&self) -> Option<usize> {
-        self.main
-    }
-}
-
-impl OptionsFnMain for decl::ExtNodeOptions {
-    fn active(&self) -> Option<usize> {
-        self.main
     }
 }
 
@@ -697,63 +559,6 @@ impl var::Local {
     }
 }
 
-/// Expr is one of the few nontrivial implementations in this file,
-/// but at its core it's mostly just projecting to fields.
-///
-/// We do however need separate implementations for const and non-const
-/// contexts because the basic types are different (`i64` vs `Nillable<i64>`).
-///
-/// In this method we are heavily taking advantage of the fact that rust has
-/// rich const definitions and all binari/unary/comparisons/conditionals
-/// that we are going to use here are valid in Rust const contexts.
-impl ConstExprTokens for expr::Expr {
-    fn const_expr_tokens(&self, _: Span) -> TokenStream {
-        match self {
-            Self::Lit(l) => {
-                let l = l.const_expr_tokens();
-                quote!( #l )
-            }
-            Self::Reference(refer) => {
-                let refer = refer.const_expr_tokens();
-                quote!( #refer )
-            }
-            Self::Bin { op, lhs, rhs } => {
-                let lhs = lhs.const_expr_tokens();
-                let rhs = rhs.const_expr_tokens();
-                quote!( (#lhs #op #rhs) )
-            }
-            Self::Un { op, inner } => {
-                let inner = inner.const_expr_tokens();
-                quote!( (#op #inner) )
-            }
-            Self::Cmp { op, lhs, rhs } => {
-                let lhs = lhs.const_expr_tokens();
-                let rhs = rhs.const_expr_tokens();
-                quote!( (#lhs #op #rhs) )
-            }
-            Self::Tuple(t) => {
-                let ts =
-                    t.t.iter()
-                        .map(|e| e.const_expr_tokens())
-                        .collect::<Vec<_>>();
-                quote!( ( #( #ts ),* ) )
-            }
-            Self::Later { .. } => unreachable!("Later is not valid in const contexts"),
-            Self::Substep { .. } => unreachable!("Substep is not valid in const contexts"),
-            Self::Ifx { cond, yes, no } => {
-                let cond = cond.const_expr_tokens();
-                let yes = yes.const_expr_tokens();
-                let no = no.const_expr_tokens();
-                quote! {
-                    if #cond { #yes } else { #no }
-                }
-            }
-            Self::Merge { .. } => unreachable!("Merge is not valid in const contexts"),
-            Self::Clock { .. } => unreachable!("Clock is not valid in const contexts"),
-        }
-    }
-}
-
 impl ToTokens for op::Bin {
     fn to_tokens(&self, toks: &mut TokenStream) {
         toks.extend(match self {
@@ -791,21 +596,6 @@ impl ToTokens for op::Cmp {
     }
 }
 
-/// It feels wrong to go back-and-forth between `i64`/`f64`/`bool` and
-/// the same as `LitInt`/`LitFloat`/`LitBool`.
-/// Maybe future implementations will change the internals of `expr::Lit`
-/// to not perform parsing to base10.
-impl ConstExprTokens for expr::Lit {
-    fn const_expr_tokens(&self, span: Span) -> TokenStream {
-        let lit = match self {
-            Self::Int(i) => syn::Lit::Int(syn::LitInt::new(&format!("{i}i64"), span)),
-            Self::Float(f) => syn::Lit::Float(syn::LitFloat::new(&format!("{f}f64"), span)),
-            Self::Bool(b) => syn::Lit::Bool(syn::LitBool::new(*b, span)),
-        };
-        quote!( #lit )
-    }
-}
-
 /// Part by convention and part by necessity,
 /// we display local variables as
 ///    `_local_v`
@@ -824,18 +614,6 @@ impl ToTokens for var::Reference {
                 toks.extend(quote! {
                     ::chandeliers_sem::lit!(#g)
                 });
-            }
-        }
-    }
-}
-
-impl ConstExprTokens for var::Reference {
-    fn const_expr_tokens(&self, _span: Span) -> TokenStream {
-        match self {
-            Self::Var(_) => unreachable!("Var is invalid in const contexts"),
-            Self::Global(v) => {
-                let g = v.as_sanitized_ident();
-                quote!( #g )
             }
         }
     }

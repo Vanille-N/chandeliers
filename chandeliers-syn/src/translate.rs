@@ -155,7 +155,7 @@
 //! - `pre (-e) ~~> -(pre e)`
 //! - `pre float(e) ~~> float(pre e)`
 //! - `pre (e1 or e2) ~~> (pre e1) or (pre e2)`
-//! - `pre (e1 -> e2) ~~> (pre e1) -> (pre e2)`
+//! - `pre (e1 ->{n} e2) ~~> (pre e1) ->{n-1} (pre e2)`
 //! - etc...
 //!
 //! To this end the translator carries in its context the current depth at
@@ -168,112 +168,11 @@ use std::collections::HashSet;
 
 use super::ast as lus;
 
+mod options;
+
 use chandeliers_err::{self as err, IntoError, Result};
 use chandeliers_san::ast as candle;
 use chandeliers_san::sp::{Sp, Span, WithSpan};
-
-/// Current options being applied to the node.
-#[derive(Clone, Default, Debug)]
-pub struct DeclOptions {
-    /// `#[trace]`: print debug information.
-    trace: bool,
-    /// `#[export]`: make the declaration public.
-    export: bool,
-    /// `#[main(10)]`: generate a `fn main` that runs for `n` (integer) steps.
-    main: Option<usize>,
-    /// `#[rustc_allow[dead_code]]`: forward the attribute as a `#[allow(_)]`.
-    rustc_allow: Vec<syn::Ident>,
-}
-
-impl DeclOptions {
-    /// Project to the options that are valid on a `const`.
-    fn for_const(self) -> Result<candle::decl::ConstOptions> {
-        /* FIXME: errors */
-        let Self {
-            trace: _,
-            export,
-            main: _,
-            rustc_allow,
-        } = self;
-        Ok(candle::decl::ConstOptions {
-            export,
-            rustc_allow,
-        })
-    }
-
-    /// Project to the options that are valid on a `node`.
-    fn for_node(self) -> Result<candle::decl::NodeOptions> {
-        let Self {
-            trace,
-            export,
-            main,
-            rustc_allow,
-        } = self;
-        /* FIXME: errors */
-        Ok(candle::decl::NodeOptions {
-            trace,
-            export,
-            main,
-            rustc_allow,
-        })
-    }
-
-    /// Project to the options that are valid on an `extern const`.
-    fn for_ext_const(self) -> Result<candle::decl::ExtConstOptions> {
-        /* FIXME: errors */
-        let Self {
-            trace: _,
-            export: _,
-            main: _,
-            rustc_allow,
-        } = self;
-        Ok(candle::decl::ExtConstOptions { rustc_allow })
-    }
-
-    /// Project to the options that are valid on an `extern node`.
-    fn for_ext_node(self) -> Result<candle::decl::ExtNodeOptions> {
-        let Self {
-            trace,
-            export: _,
-            main,
-            rustc_allow,
-        } = self;
-        /* FIXME: errors */
-        Ok(candle::decl::ExtNodeOptions {
-            trace,
-            main,
-            rustc_allow,
-        })
-    }
-
-    /// Update the current options with a new attribute.
-    fn with(mut self, attr: Sp<lus::Attribute>) -> Result<Self> {
-        use syn::Lit;
-        let params = attr.t.attr.t.params.map(|_, t| t.flatten());
-        let targets = attr.t.attr.t.targets.map(|_, t| t.flatten());
-        match (
-            attr.t.attr.t.action.t.inner.to_string().as_str(),
-            &params.t[..],
-            &targets.t[..],
-        ) {
-            ("trace", [], []) => self.trace = true,
-            ("export", [], []) => self.export = true,
-            ("main", [], []) => self.main = Some(100),
-            ("main", [], [Lit::Int(i)]) => self.main = Some(i.base10_parse().unwrap()),
-            ("rustc_allow", [attr], []) => {
-                self.rustc_allow.push(syn::Ident::new(attr, params.span));
-            }
-            (other, _, _) => {
-                return Err(err::Basic {
-                    msg: format!("Unknown attribute {other:?}"),
-                    span: attr.span,
-                }
-                .into_err())
-            }
-        }
-        Ok(self)
-    }
-}
 
 /// Trait to translate from the parsing AST to the analysis AST.
 pub trait Translate {
@@ -362,20 +261,20 @@ impl Translate for lus::Prog {
     fn translate(self, run_uid: usize, _span: Span, (): ()) -> Result<candle::decl::Prog> {
         let mut decls = Vec::new();
         for decl in self.decls {
-            decls.push(decl.translate(run_uid, DeclOptions::default())?);
+            decls.push(decl.translate(run_uid, options::Decl::default())?);
         }
         Ok(candle::decl::Prog { decls })
     }
 }
 
 impl Translate for lus::AttrDecl {
-    type Ctx<'i> = DeclOptions;
+    type Ctx<'i> = options::Decl;
     type Output = candle::decl::Decl;
     fn translate(
         self,
         run_uid: usize,
         _span: Span,
-        options: DeclOptions,
+        options: options::Decl,
     ) -> Result<candle::decl::Decl> {
         match self {
             Self::Tagged(attr, n) => n.flat_translate(run_uid, options.with(attr)?),
@@ -385,13 +284,13 @@ impl Translate for lus::AttrDecl {
 }
 
 impl Translate for lus::Decl {
-    type Ctx<'i> = DeclOptions;
+    type Ctx<'i> = options::Decl;
     type Output = candle::decl::Decl;
     fn translate(
         self,
         run_uid: usize,
         _span: Span,
-        options: DeclOptions,
+        options: options::Decl,
     ) -> Result<candle::decl::Decl> {
         Ok(match self {
             Self::Const(c) => {
@@ -404,13 +303,13 @@ impl Translate for lus::Decl {
 }
 
 impl Translate for lus::Extern {
-    type Ctx<'i> = DeclOptions;
+    type Ctx<'i> = options::Decl;
     type Output = candle::decl::Decl;
     fn translate(
         self,
         run_uid: usize,
         _span: Span,
-        options: DeclOptions,
+        options: options::Decl,
     ) -> Result<candle::decl::Decl> {
         Ok(match self {
             Self::Const(c) => {
@@ -424,13 +323,13 @@ impl Translate for lus::Extern {
 }
 
 impl Translate for lus::ExtConst {
-    type Ctx<'i> = candle::decl::ExtConstOptions;
+    type Ctx<'i> = candle::options::ExtConst;
     type Output = candle::decl::ExtConst;
     fn translate(
         self,
         run_uid: usize,
         _span: Span,
-        options: candle::decl::ExtConstOptions,
+        options: candle::options::ExtConst,
     ) -> Result<Self::Output> {
         let name = self.name.map(|span, name| candle::var::Global {
             repr: name.to_string().with_span(span),
@@ -446,13 +345,13 @@ impl Translate for lus::ExtConst {
 }
 
 impl Translate for lus::ExtNode {
-    type Ctx<'i> = candle::decl::ExtNodeOptions;
+    type Ctx<'i> = candle::options::ExtNode;
     type Output = candle::decl::ExtNode;
     fn translate(
         self,
         run_uid: usize,
         _span: Span,
-        options: candle::decl::ExtNodeOptions,
+        options: candle::options::ExtNode,
     ) -> Result<candle::decl::ExtNode> {
         let name = self.name.map(|span, name| candle::decl::NodeName {
             repr: name.to_string().with_span(span),
@@ -539,13 +438,13 @@ macro_rules! fork {
 }
 
 impl Translate for lus::Node {
-    type Ctx<'i> = candle::decl::NodeOptions;
+    type Ctx<'i> = candle::options::Node;
     type Output = candle::decl::Node;
     fn translate(
         self,
         run_uid: usize,
         _span: Span,
-        options: candle::decl::NodeOptions,
+        options: candle::options::Node,
     ) -> Result<Self::Output> {
         let name = self.name.map(|span, name| candle::decl::NodeName {
             repr: name.to_string().with_span(span),
@@ -578,13 +477,13 @@ impl Translate for lus::Node {
 }
 
 impl Translate for lus::Const {
-    type Ctx<'i> = candle::decl::ConstOptions;
+    type Ctx<'i> = candle::options::Const;
     type Output = candle::decl::Const;
     fn translate(
         self,
         run_uid: usize,
         span: Span,
-        options: candle::decl::ConstOptions,
+        options: candle::options::Const,
     ) -> Result<candle::decl::Const> {
         let name = self.name.map(|span, name| candle::var::Global {
             repr: name.to_string().with_span(span),

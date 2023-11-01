@@ -1196,11 +1196,11 @@ span_end_on_field!(AttrDef.action);
 pub struct Attribute {
     _marker: Token![#],
     #[syn(bracketed)]
-    _brack: Bracket,
-    #[syn(in = _brack)]
+    brack: Bracket,
+    #[syn(in = brack)]
     pub attr: Sp<AttrDef>,
 }
-span_end_on_field!(Attribute.attr);
+span_end_on_field!(Attribute.brack);
 
 #[derive(syn_derive::Parse)]
 pub enum Decl {

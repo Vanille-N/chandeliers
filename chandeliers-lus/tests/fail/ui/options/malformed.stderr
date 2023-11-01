@@ -1,0 +1,5 @@
+error: Unknown or malformed attribute "mai"
+ --> tests/fail/ui/options/malformed.rs:2:5
+  |
+2 |     #[mai]
+  |     ^^^^^^

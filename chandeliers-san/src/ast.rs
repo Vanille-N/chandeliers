@@ -11,6 +11,8 @@ use crate::causality::depends::Depends;
 use std::fmt;
 use std::hash::Hash;
 
+pub mod options;
+
 crate::sp::derive_with_span!(Tuple<T> where <T>);
 /// Because `Vec` does not implement `Parse` as we want,
 /// `Tuple` is used to for sequences.
@@ -625,7 +627,7 @@ pub mod stmt {
 /// Toplevel declarations.
 pub mod decl {
     use super::Tuple;
-    use super::{expr, stmt, ty, var};
+    use super::{expr, options, stmt, ty, var};
     use crate::sp::Sp;
     use std::fmt;
 
@@ -654,57 +656,13 @@ pub mod decl {
         }
     }
 
-    /// Options Available for a node.
-    #[derive(Debug, Clone)]
-    pub struct NodeOptions {
-        /// `#[trace]`: display debug information on the inputs and outputs
-        pub trace: bool,
-        /// `#[export]`: this struct is public.
-        pub export: bool,
-        /// `#[main(n)]` generate a main function for this node that runs `n` times.
-        pub main: Option<usize>,
-        /// `#[rustc_allow("foo")]`: generates a `#[allow(foo)]` on the definition
-        /// to silence Rustc warnings.
-        pub rustc_allow: Vec<syn::Ident>,
-    }
-
-    /// Options Available for an extern node.
-    #[derive(Debug, Clone)]
-    pub struct ExtNodeOptions {
-        /// `#[trace]`: display debug information on the inputs and outputs
-        pub trace: bool,
-        /// `#[main(n)]` generate a main function for this node that runs `n` times.
-        pub main: Option<usize>,
-        /// `#[rustc_allow("foo")]`: generates a `#[allow(foo)]` on the definition
-        /// to silence Rustc warnings.
-        pub rustc_allow: Vec<syn::Ident>,
-    }
-
-    /// Options available for a const.
-    #[derive(Debug, Clone)]
-    pub struct ConstOptions {
-        /// `#[export]`: this const is public.
-        pub export: bool,
-        /// `#[rustc_allow("foo")]`: generates a `#[allow(foo)]` on the definition
-        /// to silence Rustc warnings.
-        pub rustc_allow: Vec<syn::Ident>,
-    }
-
-    /// Options available for an extern const.
-    #[derive(Debug, Clone)]
-    pub struct ExtConstOptions {
-        /// `#[rustc_allow("foo")]`: generates a `#[allow(foo)]` on the definition
-        /// to silence Rustc warnings.
-        pub rustc_allow: Vec<syn::Ident>,
-    }
-
     /// A node declaration `node foo(x) returns (y); var z; let <body> tel`.
     #[derive(Debug, Clone)]
     pub struct Node {
         /// Public name of the node (`foo`).
         pub name: Sp<NodeName>,
         /// Compilation options attached (in the form `#[...]` as per the standard Rust notation)
-        pub options: NodeOptions,
+        pub options: options::Node,
         /// Input variables and types (`x`).
         pub inputs: Sp<Tuple<Sp<TyVar>>>,
         /// Output variables and types (`y`).
@@ -723,7 +681,7 @@ pub mod decl {
         /// Public name of the constant (`X`).
         pub name: Sp<var::Global>,
         /// Compilation options attached (in the form `#[...]` as per the standard Rust notation)
-        pub options: ConstOptions,
+        pub options: options::Const,
         /// Type of the constant (`int`).
         pub ty: Sp<ty::Base>,
         /// Const-computable value (`0`).
@@ -742,7 +700,7 @@ pub mod decl {
         /// Output variables and types (`y`).
         pub outputs: Sp<Tuple<Sp<TyVar>>>,
         /// Compilation options attached (in the form `#[...]` as per the standard Rust notation)
-        pub options: ExtNodeOptions,
+        pub options: options::ExtNode,
     }
 
     /// A trusted constant declaration `extern const X : int;`.
@@ -755,7 +713,7 @@ pub mod decl {
         /// Type of the constant (`int`).
         pub ty: Sp<ty::Base>,
         /// Compilation options attached (in the form `#[...]` as per the standard Rust notation)
-        pub options: ExtConstOptions,
+        pub options: options::ExtConst,
     }
 
     /// A toplevel declaration.
