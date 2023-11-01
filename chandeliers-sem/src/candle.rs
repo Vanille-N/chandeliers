@@ -189,7 +189,7 @@ macro_rules! ty {
     ( $t:ident + $($rest:tt)* ) => { $crate::past_ty!($crate::ty_mapping!($t), $($rest)*) };
 }
 
-/// Conditional debug printing. [pure]
+/// Conditional debug printing. (pure)
 ///
 /// Usage: `node_trace!(self, "debugging at step {}", self.__clock);` (statement)
 /// Assumption: `self` has a field `__trace: bool`.
@@ -222,7 +222,7 @@ macro_rules! update {
     }};
 }
 
-/// Fetch a variable from the environment. [pure]
+/// Fetch a variable from the environment. (pure)
 ///
 /// Usage: `var!(self <~ $dt; $var)` (expression)
 /// Assumption: if `$dt = 0` then `$var` exists as a local variable.
@@ -243,7 +243,7 @@ macro_rules! var {
     }};
 }
 
-/// Wrap a value as a `Nillable`. [pure]
+/// Wrap a value as a `Nillable`. (pure)
 ///
 /// Usage: `lit!(true)`, `lit!(0.5)`, `lit!(42)` (expression)
 ///
@@ -256,7 +256,7 @@ macro_rules! lit {
     };
 }
 
-/// The uninitialized value. [pure]
+/// The uninitialized value. (pure)
 ///
 /// Usage: `nil!()` (expression)
 ///
@@ -281,7 +281,7 @@ macro_rules! tick {
     };
 }
 
-/// Convert from `int` to `float`. [pure]
+/// Convert from `int` to `float`. (pure)
 ///
 /// Usage: `float!($v)` (expression)
 ///
@@ -293,7 +293,7 @@ macro_rules! float {
     };
 }
 
-/// The `->` Lustre operator. [pure]
+/// The `->` Lustre operator. (pure)
 ///
 /// Usage: `later!(self <~ $dt; $lhs, $rhs)` (expression)
 /// Assumption: `self` has a field `__clock: usize`
@@ -337,7 +337,7 @@ macro_rules! substep {
     }};
 }
 
-/// Conditional on `Nillable`s. [pure]
+/// Conditional on `Nillable`s. (pure)
 ///
 /// Usage: `ifx!(($b) then { $yes } else { $no })` (expression)
 ///
@@ -358,7 +358,7 @@ macro_rules! ifx {
     }};
 }
 
-/// Application of a binary operator. [pure]
+/// Application of a binary operator. (pure)
 ///
 /// Usage: `binop!(+; $lhs, $rhs)`, ... (expression)
 /// Reminder: `Nillable` has wrapper implementations for `+`, `-`, `/`, `*`, `%`, `|`, `&`, `^`
@@ -370,7 +370,7 @@ macro_rules! binop {
     ($op:tt ; $lhs:expr, $rhs:expr) => { $lhs $op $rhs };
 }
 
-/// Application of a unary operator. [pure]
+/// Application of a unary operator. (pure)
 ///
 /// Usage: `binop!(-; $val)`, ... (expression)
 /// Reminder: `Nillable` has wrapper implementations for `-`, `!`
@@ -408,7 +408,7 @@ macro_rules! nillable_cmp_eq {
     }};
 }
 
-/// Comparison operators on `Nillable`. [pure]
+/// Comparison operators on `Nillable`. (pure)
 ///
 /// Usage: `cmp!(<=; $lhs, $rhs)`, ... (expression)
 /// Reminder: `Nillable` has wrapper implementations for `<=`, `>=`, `<`, `>`, `!=`, `==`
@@ -440,7 +440,7 @@ macro_rules! cmp {
     }};
 }
 
-/// Assert that a boolean holds. [statement]
+/// Assert that a boolean holds. (statement)
 ///
 /// Usage: `truth!(v, "Assertion v failed")`.
 /// This fails on both `false` and `nil`.
@@ -457,7 +457,7 @@ macro_rules! truth {
     }};
 }
 
-/// Select only when the guard is true. [pure]
+/// Select only when the guard is true. (pure)
 ///
 /// `when!(b; e)` is `e` when `b` is `true` and `nil` otherwise.
 #[macro_export]
@@ -473,7 +473,7 @@ macro_rules! when {
     }};
 }
 
-/// Select only when the guard is true. [pure]
+/// Select only when the guard is true. (pure)
 ///
 /// `whenot!(b; e)` is `e` when `b` is `false` and `nil` otherwise.
 #[macro_export]
@@ -489,7 +489,7 @@ macro_rules! whenot {
     }};
 }
 
-/// Merge two streams (equivalent to `ifx`) [pure]
+/// Merge two streams (equivalent to `ifx`) (pure)
 ///
 /// `merge!(b; on, off)` is `on` when `b` is `true` and `off` when
 /// `b` is `false`.

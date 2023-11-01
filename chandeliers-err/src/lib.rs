@@ -7,10 +7,10 @@
 use proc_macro2::Span;
 use std::fmt::Display;
 
-/// Anything that went wrong: a sequence of `Span` and associated message.
+/// Anything that went wrong: a sequence of [Span] and associated message.
 pub type Error = Vec<(String, Option<Span>)>;
 
-/// Generate an `Error`.
+/// Generate an [Error].
 pub trait IntoError {
     /// Produce the sequence of spans and help messages.
     fn into_err(self) -> Error;
@@ -22,13 +22,13 @@ pub type Result<T> = std::result::Result<T, Error>;
 /// Objects that can be converted to spans.
 pub trait TrySpan {
     /// Try to get a span from the object (by default we don't get any,
-    /// but an `Sp<_>` wrapper might provide one)
+    /// but a wrapper might provide one)
     fn try_span(&self) -> Option<Span> {
         None
     }
 }
 
-/// Always `Some`.
+/// Always [Some].
 impl TrySpan for Span {
     fn try_span(&self) -> Option<Span> {
         Some(*self)
@@ -379,7 +379,7 @@ where
     }
 }
 
-/// Special case of `Cycle`: custom message for an object that depends
+/// Special case of [Cycle]: custom message for an object that depends
 /// specifically on itself directly.
 pub struct GraphUnitDependsOnItself<Unit, Site1, Site2> {
     /// Object that loops.
@@ -447,8 +447,9 @@ where
     }
 }
 
-/// Error for a literal that is not supported
-/// (Lustre only has `float`, `int`, and `bool` literals, so e.g. a `&str` will trigger this error).
+/// Error for a literal that is not supported.
+///
+/// Lustre only has `float`, `int`, and `bool` literals, so e.g. a `&str` will trigger this error.
 pub struct UnhandledLitType<Site> {
     /// Location of the literal.
     pub site: Site,
@@ -466,6 +467,7 @@ where
 }
 
 /// Error for when a comparison operator is used with associativity.
+///
 /// Since `a = b = c` is ambiguous (does it mean `(a = b) = c` or `a = (b = c)`
 /// or `(a = b) and (b = c)`, we choose to reject all interpretations and
 /// ask for explicit parentheses around comparison operators.

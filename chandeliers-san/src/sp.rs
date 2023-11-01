@@ -250,9 +250,9 @@ pub trait WithSpan: Sized {
 /// Implement `Spanned`
 macro_rules! derive_with_span {
     ( $T:ty ) => {
-        #[doc = "Default implementation of Spanned for"]
-        #[doc = stringify!($T)]
-        #[doc = "wraps in `Sp`"]
+        #[doc = "Default implementation of `Spanned` for"]
+        #[doc = concat!("`", stringify!($T), "`")]
+        #[doc = "simply wraps it in `Sp`"]
         impl $crate::sp::WithSpan for $T {
             type Output = $crate::sp::Sp<Self>;
             fn with_span(self, span: $crate::sp::Span) -> $crate::sp::Sp<Self> {
@@ -261,9 +261,9 @@ macro_rules! derive_with_span {
         }
     };
     ( $T:ty where $($t:tt)* ) => {
-        #[doc = "Default implementation of Spanned for"]
-        #[doc = stringify!($T)]
-        #[doc = "wraps in `Sp`"]
+        #[doc = "Default implementation of `Spanned` for"]
+        #[doc = concat!("`", stringify!($T), "`")]
+        #[doc = "simply wraps it in `Sp`"]
         impl$($t)* $crate::sp::WithSpan for $T {
             type Output = $crate::sp::Sp<Self>;
             fn with_span(self, span: $crate::sp::Span) -> $crate::sp::Sp<Self> {
@@ -277,6 +277,8 @@ pub(crate) use derive_with_span;
 
 impl WithSpan for TokenStream {
     type Output = TokenStream;
+    /// This is not a noop, it invoques `quote_spanned` to give the `TokenStream`
+    /// the right location.
     fn with_span(self, span: Span) -> TokenStream {
         quote_spanned! {span=>
             #self
