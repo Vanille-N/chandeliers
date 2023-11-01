@@ -1,45 +1,278 @@
 //! Codegen options for toplevel declarations.
+//!
+//! This module has a lot of black magic going on, because we want very precise
+//! handling of options. The behavior that we're going for is that options
+//! should declare upfront where in the compilation process they will be useful,
+//! and then we're going to check that
+//! - they are not used elsewhere, and
+//! - they are actually used in all places announced.
+//!
+//!
+//! # Method
+//!
+//! How we achieve that is where the black magic comes in.
+//!
+//! Module `usage` defines structs that describe places where options are relevant.
+//! We call one of these structs a "usage site".
+//! The two types `Over` and `Sites<Head, Tail>` serve as constructors
+//! for a list of usage sites.
+//! We interpret a `Sites<Codegen, Over>` as meaning that the option should
+//! be used exactly during code generation. A `Sites<Codegen, Sites<Typecheck, Over>>`
+//! should be used in both code generation and typechecking.
+//!
+//! The trait `Usage` then comes in, through:
+//! - `impl !Usage<T> for Over`
+//! - `impl Usage<Head> for Sites<Head, Tail>`
+//! - `impl Usage<Other> for Sites<Head, Tail> where Tail: Usage<Other>`
+//!
+//! These combine in a way that makes `Usage<T>` implement the test
+//! of whether the list of types in `Sites<T1, Sites<T2, ...>>` contains
+//! some `Ti = T`.
+//!
+//! Finally `AssertUsed` will verify that all types in the sequence
+//! have had a matching `Usage` invocation.
+//!
+//!
+//! # Usage
+//!
+//! Everywhere in the compiler if you have a `UseOpt` you can try
+//! to invoque `opt.fetch::<This>()` where `This` is a usage site that should
+//! match the step of the compilation process that you are doing.
+//! Once you think you're done using the option, you can use
+//! `opt.assert_used()` to verify it.
+//! A good place to use `opt.assert_used()` is at the very end of whatever
+//! codegen function you use.
+//!
+//!
+//! # Symptoms
+//!
+//! If you use options as explained above, a misuse can manifest itself in one of two ways:
+//!
+//! ### 1.
+//! A declared option that is not properly used will result in
+//! a runtime error `Not all options of ... were properly used: missing '...'`.
+//! This means that nowhere in the program have you ever `fetch`ed the option's value
+//! and it is thus considered unused.
+//!
+//! Good ways to fix the error:
+//! - use a `fetch` somewhere relevant to inform that you have used the option, or
+//! - remove the extra usage site from the list so that no usage at that location
+//!   is expected.
+//!
+//! Bad ways to fix the error:
+//! - DO NOT insert a `let _ = opt.fetch::<This>()` in an unrelated location
+//!   just to make the error go away.
+//!
+//! ### 2.
+//! An option that should not have been used will produce a compilation error
+//! `the trait Usage<...> is not implemented for 'Over'`
+//! This means that you may not use this option during this step of the compilation.
+//!
+//! Good ways to fix the error:
+//! - declare a new usage site in the list, or
+//! - keep working as generically as possible so that code down the line
+//!   can choose depending on the option.
+//!
+//! Bad ways to fix the error:
+//! - DO NOT pretend to be someone else by using e.g.
+//!   `opt.fetch::<Typecheck>()` during codegen.
+//!
 
-/// Options Available for a node.
-#[derive(Debug, Clone)]
-pub struct Node {
-    /// `#[trace]`: display debug information on the inputs and outputs
-    pub trace: bool,
-    /// `#[export]`: this struct is public.
-    pub export: bool,
-    /// `#[main(n)]` generate a main function for this node that runs `n` times.
-    pub main: Option<usize>,
-    /// `#[rustc_allow("foo")]`: generates a `#[allow(foo)]` on the definition
-    /// to silence Rustc warnings.
-    pub rustc_allow: Vec<syn::Ident>,
+/// Places where options can be relevant.
+pub mod usage {
+    /// The option is used during code generation.
+    #[derive(Debug, Clone, Copy, Default)]
+    pub struct Codegen {}
+
+    /// The option is used during typechecking.
+    #[derive(Debug, Clone, Copy, Default)]
+    pub struct Typecheck {}
 }
 
-/// Options Available for an extern node.
+/// An option that records whether it was used somewhere.
 #[derive(Debug, Clone)]
-pub struct ExtNode {
-    /// `#[trace]`: display debug information on the inputs and outputs
-    pub trace: bool,
-    /// `#[main(n)]` generate a main function for this node that runs `n` times.
-    pub main: Option<usize>,
-    /// `#[rustc_allow("foo")]`: generates a `#[allow(foo)]` on the definition
-    /// to silence Rustc warnings.
-    pub rustc_allow: Vec<syn::Ident>,
+pub struct UseOpt<T, Sites> {
+    data: T,
+    usage: std::cell::RefCell<Sites>,
 }
 
-/// Options available for a const.
-#[derive(Debug, Clone)]
-pub struct Const {
-    /// `#[export]`: this const is public.
-    pub export: bool,
-    /// `#[rustc_allow("foo")]`: generates a `#[allow(foo)]` on the definition
-    /// to silence Rustc warnings.
-    pub rustc_allow: Vec<syn::Ident>,
+trait Usage<T> {
+    fn record(&mut self);
 }
 
-/// Options available for an extern const.
-#[derive(Debug, Clone)]
-pub struct ExtConst {
-    /// `#[rustc_allow("foo")]`: generates a `#[allow(foo)]` on the definition
-    /// to silence Rustc warnings.
-    pub rustc_allow: Vec<syn::Ident>,
+trait AssertUsed {
+    fn assert_used(&self, msg: &'static str);
 }
+
+impl<T, Sites: Default> UseOpt<T, Sites> {
+    /// Get the value of this option and record it as used for the corresponding site.
+    #[allow(private_bounds)]
+    pub fn fetch<Use>(&self) -> &T
+    where
+        Sites: Usage<Use>,
+    {
+        Usage::<Use>::record(&mut *self.usage.borrow_mut());
+        &self.data
+    }
+
+    /// Construct a new (for now unused) option value.
+    pub fn new(data: T) -> Self {
+        Self {
+            data,
+            usage: std::cell::RefCell::new(Sites::default()),
+        }
+    }
+
+    /// Finish the handling of the option by asserting that it was used somewhere.
+    #[allow(private_bounds)]
+    pub fn assert_used(&self, msg: &'static str)
+    where
+        Sites: AssertUsed,
+    {
+        self.usage.borrow().assert_used(msg);
+    }
+}
+
+/// Constructor for usage sites.
+/// `AssertUsed` will succeed if `used` is set.
+/// `Usage` will either set `used` if `Head` matches the caller's type,
+/// or defer to `Tail` to try to find a matching site.
+#[derive(Debug, Clone, Default)]
+pub struct Sites<Head, Tail> {
+    used: bool,
+    head: std::marker::PhantomData<Head>,
+    tail: Tail,
+}
+
+/// Empty usage site.
+/// This is trivially `AssertUsed` but never `Usage`, which
+/// ensures that we find a matching usage declaration for every call site.
+#[derive(Debug, Clone, Default)]
+pub struct Over {}
+
+macro_rules! matching_head {
+    ( $t:ty =/= $($other:ty),* ) => {
+        impl<Tail> Usage<$t> for Sites<$t, Tail> {
+            fn record(&mut self) {
+                self.used = true;
+            }
+        }
+
+        $( impl<Tail> Usage<$other> for Sites<$t, Tail>
+            where Tail: Usage<$other>,
+            {
+                fn record(&mut self) {
+                    self.tail.record()
+                }
+            }
+        )*
+    };
+}
+
+impl AssertUsed for Over {
+    fn assert_used(&self, _: &'static str) {}
+}
+
+impl<Head, Tail: AssertUsed> AssertUsed for Sites<Head, Tail> {
+    fn assert_used(&self, msg: &'static str) {
+        assert!(self.used, "{}", msg);
+        self.tail.assert_used(msg);
+    }
+}
+
+matching_head!(usage::Codegen =/= usage::Typecheck);
+matching_head!(usage::Typecheck =/= usage::Codegen);
+
+/// Black magic to generate option sets.
+/// Will wrap types in `UseOpt` and attach to them the documentation
+/// for the defined item.
+macro_rules! selection_aux_decl {
+    // Recursive cases: handle one extra argument
+    //
+    // How this works:
+    // We use the structure `( <handled> ) ++ ( <unhandled> )` so that the macro
+    // can parse its arguments unambiguously, and each recursive step of the macro
+    // will grab one item from `<unhandled>` and add it to the end of `<handled>`
+    // after doing some processing on it.
+    //
+    // Thus in one step of macro expansion,
+    // `selection_aux_decl(foo ( <handled> ) ++ ( item, <unhandled ));`
+    // turns into
+    // `selection_aux_decl(foo ( <handled> <handle item> ) ++ ( <unhandled> ));`
+    //
+    // The processing in question includes inserting a `pub` qualifier to
+    // all fields, adding documentation, and registering their type.
+    ( $struct:ident ( $($done:tt)* ) ++ ( trace , $($rest:tt)* ) )
+        // #[trace] is of type `bool` and is useful only during codegen.
+        => { selection_aux_decl!($struct ( $($done)*
+                #[doc = "`#[trace]`: print debug information."]
+                pub trace: UseOpt<bool, Sites<usage::Codegen, Over>>,
+            ) ++ ( $($rest)* ) ); };
+    ( $struct:ident ( $($done:tt)* ) ++ ( export , $($rest:tt)* ) )
+        // #[export] is of type `bool` and is useful only during codegen.
+        => { selection_aux_decl!($struct ( $($done)*
+                #[doc = "`#[export]`: make the struct public."]
+                pub export: UseOpt<bool, Sites<usage::Codegen, Over>>,
+        ) ++ ( $($rest)* ) ); };
+    ( $struct:ident ( $($done:tt)* ) ++ ( main , $($rest:tt)* ) )
+        // #[main] is of type `Option<usize>` and is useful only during both
+        // typechecking (verify that the inputs and outputs are `()`) and codegen
+        // (write the actual function).
+        => { selection_aux_decl!($struct ( $($done)*
+                #[doc = "`#[main(42)]`: generate a main function that executes this node a fixed number of times."]
+                pub main: UseOpt<Option<usize>, Sites<usage::Typecheck, Sites<usage::Codegen, Over>>>,
+            ) ++ ( $($rest)* ) ); };
+    ( $struct:ident ( $($done:tt)* ) ++ ( rustc_allow , $($rest:tt)* ) )
+        // #[rustc_allow] is of type `Vec<syn::Ident>` and is useful only during codegen.
+        => { selection_aux_decl!($struct ( $($done)*
+                #[doc = "`#[rustc_allow[dead_code]]`: forward the attribute to Rustc as an `#[allow(dead_code)]`"]
+                pub rustc_allow: UseOpt<Vec<syn::Ident>, Sites<usage::Codegen, Over>>,
+            ) ++ ( $($rest)* ) ); };
+    // Base case: generate the struct definition from all the accumulated tokens in `<handled>`
+    // (by now `<unhandled>` is empty).
+    ( $struct:ident ( $($done:tt)* ) ++ () )
+        => {
+            #[doc = "Codegen options available for "]
+            #[doc = stringify!($struct)]
+            #[derive(Debug, Clone)]
+            pub struct $struct { $($done)* }
+        };
+}
+
+/// Implement `asssert_used` for a group of options by applying
+/// it to each field.
+macro_rules! selection_aux_impl {
+    ($struct:ident; $($field:ident),*) => {
+        impl $struct {
+            #[doc = "Verify that all fields of "]
+            #[doc = stringify!($struct)]
+            #[doc = " were used"]
+            pub fn assert_used(&self) {
+                $( self.$field.assert_used(
+                        concat!(
+                            "Not all options of ",
+                            stringify!($struct),
+                            " were properly used: missing `",
+                            stringify!($field),
+                            "`"
+                        )
+                    );
+                )*
+            }
+        }
+    }
+}
+
+/// Generate option groups from a subset of predefined options available.
+macro_rules! selection {
+    ( pub struct $struct:ident { $( $opt:ident ),* } )
+        => {
+            selection_aux_decl!($struct () ++ ( $($opt,)* ) );
+            selection_aux_impl!($struct; $($opt),* );
+    };
+}
+
+selection! { pub struct Node { trace, export, main, rustc_allow } }
+selection! { pub struct ExtNode { trace, main, rustc_allow } }
+selection! { pub struct Const { export, rustc_allow } }
+selection! { pub struct ExtConst { rustc_allow } }

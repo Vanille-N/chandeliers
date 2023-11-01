@@ -154,7 +154,7 @@ macro_rules! project {
 
         $( $skip.skip(stringify!($To))?; )*
         Ok($To {
-            $( $take: $take.take(), )*
+            $( $take: chandeliers_san::ast::options::UseOpt::new($take.take()), )*
         })
     }
 }

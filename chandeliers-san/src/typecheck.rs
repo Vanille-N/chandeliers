@@ -6,6 +6,7 @@ use crate::ast;
 use crate::sp::{Sp, Span, WithSpan};
 use chandeliers_err::{self as err, IntoError, Result};
 
+use ast::options::usage;
 use ast::ty;
 use ast::Tuple;
 
@@ -654,7 +655,7 @@ impl ast::decl::Node {
     ) -> Result<()> {
         let mut ctx = TyCtx::from_ext(extvar);
         // FIXME: prettify
-        if self.options.main.is_some() {
+        if self.options.main.fetch::<usage::Typecheck>().is_some() {
             if !self.inputs.t.is_empty() {
                 return Err(err::Basic {
                     msg: "Node declared as main should not have any inputs".to_string(),
@@ -740,7 +741,7 @@ impl Sp<ast::decl::ExtNode> {
         let extvar = HashMap::default();
         let mut ctx = TyCtx::from_ext(&extvar);
         // FIXME: prettify
-        if self.t.options.main.is_some() {
+        if self.t.options.main.fetch::<usage::Typecheck>().is_some() {
             if !self.t.inputs.t.is_empty() {
                 return Err(err::Basic {
                     msg: "Node declared as main should not have any inputs".to_string(),

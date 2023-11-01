@@ -9,6 +9,7 @@ use crate::sp::{Sp, Span};
 use proc_macro2::{Ident, TokenStream};
 use quote::{quote, quote_spanned, ToTokens};
 
+use super::ast::options::usage;
 use super::ast::{decl, expr, op, past, stmt, ty, var, Tuple};
 
 mod constexpr;
@@ -67,7 +68,7 @@ impl ToTokens for decl::Const {
         let declaration = quote_spanned! {span=>
             #pub_qualifier const #ext_name : #ty = #glob ;
         };
-        let rustc_allow = options.rustc_allow.iter();
+        let rustc_allow = options.rustc_allow.fetch::<usage::Codegen>().iter();
 
         let doc = format!("Toplevel constant `{name}`");
         toks.extend(quote! {
@@ -82,6 +83,8 @@ impl ToTokens for decl::Const {
             #( #[allow( #rustc_allow )] )*
             #declaration
         });
+
+        options.assert_used();
     }
 }
 
@@ -112,7 +115,7 @@ impl ToTokens for decl::ExtConst {
         let glob = name.as_sanitized_ident();
         let real = quote_spanned!(name.span=> real );
         let expected_wrapped = quote_spanned!(ty.span=> Type<#expected> );
-        let rustc_allow = options.rustc_allow.iter();
+        let rustc_allow = options.rustc_allow.fetch::<usage::Codegen>().iter();
         let doc = format!("Reimport of a toplevel constant; assumes that `{name}` is provided");
         toks.extend(quote! {
             #[doc = #doc]
@@ -125,6 +128,7 @@ impl ToTokens for decl::ExtConst {
                 expected.0
             };
         });
+        options.assert_used();
     }
 }
 
@@ -173,6 +177,7 @@ impl ToTokens for decl::Node {
         toks.extend(int);
         toks.extend(ext);
         toks.extend(self.options.fn_main(&self.name));
+        self.options.assert_used();
     }
 }
 
@@ -223,8 +228,8 @@ impl decl::Node {
         let pub_qualifier = options.pub_qualifier();
 
         let (trace_pre, trace_post) = options.traces("      ", name, inputs, outputs);
-        let rustc_allow_1 = options.rustc_allow.iter();
-        let rustc_allow_2 = options.rustc_allow.iter();
+        let rustc_allow_1 = options.rustc_allow.fetch::<usage::Codegen>().iter();
+        let rustc_allow_2 = options.rustc_allow.fetch::<usage::Codegen>().iter();
 
         let doc_name = format!(" `{name}` ");
         let declaration = quote! {
@@ -311,7 +316,7 @@ impl decl::Node {
 
         let pub_qualifier = options.pub_qualifier();
 
-        let rustc_allow = options.rustc_allow.iter();
+        let rustc_allow = options.rustc_allow.fetch::<usage::Codegen>().iter();
 
         let doc_name = format!(" `{name}` ");
         let ext_declaration = quote_spanned! {name.span=>
@@ -456,7 +461,7 @@ impl ToTokens for decl::ExtNode {
         let expected_output_tys = outputs.as_embedded_tys();
         let expected_input_tys = inputs.as_embedded_tys();
         let actual_inputs = quote_spanned! {inputs.span=> __inputs };
-        let rustc_allow = options.rustc_allow.iter();
+        let rustc_allow = options.rustc_allow.fetch::<usage::Codegen>().iter();
 
         let input_asst = inputs.as_assignment_target();
         let output_asst = outputs.as_assignment_target();
@@ -494,6 +499,7 @@ impl ToTokens for decl::ExtNode {
         });
 
         toks.extend(options.fn_main(&self.name));
+        options.assert_used();
     }
 }
 

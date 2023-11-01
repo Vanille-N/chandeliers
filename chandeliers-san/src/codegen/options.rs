@@ -5,6 +5,7 @@ use proc_macro2::TokenStream;
 use quote::quote;
 
 use crate::ast;
+use crate::ast::options::usage;
 use ast::options::{Const, ExtNode, Node};
 
 macro_rules! generic_option {
@@ -28,7 +29,7 @@ macro_rules! generic_option {
         $(
             impl $trait for $implementor {
                 fn fetch(&self) -> $fetch {
-                    self.$field
+                    *self.$field.fetch::<usage::Codegen>()
                 }
             }
         )*
