@@ -1,0 +1,8 @@
+error: Variable b not found in the context.
+ --> tests/fail/ui/tc/when-self.rs:2:28
+  |
+2 |     node foo(b : bool when b) returns ();
+  |                            ^
+  |
+  = note: Perhaps you meant one of the local variables: (none declared)
+  = note: or one of the global variables: (none declared)

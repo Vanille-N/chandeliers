@@ -1,0 +1,11 @@
+error: Clock should be of type bool
+ --> tests/fail/ui/tc/when-int.rs:2:31
+  |
+2 |     node bar(b : int; x : int when b) returns ();
+  |                               ^^^^^^
+  |
+note: The argument is found to be of type int
+ --> tests/fail/ui/tc/when-int.rs:2:18
+  |
+2 |     node bar(b : int; x : int when b) returns ();
+  |                  ^^^

@@ -29,7 +29,59 @@ pub use proc_macro2::Span;
 use proc_macro2::TokenStream;
 use quote::{quote_spanned, ToTokens};
 use std::fmt;
-use std::hash::{Hash, Hasher};
+
+/// A type that transparently implements `PartialEq` and `Hash`, to be used
+/// in structs that carry additional data that should not be relevant in comparisons.
+#[derive(Debug, Clone, Copy)]
+pub struct Transparent<T> {
+    /// Payload.
+    pub inner: T,
+}
+
+impl Into<Span> for Transparent<Span> {
+    fn into(self) -> Span {
+        self.inner
+    }
+}
+
+impl From<Span> for Transparent<Span> {
+    fn from(span: Span) -> Self {
+        Self { inner: span }
+    }
+}
+
+impl From<usize> for Transparent<usize> {
+    fn from(i: usize) -> Self {
+        Self { inner: i }
+    }
+}
+
+impl<T> PartialEq for Transparent<T> {
+    fn eq(&self, _: &Self) -> bool {
+        true
+    }
+}
+
+impl<T> Eq for Transparent<T> {}
+
+impl<T> std::hash::Hash for Transparent<T> {
+    fn hash<H: std::hash::Hasher>(&self, _: &mut H) {}
+}
+
+impl<T: fmt::Display> fmt::Display for Transparent<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.inner)
+    }
+}
+
+impl Transparent<Span> {
+    /// Map `join` to the inner `span`s
+    pub fn join(self, other: Self) -> Option<Self> {
+        Some(Self {
+            inner: self.inner.join(other.inner)?,
+        })
+    }
+}
 
 /// Span wrapper.
 ///
@@ -39,18 +91,24 @@ use std::hash::{Hash, Hasher};
 ///
 /// `Sp` is mostly used through `map`, `new`, and it also implements
 /// many traits by projecting into its `.t` field.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Sp<T> {
     /// A payload.
     pub t: T,
     /// The span associated with the payload.
-    pub span: Span,
+    pub span: Transparent<Span>,
 }
 
 impl<T> err::TrySpan for Sp<T> {
     /// `Sp` always has a span, so `TrySpan` is guaranteed to succeed.
     fn try_span(&self) -> Option<Span> {
-        Some(self.span)
+        Some(self.span.inner)
+    }
+}
+impl<T: err::TrySpan> err::TrySpan for Transparent<T> {
+    /// `Sp` always has a span, so `TrySpan` is guaranteed to succeed.
+    fn try_span(&self) -> Option<Span> {
+        self.inner.try_span()
     }
 }
 
@@ -84,7 +142,7 @@ impl<T> Sp<T> {
         F: FnOnce(Span, T) -> U,
     {
         Sp {
-            t: f(self.span, self.t),
+            t: f(self.span.inner, self.t),
             span: self.span,
         }
     }
@@ -97,8 +155,8 @@ impl<T> Sp<T> {
 
     /// Get the same contents but with a new span.
     #[must_use]
-    pub fn with_span(mut self, span: Span) -> Self {
-        self.span = span;
+    pub fn with_span<S: Into<Transparent<Span>>>(mut self, span: S) -> Self {
+        self.span = span.into();
         self
     }
 }
@@ -112,21 +170,6 @@ impl<T, E> Sp<Result<T, E>> {
             Ok(t) => Ok(Sp { t, span: self.span }),
             Err(e) => Err(e),
         }
-    }
-}
-
-/// Equality ignores the span.
-impl<T: PartialEq> PartialEq for Sp<T> {
-    fn eq(&self, other: &Self) -> bool {
-        self.t == other.t
-    }
-}
-impl<T: Eq> Eq for Sp<T> {}
-
-/// Hash ignores the span.
-impl<T: Hash> Hash for Sp<T> {
-    fn hash<H: Hasher>(&self, h: &mut H) {
-        self.t.hash(h);
     }
 }
 
@@ -180,9 +223,11 @@ where
         let end = t.span_end().unwrap_or(begin);
         Ok(Self {
             t,
-            span: begin
-                .join(end)
-                .unwrap_or_else(|| err::panic!("Malformed span between {begin:?} and {end:?}")),
+            span: Transparent {
+                inner: begin
+                    .join(end)
+                    .unwrap_or_else(|| err::panic!("Malformed span between {begin:?} and {end:?}")),
+            },
         })
     }
 }
@@ -197,7 +242,7 @@ where
     T: SpanEnd,
 {
     fn span_end(&self) -> Option<Span> {
-        Some(self.span)
+        Some(self.span.inner)
     }
 }
 
@@ -246,7 +291,7 @@ pub trait WithSpan: Sized {
     /// Self after wrapping, typically but not necessarily `Sp<Self>`.
     type Output;
     /// Add a span.
-    fn with_span(self, span: Span) -> Self::Output;
+    fn with_span<S: Into<Transparent<Span>>>(self, span: S) -> Self::Output;
 }
 
 /// Implement `Spanned`
@@ -257,8 +302,8 @@ macro_rules! derive_with_span {
         #[doc = "simply wraps it in `Sp`"]
         impl $crate::sp::WithSpan for $T {
             type Output = $crate::sp::Sp<Self>;
-            fn with_span(self, span: $crate::sp::Span) -> $crate::sp::Sp<Self> {
-                $crate::sp::Sp { t: self, span }
+            fn with_span<S: Into<$crate::sp::Transparent<$crate::sp::Span>>>(self, span: S) -> $crate::sp::Sp<Self> {
+                $crate::sp::Sp { t: self, span: span.into() }
             }
         }
     };
@@ -268,8 +313,8 @@ macro_rules! derive_with_span {
         #[doc = "simply wraps it in `Sp`"]
         impl$($t)* $crate::sp::WithSpan for $T {
             type Output = $crate::sp::Sp<Self>;
-            fn with_span(self, span: $crate::sp::Span) -> $crate::sp::Sp<Self> {
-                $crate::sp::Sp { t: self, span }
+            fn with_span<S: Into<$crate::sp::Transparent<$crate::sp::Span>>>(self, span: S) -> $crate::sp::Sp<Self> {
+                $crate::sp::Sp { t: self, span: span.into() }
             }
         }
     };
@@ -281,14 +326,15 @@ impl WithSpan for TokenStream {
     type Output = TokenStream;
     /// This is not a noop, it invoques `quote_spanned` to give the `TokenStream`
     /// the right location.
-    fn with_span(self, span: Span) -> TokenStream {
-        quote_spanned! {span=>
+    fn with_span<S: Into<Transparent<Span>>>(self, span: S) -> TokenStream {
+        quote_spanned! {span.into().into()=>
             #self
         }
     }
 }
 derive_with_span!(usize);
 derive_with_span!(String);
+derive_with_span!(());
 
 /// Helper to implement projections through `Sp`.
 ///
@@ -306,7 +352,7 @@ macro_rules! transparent_impl {
         impl Sp<$ty> {
             fn $fn(&self) -> <$T as $crate::sp::WithSpan>::Output {
                 use $crate::sp::WithSpan;
-                let inner = self.t.$fn(self.span);
+                let inner = self.t.$fn(self.span.inner);
                 inner.with_span(self.span)
             }
         }
@@ -318,7 +364,7 @@ pub(crate) use transparent_impl;
 impl<T: ToTokens> ToTokens for Sp<T> {
     fn to_tokens(&self, toks: &mut TokenStream) {
         let Self { span, t } = &self;
-        toks.extend(quote_spanned! {*span=>
+        toks.extend(quote_spanned! {span.inner=>
             #t
         });
     }

@@ -1,0 +1,17 @@
+error: Variable b not found in the context.
+ --> tests/fail/ui/tc/when-missing.rs:2:27
+  |
+2 |     node foo(x : int when b) returns ();
+  |                           ^
+  |
+  = note: Perhaps you meant one of the local variables: (none declared)
+  = note: or one of the global variables: (none declared)
+
+error: Variable b not found in the context.
+ --> tests/fail/ui/tc/when-missing.rs:7:27
+  |
+7 |     node foo(x : int when b) returns (b : bool);
+  |                           ^
+  |
+  = note: Perhaps you meant one of the local variables: (none declared)
+  = note: or one of the global variables: (none declared)
