@@ -2,7 +2,18 @@
 
 #![warn(missing_docs)]
 #![warn(clippy::missing_docs_in_private_items)]
-#![warn(clippy::pedantic)]
+#![warn(
+    clippy::missing_docs_in_private_items,
+    clippy::pedantic,
+    clippy::expect_used,
+    clippy::unwrap_used,
+    clippy::indexing_slicing,
+    clippy::multiple_inherent_impl,
+    clippy::panic,
+    clippy::str_to_string,
+    clippy::use_debug,
+    clippy::unreachable
+)]
 
 use proc_macro2::Span;
 use std::fmt::Display;
@@ -19,6 +30,7 @@ macro_rules! repo {
 #[macro_export]
 macro_rules! panic {
     ($($err:tt)*) => {{
+        #[allow(clippy::panic)]
         std::panic!("
 Chandeliers panicked: \x1b[1;31m{}.\x1b[0m
 This error occured in \x1b[1;35m{}:{}:{}\x1b[0m
@@ -38,9 +50,19 @@ with the code that produced it and the version of Chandeliers you are using.
 
 /// Special instance of `panic` for code that should be trivially unreachable.
 #[macro_export]
-macro_rules! unreachable {
+macro_rules! provably_unreachable {
     () => {{
         ::chandeliers_err::panic!("Entered unreachable code");
+    }};
+}
+
+/// Special instance of `panic` for assertions.
+#[macro_export]
+macro_rules! assert {
+    ($cond:expr, $($msg:tt)*) => {{
+        if !$cond {
+            ::chandeliers_err::panic!($($msg)*);
+        }
     }};
 }
 

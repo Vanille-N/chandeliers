@@ -9,7 +9,7 @@ use crate::sp::{Sp, Span};
 use proc_macro2::{Ident, TokenStream};
 use quote::{quote, quote_spanned, ToTokens};
 
-use super::ast::options::usage;
+use super::ast::options::usage::Codegen as This;
 use super::ast::{decl, expr, op, past, stmt, ty, var, Tuple};
 
 mod constexpr;
@@ -68,7 +68,7 @@ impl ToTokens for decl::Const {
         let declaration = quote_spanned! {span=>
             #pub_qualifier const #ext_name : #ty = #glob ;
         };
-        let rustc_allow = options.rustc_allow.fetch::<usage::Codegen>().iter();
+        let rustc_allow = options.rustc_allow.fetch::<This>().iter();
 
         let doc = format!("Toplevel constant `{name}`");
         toks.extend(quote! {
@@ -115,7 +115,7 @@ impl ToTokens for decl::ExtConst {
         let glob = name.as_sanitized_ident();
         let real = quote_spanned!(name.span=> real );
         let expected_wrapped = quote_spanned!(ty.span=> Type<#expected> );
-        let rustc_allow = options.rustc_allow.fetch::<usage::Codegen>().iter();
+        let rustc_allow = options.rustc_allow.fetch::<This>().iter();
         let doc = format!("Reimport of a toplevel constant; assumes that `{name}` is provided");
         toks.extend(quote! {
             #[doc = #doc]
@@ -181,6 +181,7 @@ impl ToTokens for decl::Node {
     }
 }
 
+#[allow(clippy::multiple_inherent_impl)]
 impl decl::Node {
     /// Generate the node declaration and implementation
     /// with the sanitized name for internal use only.
@@ -228,8 +229,8 @@ impl decl::Node {
         let pub_qualifier = options.pub_qualifier();
 
         let (trace_pre, trace_post) = options.traces("      ", name, inputs, outputs);
-        let rustc_allow_1 = options.rustc_allow.fetch::<usage::Codegen>().iter();
-        let rustc_allow_2 = options.rustc_allow.fetch::<usage::Codegen>().iter();
+        let rustc_allow_1 = options.rustc_allow.fetch::<This>().iter();
+        let rustc_allow_2 = options.rustc_allow.fetch::<This>().iter();
 
         let doc_name = format!(" `{name}` ");
         let declaration = quote! {
@@ -316,7 +317,7 @@ impl decl::Node {
 
         let pub_qualifier = options.pub_qualifier();
 
-        let rustc_allow = options.rustc_allow.fetch::<usage::Codegen>().iter();
+        let rustc_allow = options.rustc_allow.fetch::<This>().iter();
 
         let doc_name = format!(" `{name}` ");
         let ext_declaration = quote_spanned! {name.span=>
@@ -369,7 +370,7 @@ impl Sp<&Tuple<Sp<decl::TyVar>>> {
         let mut tup = self.t.iter().map(|sv| sv.base_type_of().as_defined_ty());
         if self.t.len() == 1 {
             tup.next()
-                .unwrap_or_else(|| chandeliers_err::unreachable!())
+                .unwrap_or_else(|| chandeliers_err::provably_unreachable!())
         } else {
             quote_spanned! {self.span=>
                 ( #( #tup ),* )
@@ -391,7 +392,7 @@ impl Sp<&Tuple<Sp<decl::TyVar>>> {
         if self.t.len() == 1 {
             let first = tup
                 .next()
-                .unwrap_or_else(|| chandeliers_err::unreachable!());
+                .unwrap_or_else(|| chandeliers_err::provably_unreachable!());
             quote_spanned! {self.span=>
                 #first
             }
@@ -464,7 +465,7 @@ impl ToTokens for decl::ExtNode {
         let expected_output_tys = outputs.as_embedded_tys();
         let expected_input_tys = inputs.as_embedded_tys();
         let actual_inputs = quote_spanned! {inputs.span=> __inputs };
-        let rustc_allow = options.rustc_allow.fetch::<usage::Codegen>().iter();
+        let rustc_allow = options.rustc_allow.fetch::<This>().iter();
 
         let input_asst = inputs.as_assignment_target();
         let output_asst = outputs.as_assignment_target();
@@ -525,15 +526,6 @@ impl decl::NodeName {
     fn as_raw_ident(&self, _span: Span) -> TokenStream {
         let id = Ident::new_raw(&self.repr.t.to_string(), self.repr.span);
         quote!( #id )
-    }
-}
-
-impl decl::TyVar {
-    /// The depth of any variable is guaranteed to be at least zero, but is
-    /// it strictly more ? This determines for which variables we actually
-    /// need to store data.
-    fn strictly_positive(&self) -> bool {
-        self.ty.t.depth.t.dt > 0
     }
 }
 
@@ -663,6 +655,13 @@ impl decl::TyVar {
     fn name_of(&self, _: Span) -> var::Local {
         self.name.t.clone()
     }
+
+    /// The depth of any variable is guaranteed to be at least zero, but is
+    /// it strictly more ? This determines for which variables we actually
+    /// need to store data.
+    fn strictly_positive(&self) -> bool {
+        self.ty.t.depth.t.dt > 0
+    }
 }
 
 /// Print the type of a stream without the temporal information.
@@ -681,6 +680,7 @@ impl ToTokens for ty::Stream {
 }
 
 crate::sp::transparent_impl!(fn as_defined_ty return TokenStream where ty::Base);
+crate::sp::transparent_impl!(fn as_lustre_ty return TokenStream where ty::Base);
 impl ty::Base {
     /// Pass a type through `ty_mapping` to get `i64`/`f64`/`bool`.
     fn as_defined_ty(self, span: Span) -> TokenStream {
@@ -689,10 +689,7 @@ impl ty::Base {
             ::chandeliers_sem::ty_mapping!(#ty)
         }
     }
-}
 
-crate::sp::transparent_impl!(fn as_lustre_ty return TokenStream where ty::Base);
-impl ty::Base {
     /// Print a type as the `ty_mapping` macro would expect it: `int`/`float`/`bool`.
     fn as_lustre_ty(self, span: Span) -> TokenStream {
         let id = Ident::new(&format!("{self}"), span);

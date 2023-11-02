@@ -53,8 +53,18 @@
 
 #![feature(associated_type_defaults)]
 #![warn(missing_docs)]
-#![warn(clippy::missing_docs_in_private_items)]
-#![warn(clippy::pedantic)]
+#![warn(
+    clippy::missing_docs_in_private_items,
+    clippy::pedantic,
+    clippy::expect_used,
+    clippy::unwrap_used,
+    clippy::indexing_slicing,
+    clippy::multiple_inherent_impl,
+    clippy::panic,
+    clippy::str_to_string,
+    clippy::use_debug,
+    clippy::unreachable
+)]
 
 pub mod ast;
 pub mod sp;
@@ -64,6 +74,8 @@ pub mod causality;
 pub mod codegen;
 
 pub mod typecheck;
+
+pub mod clockcheck;
 
 pub mod positivity;
 

@@ -5,8 +5,18 @@
 
 #![feature(proc_macro_diagnostic)]
 #![warn(missing_docs)]
-#![warn(clippy::missing_docs_in_private_items)]
-#![warn(clippy::pedantic)]
+#![warn(
+    clippy::missing_docs_in_private_items,
+    clippy::pedantic,
+    clippy::expect_used,
+    clippy::unwrap_used,
+    clippy::indexing_slicing,
+    clippy::multiple_inherent_impl,
+    clippy::panic,
+    clippy::str_to_string,
+    clippy::use_debug,
+    clippy::unreachable
+)]
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -65,9 +75,10 @@ fn prog_pipeline(prog: Sp<syntax::Prog>) -> Result<Sp<sanitizer::ast::decl::Prog
     use sanitizer::positivity::MakePositive;
     use syntax::translate::SpanTranslate;
     let run_uid = new_run_uid();
-    let prog = prog.translate(run_uid, ())?;
+    let prog = prog.translate(run_uid.into(), ())?;
     let mut prog = prog.causality()?;
     prog.typecheck()?;
+    prog.clockcheck()?;
     prog.make_positive()?;
     // FIXME: clockchecking coming soon.
     Ok(prog)
