@@ -110,16 +110,20 @@
 
 /// Places where options can be relevant.
 pub mod usage {
+    /// A type whose name can be printed (since we are using this in error
+    /// messages for internal panics, it will help track the source).
     pub(super) trait ShowTy {
+        /// How to print the name of this type.
         const NAME: &'static str;
     }
 
+    /// Generate a usage site.
     macro_rules! site {
         ( $doc:tt : $name:ident ) => {
             #[doc = "Indicates that the option is useful during"]
             #[doc = $doc]
             #[derive(Debug, Clone, Copy, Default)]
-            pub struct $name {}
+            pub struct $name;
 
             impl ShowTy for $name {
                 const NAME: &'static str = stringify!($name);
@@ -129,18 +133,27 @@ pub mod usage {
     site!("code generation": Codegen);
     site!("typechecking": Typecheck);
 }
+use usage::{Codegen, Typecheck};
 
 /// An option that records whether it was used somewhere.
 #[derive(Debug, Clone)]
 pub struct UseOpt<T, Sites> {
+    /// Payload of the option.
     data: T,
+    /// Record of all the places where the value was used, for
+    /// the purpose of checking the exhaustivity of the application
+    /// of the option.
     usage: std::cell::RefCell<Sites>,
 }
 
+/// Use the option at a place.
+/// Generally `T` should be a usage site.
 trait Usage<T> {
+    /// Mark the option as used.
     fn record(&mut self);
 }
 
+/// Verify that the option was used everywhere.
 trait AssertUsed {
     fn assert_used(&self, msg: &'static str);
 }
@@ -180,8 +193,13 @@ impl<T, Sites: Default> UseOpt<T, Sites> {
 /// or defer to `Tail` to try to find a matching site.
 #[derive(Debug, Clone, Default)]
 pub struct Sites<Head, Tail> {
+    /// Records whether the value was used. Initially `false`, set to `true` by
+    /// a call to `Usage`.
     used: bool,
+    /// Type is only used by the trait implementations for matching against
+    /// the type provided by the caller.
     head: std::marker::PhantomData<Head>,
+    /// Other records, usually another `Sites<_, _>`.
     tail: Tail,
 }
 
@@ -191,8 +209,19 @@ pub struct Sites<Head, Tail> {
 #[derive(Debug, Clone, Default)]
 pub struct Over {}
 
-macro_rules! matching_head {
-    ( $t:ty =/= $($other:ty),* ) => {
+impl AssertUsed for Over {
+    fn assert_used(&self, _: &'static str) {}
+}
+
+impl<Head: usage::ShowTy, Tail: AssertUsed> AssertUsed for Sites<Head, Tail> {
+    fn assert_used(&self, msg: &'static str) {
+        chandeliers_err::assert!(self.used, "{} during {}", msg, Head::NAME);
+        self.tail.assert_used(msg);
+    }
+}
+
+macro_rules! matching_head_aux {
+    ( $t:ty =/= $($other:ty,)* ) => {
         impl<Tail> Usage<$t> for Sites<$t, Tail> {
             fn record(&mut self) {
                 self.used = true;
@@ -210,21 +239,24 @@ macro_rules! matching_head {
     };
 }
 
-impl AssertUsed for Over {
-    fn assert_used(&self, _: &'static str) {}
+macro_rules! matching_head_rec {
+    ( ( $($handled:ty,)* ) -> () ) => {};
+    ( ( $($handled:ty,)* ) -> ( $new:ty, $($remaining:ty,)* ) ) => {
+        matching_head_aux!($new =/= $($handled,)* $($remaining,)*);
+        matching_head_rec!( ($($handled,)* $new,) -> ( $($remaining,)* ));
+    };
 }
 
-impl<Head: usage::ShowTy, Tail: AssertUsed> AssertUsed for Sites<Head, Tail> {
-    fn assert_used(&self, msg: &'static str) {
-        if !self.used {
-            chandeliers_err::panic!("{} during {}", msg, Head::NAME)
-        }
-        self.tail.assert_used(msg);
-    }
+macro_rules! matching_head {
+    ( $($remaining:ty,)* ) => {
+        matching_head_rec!(() -> ( $($remaining,)* ));
+    };
 }
 
-matching_head!(usage::Codegen =/= usage::Typecheck);
-matching_head!(usage::Typecheck =/= usage::Codegen);
+matching_head! {
+    usage::Codegen,
+    usage::Typecheck,
+}
 
 /// Black magic to generate option sets.
 /// Will wrap types in `UseOpt` and attach to them the documentation
@@ -249,13 +281,13 @@ macro_rules! selection_aux_decl {
         // #[trace] is of type `bool` and is useful only during codegen.
         => { selection_aux_decl!($struct ( $($done)*
                 #[doc = "`#[trace]`: print debug information."]
-                pub trace: UseOpt<bool, Sites<usage::Codegen, Over>>,
+                pub trace: UseOpt<bool, Sites<Codegen, Over>>,
             ) ++ ( $($rest)* ) ); };
     ( $struct:ident ( $($done:tt)* ) ++ ( export , $($rest:tt)* ) )
         // #[export] is of type `bool` and is useful only during codegen.
         => { selection_aux_decl!($struct ( $($done)*
                 #[doc = "`#[export]`: make the struct public."]
-                pub export: UseOpt<bool, Sites<usage::Codegen, Over>>,
+                pub export: UseOpt<bool, Sites<Codegen, Over>>,
         ) ++ ( $($rest)* ) ); };
     ( $struct:ident ( $($done:tt)* ) ++ ( main , $($rest:tt)* ) )
         // #[main] is of type `Option<usize>` and is useful only during both
@@ -263,13 +295,13 @@ macro_rules! selection_aux_decl {
         // (write the actual function).
         => { selection_aux_decl!($struct ( $($done)*
                 #[doc = "`#[main(42)]`: generate a main function that executes this node a fixed number of times."]
-                pub main: UseOpt<Option<usize>, Sites<usage::Typecheck, Sites<usage::Codegen, Over>>>,
+                pub main: UseOpt<Option<usize>, Sites<Typecheck, Sites<Codegen, Over>>>,
             ) ++ ( $($rest)* ) ); };
     ( $struct:ident ( $($done:tt)* ) ++ ( rustc_allow , $($rest:tt)* ) )
         // #[rustc_allow] is of type `Vec<syn::Ident>` and is useful only during codegen.
         => { selection_aux_decl!($struct ( $($done)*
                 #[doc = "`#[rustc_allow[dead_code]]`: forward the attribute to Rustc as an `#[allow(dead_code)]`"]
-                pub rustc_allow: UseOpt<Vec<syn::Ident>, Sites<usage::Codegen, Over>>,
+                pub rustc_allow: UseOpt<Vec<syn::Ident>, Sites<Codegen, Over>>,
             ) ++ ( $($rest)* ) ); };
     // Base case: generate the struct definition from all the accumulated tokens in `<handled>`
     // (by now `<unhandled>` is empty).

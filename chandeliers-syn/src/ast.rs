@@ -320,11 +320,10 @@ impl ArgsTys {
         });
         Ok(Sp {
             t: Self { items },
-            span,
+            span: span.into(),
         })
     }
-}
-impl ArgsTys {
+
     fn parse_separated_trailing_until_let(input: ParseStream) -> Result<Sp<Self>> {
         let mut span = input.span();
         let items =
@@ -335,7 +334,7 @@ impl ArgsTys {
 
         Ok(Sp {
             t: Self { items },
-            span,
+            span: span.into(),
         })
     }
 }
@@ -1026,7 +1025,7 @@ pub struct Const {
     _const: Token![const],
     pub name: Sp<LusIdent>,
     _colon: Token![:],
-    pub ty: Sp<ty::Type>,
+    pub ty: Sp<ty::Base>,
     _equal: Token![=],
     pub value: Sp<Expr>,
 }

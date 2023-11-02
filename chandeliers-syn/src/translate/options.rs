@@ -42,13 +42,19 @@ use chandeliers_san::sp::{Sp, Span};
 #[must_use]
 #[derive(Debug, Clone)]
 struct SetOpt<T> {
+    /// Current value of the option. Is `Some` only if it was explicitly set.
     value: Option<T>,
+    /// Definition site of the value.
     span: Option<Span>,
+    /// Value to pick if none was explicitly set.
     default: T,
+    /// Extra data to help fild the source if an error occurs.
     message: &'static str,
 }
 
 impl<T: Default> SetOpt<T> {
+    /// Build a new option with an explanation of what it refers to
+    /// and a default value.
     fn create(message: &'static str, default: T) -> Self {
         Self {
             value: None,
@@ -59,24 +65,24 @@ impl<T: Default> SetOpt<T> {
     }
 }
 
-/// Assign a value.
 impl SetOpt<bool> {
+    /// Assign a value.
     fn set(&mut self, b: bool, span: Span) {
         self.value = Some(b);
         self.span = Some(span);
     }
 }
 
-/// Assign a `Some` value.
 impl<T> SetOpt<Option<T>> {
+    /// Assign a `Some` value.
     fn some(&mut self, t: T, span: Span) {
         self.value = Some(Some(t));
         self.span = Some(span);
     }
 }
 
-/// Append a value.
 impl<T> SetOpt<Vec<T>> {
+    /// Append a value.
     fn push(&mut self, t: T, span: Span) {
         if let Some(values) = &mut self.value {
             values.push(t);
@@ -212,22 +218,22 @@ impl Decl {
             &params.t[..],
             &targets.t[..],
         ) {
-            ("trace", [], []) => self.trace.set(true, attr.span),
-            ("export", [], []) => self.export.set(true, attr.span),
-            ("main", [], []) => self.main.some(100, attr.span),
+            ("trace", [], []) => self.trace.set(true, attr.span.into()),
+            ("export", [], []) => self.export.set(true, attr.span.into()),
+            ("main", [], []) => self.main.some(100, attr.span.into()),
             ("main", [], [Lit::Int(i)]) => self.main.some(
                 i.base10_parse()
                     .unwrap_or_else(|e| err::panic!("{i} cannot be parsed in base 10: {e}")),
-                attr.span,
+                attr.span.into(),
             ),
             ("rustc_allow", [inner], []) => {
                 self.rustc_allow
-                    .push(syn::Ident::new(inner, params.span), attr.span);
+                    .push(syn::Ident::new(inner, params.span.into()), attr.span.into());
             }
             (other, _, _) => {
                 return Err(err::Basic {
                     msg: format!("Unknown or malformed attribute {other:?}"),
-                    span: attr.span,
+                    span: attr.span.into(),
                 }
                 .into_err())
             }

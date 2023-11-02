@@ -39,11 +39,13 @@ pub struct S<N, T> {
 }
 
 impl<T: fmt::Display> fmt::Display for O<T> {
+    #[inline]
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.current)
     }
 }
 impl<N: fmt::Display, T: fmt::Display> fmt::Display for S<N, T> {
+    #[inline]
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}->{}", self.previous, self.current)
     }
@@ -100,8 +102,9 @@ impl<T> Ago<T> for O<T>
 where
     T: Sealed,
 {
-    #[track_caller]
     #[inline]
+    #[track_caller]
+    #[allow(clippy::panic)]
     fn ago(&self, dt: usize) -> &Nillable<T> {
         match dt {
             0 => panic!(
@@ -118,8 +121,9 @@ where
     T: Sealed,
     N: Ago<T>,
 {
-    #[track_caller]
     #[inline]
+    #[track_caller]
+    #[allow(clippy::panic)]
     fn ago(&self, dt: usize) -> &Nillable<T> {
         match dt {
             0 => panic!(
@@ -166,6 +170,7 @@ pub trait Extend<N, T>: Sized {
     fn extend(self, new: Nillable<T>) -> N;
 
     /// Extend the history with an undefined value.
+    #[inline]
     fn extend_undefined(self) -> N {
         self.extend(Nillable::Nil)
     }
@@ -199,19 +204,9 @@ pub trait Update<T>: Counting<T> {
     fn update(self, new: Nillable<T>) -> Self;
 
     /// Mutable prepend a new value in-place.
+    #[inline]
     fn update_mut(&mut self, new: Nillable<T>) {
         replace_with::replace_with_or_abort(self, |s| s.update(new));
-    }
-
-    /// Prepend an uninitialized value.
-    #[must_use]
-    fn update_undefined(self) -> Self {
-        self.update(Nillable::Nil)
-    }
-
-    /// Mutably prepend an uninitialized value in-place.
-    fn update_mut_undefined(&mut self) {
-        self.update_mut(Nillable::Nil);
     }
 }
 

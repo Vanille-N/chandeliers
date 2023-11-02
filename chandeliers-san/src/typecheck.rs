@@ -3,10 +3,10 @@
 use std::collections::HashMap;
 
 use crate::ast;
-use crate::sp::{Sp, Span, WithSpan};
+use crate::sp::{Sp, Span, Transparent, WithSpan};
 use chandeliers_err::{self as err, IntoError, Result};
 
-use ast::options::usage;
+use ast::options::usage::Typecheck as This;
 use ast::ty;
 use ast::Tuple;
 
@@ -21,7 +21,7 @@ struct WithDefSite<T> {
     /// Object and its usage site.
     inner: Sp<T>,
     /// Where the object was first defined.
-    def_site: Span,
+    def_site: Transparent<Span>,
 }
 
 impl<T> WithDefSite<T> {
@@ -449,7 +449,7 @@ impl ast::op::Bin {
             (Bin::BitAnd | Bin::BitOr | Bin::BitXor, ty::Base::Float) => Err(err::BinopMismatch {
                 oper: self,
                 site: span,
-                expect: "type int or bool, found float".to_string(),
+                expect: "type int or bool, found float".to_owned(),
                 left: &left,
                 right: &right,
             }
@@ -606,9 +606,9 @@ impl Sp<ty::Tuple> {
             .map(|_, t| match t {
                 ty::Tuple::Single(t) => Ok(t.t),
                 ty::Tuple::Multiple(_) => {
-                    let s = "expected a scalar type, got a tuple type".to_string();
+                    let s = "expected a scalar type, got a tuple type".to_owned();
                     Err(err::Basic {
-                        span: self.span,
+                        span: self.span.into(),
                         msg: s,
                     }
                     .into_err())
@@ -623,7 +623,13 @@ impl SpTyBaseTuple {
     fn as_flat_tytuple(&self) -> Sp<ty::Tuple> {
         self.as_ref().map(|span, tup| {
             if tup.len() == 1 {
-                ty::Tuple::Single(tup.iter().last().expect("Length == 1").t.with_span(span))
+                ty::Tuple::Single(
+                    tup.iter()
+                        .last()
+                        .unwrap_or_else(|| err::provably_unreachable!())
+                        .t
+                        .with_span(span),
+                )
             } else {
                 ty::Tuple::Multiple(
                     tup.map_ref(|t| t.map(|span, t| ty::Tuple::Single(t.with_span(span))))
@@ -661,18 +667,18 @@ impl ast::decl::Node {
     ) -> Result<()> {
         let mut ctx = TyCtx::from_ext(extvar);
         // FIXME: prettify
-        if self.options.main.fetch::<usage::Typecheck>().is_some() {
+        if self.options.main.fetch::<This>().is_some() {
             if !self.inputs.t.is_empty() {
                 return Err(err::Basic {
-                    msg: "Node declared as main should not have any inputs".to_string(),
-                    span: self.inputs.span,
+                    msg: "Node declared as main should not have any inputs".to_owned(),
+                    span: self.inputs.span.into(),
                 }
                 .into_err());
             }
             if !self.outputs.t.is_empty() {
                 return Err(err::Basic {
-                    msg: "Node declared as main should not have any outputs".to_string(),
-                    span: self.inputs.span,
+                    msg: "Node declared as main should not have any outputs".to_owned(),
+                    span: self.inputs.span.into(),
                 }
                 .into_err());
             }
@@ -690,6 +696,8 @@ impl ast::decl::Node {
                     }
                     .into_err());
                 }
+                // Don't forget to typecheck the type.
+                v.t.ty.t.ty.t.clk.typecheck(&ctx)?;
                 ctx.vars.insert(
                     v.t.name.t.clone(),
                     WithDefSite {
@@ -704,7 +712,7 @@ impl ast::decl::Node {
             let Some((i, o)) = extfun.get(&blk.t) else {
                 let s = format!("Block {blk} is not defined");
                 return Err(err::Basic {
-                    span: blk.span,
+                    span: blk.span.into(),
                     msg: s,
                 }
                 .into_err());
@@ -742,29 +750,30 @@ impl ast::decl::Node {
 
 impl Sp<ast::decl::ExtNode> {
     /// Same signature as `Node` but we trust its type as there are no contents to check.
-    /// We still checkt that there are no duplicate declarations of variables.
+    /// We still check that there are no duplicate declarations of variables.
     fn typecheck(&mut self) -> Result<()> {
         let extvar = HashMap::default();
         let mut ctx = TyCtx::from_ext(&extvar);
         // FIXME: prettify
-        if self.t.options.main.fetch::<usage::Typecheck>().is_some() {
+        if self.t.options.main.fetch::<This>().is_some() {
             if !self.t.inputs.t.is_empty() {
                 return Err(err::Basic {
-                    msg: "Node declared as main should not have any inputs".to_string(),
-                    span: self.t.inputs.span,
+                    msg: "Node declared as main should not have any inputs".to_owned(),
+                    span: self.t.inputs.span.into(),
                 }
                 .into_err());
             }
             if !self.t.outputs.t.is_empty() {
                 return Err(err::Basic {
-                    msg: "Node declared as main should not have any outputs".to_string(),
-                    span: self.t.inputs.span,
+                    msg: "Node declared as main should not have any outputs".to_owned(),
+                    span: self.t.inputs.span.into(),
                 }
                 .into_err());
             }
         }
         // These are all the extra variables that we provide in addition
         // to `extvar`.
+        // The order in which we handle them is relevant for the clocks.
         for vs in &[&self.t.inputs, &self.t.outputs] {
             for v in vs.t.iter() {
                 if let Some(prior) = ctx.vars.get(&v.t.name.t) {
@@ -776,6 +785,8 @@ impl Sp<ast::decl::ExtNode> {
                     }
                     .into_err());
                 }
+                // Don't forget to typecheck the type.
+                v.t.ty.t.ty.t.clk.typecheck(&ctx)?;
                 ctx.vars.insert(
                     v.t.name.t.clone(),
                     WithDefSite {
@@ -809,10 +820,40 @@ impl Sp<ast::decl::ExtNode> {
     }
 }
 
+impl TypeCheckExpr for ty::Clock {
+    fn typecheck(&self, span: Span, ctx: &TyCtx) -> Result<ty::Tuple> {
+        match self {
+            Self::Implicit | Self::Adaptative => {
+                Ok(ty::Tuple::Multiple(Tuple::default().with_span(span)))
+            }
+            Self::Explicit { id, .. } => {
+                // FIXME: we should not be using the same error message
+                // as for normal variables because there are weird interactions.
+                // See test `when-self.rs` for example.
+                let ty = ctx.get_var(
+                    id.as_ref()
+                        .map(|span, repr| ast::var::Local {
+                            repr: repr.clone().with_span(span),
+                            run_uid: Transparent { inner: 0 }, // We can forge the `run_uid` since it's not relevant in
+                                                               // the `impl PartialEq` and `impl Hash`.
+                        })
+                        .as_ref(),
+                )?;
+                let ty = ty.inner.is_primitive()?;
+                ty.is_bool("Clock", span)?;
+                Ok(ty::Tuple::Single(ty))
+            }
+        }
+    }
+    fn is_const(&self, _: Span) -> Result<()> {
+        err::panic!("We shouldn't even attempt to use a clock in a const context")
+    }
+}
+
 impl Sp<ast::decl::Const> {
     /// Projection of `typecheck`: verify internal consistency.
     fn typecheck(&self, varctx: &HashMap<ast::var::Global, WithDefSite<ty::Base>>) -> Result<()> {
-        self.t.typecheck(self.span, varctx)
+        self.t.typecheck(self.span.into(), varctx)
     }
 
     /// Projection of `signature`: get name and type of a global variable.
@@ -878,7 +919,7 @@ impl Sp<ast::decl::Prog> {
                     {
                         let s = format!("Redefinition of const {name}");
                         return Err(err::Basic {
-                            span: c.span,
+                            span: c.span.into(),
                             msg: s,
                         }
                         .into_err());
@@ -890,7 +931,7 @@ impl Sp<ast::decl::Prog> {
                     if functx.insert(n.t.name.t.clone(), (i, o)).is_some() {
                         let s = format!("Redefinition of node {}", n.t.name);
                         return Err(err::Basic {
-                            span: n.span,
+                            span: n.span.into(),
                             msg: s,
                         }
                         .into_err());
@@ -910,7 +951,7 @@ impl Sp<ast::decl::Prog> {
                     {
                         let s = format!("Redefinition of const {name}");
                         return Err(err::Basic {
-                            span: c.span,
+                            span: c.span.into(),
                             msg: s,
                         }
                         .into_err());
@@ -922,7 +963,7 @@ impl Sp<ast::decl::Prog> {
                     if functx.insert(n.t.name.t.clone(), (i, o)).is_some() {
                         let s = format!("Redefinition of node {}", n.t.name);
                         return Err(err::Basic {
-                            span: n.span,
+                            span: n.span.into(),
                             msg: s,
                         }
                         .into_err());

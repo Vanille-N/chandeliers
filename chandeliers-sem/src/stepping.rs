@@ -36,6 +36,7 @@ where
     T: crate::time_travel::Sealed,
 {
     type Target = Nillable<T>;
+    #[inline]
     fn embed(self) -> Nillable<T> {
         Defined(self)
     }
@@ -43,6 +44,7 @@ where
 
 impl<T> Embed for Nillable<T> {
     type Target = Self;
+    #[inline]
     fn embed(self) -> Self {
         self
     }
@@ -57,6 +59,7 @@ macro_rules! embed_for_tuple {
         where $( $T : Embed ),*
         {
             type Target = ( $( <$T>::Target, )* );
+            #[inline]
             #[allow(clippy::unused_unit)]
             fn embed(self) -> Self::Target {
                 ( $( self.$i.embed(), )* )
@@ -85,6 +88,7 @@ embed_for_tuple!((0: T0, 1: T1, 2: T2, 3: T3, 4: T4, 5: T5, 6: T6, 7: T7, 8: T8,
 
 impl<T> Trusted for Nillable<T> {
     type Target = T;
+    #[inline]
     fn trusted(self) -> T {
         self.unwrap()
     }
@@ -99,6 +103,7 @@ macro_rules! trusted_for_tuple {
         where $( $T : Trusted ),*
         {
             type Target = ( $( <$T>::Target, )* );
+            #[inline]
             #[allow(clippy::unused_unit)]
             fn trusted(self) -> Self::Target {
                 ( $( self.$i.trusted(), )* )

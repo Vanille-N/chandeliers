@@ -37,6 +37,7 @@ impl<T> Default for Nillable<T> {
 }
 
 impl<T: fmt::Display> fmt::Display for Nillable<T> {
+    #[inline]
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Nil => write!(f, "nil"),
@@ -48,6 +49,7 @@ impl<T: fmt::Display> fmt::Display for Nillable<T> {
 impl<T> Nillable<T> {
     /// This function is the identity, but its type constraints
     /// can help the compiler determine the associated type `T` for `Nil`.
+    #[inline]
     #[must_use]
     pub fn with_type_of(self, _other: &Self) -> Self {
         self
@@ -62,6 +64,7 @@ impl<T> Nillable<T> {
     /// if `self` is `Nil`.
     #[inline]
     #[track_caller]
+    #[allow(clippy::panic)]
     pub fn unwrap(self) -> T {
         match self {
             Defined(t) => t,
@@ -214,6 +217,7 @@ pub trait AllNil {
 }
 
 impl<T> AllNil for Nillable<T> {
+    #[inline]
     fn auto_size() -> Self {
         Nil
     }
@@ -225,6 +229,7 @@ macro_rules! all_nil_for_tuple {
         impl$($decl)* AllNil for ( $( $T, )* )
         where $( $T : AllNil ),*
         {
+            #[inline]
             #[allow(clippy::unused_unit)]
             fn auto_size() -> Self {
                 ( $( <$T as AllNil>::auto_size(), )* )
@@ -270,6 +275,7 @@ pub trait FirstIsNil {
 }
 
 impl<T> FirstIsNil for Nillable<T> {
+    #[inline]
     fn first_is_nil(&self) -> bool {
         matches!(self, Nil)
     }
@@ -281,6 +287,7 @@ macro_rules! first_is_nil_for_tuple {
         impl$($decl)* FirstIsNil for ( $( $T, )* )
         where $( $T : FirstIsNil ),*
         {
+            #[inline]
             #[allow(clippy::unused_unit)]
             fn first_is_nil(&self) -> bool {
                 self.0.first_is_nil()

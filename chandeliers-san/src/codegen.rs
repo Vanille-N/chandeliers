@@ -65,7 +65,7 @@ impl ToTokens for decl::Const {
         let ty = ty.as_defined_ty();
         let pub_qualifier = options.pub_qualifier();
 
-        let declaration = quote_spanned! {span=>
+        let declaration = quote_spanned! {span.into()=>
             #pub_qualifier const #ext_name : #ty = #glob ;
         };
         let rustc_allow = options.rustc_allow.fetch::<This>().iter();
@@ -113,8 +113,8 @@ impl ToTokens for decl::ExtConst {
         let ext_name = name.as_raw_ident();
         let expected = ty.as_defined_ty();
         let glob = name.as_sanitized_ident();
-        let real = quote_spanned!(name.span=> real );
-        let expected_wrapped = quote_spanned!(ty.span=> Type<#expected> );
+        let real = quote_spanned!(name.span.into()=> real );
+        let expected_wrapped = quote_spanned!(ty.span.into()=> Type<#expected> );
         let rustc_allow = options.rustc_allow.fetch::<This>().iter();
         let doc = format!("Reimport of a toplevel constant; assumes that `{name}` is provided");
         toks.extend(quote! {
@@ -320,11 +320,11 @@ impl decl::Node {
         let rustc_allow = options.rustc_allow.fetch::<This>().iter();
 
         let doc_name = format!(" `{name}` ");
-        let ext_declaration = quote_spanned! {name.span=>
+        let ext_declaration = quote_spanned! {name.span.into()=>
             #pub_qualifier struct #ext_name { inner: #uid_name }
         };
 
-        let ext_annotated_declaration = quote_spanned! {name.span=>
+        let ext_annotated_declaration = quote_spanned! {name.span.into()=>
             #[derive(Debug, Default)]
             #[allow(non_camel_case_types)]
             #[allow(dead_code)]
@@ -332,7 +332,7 @@ impl decl::Node {
             #ext_declaration
         };
 
-        let ext_step_impl = quote_spanned! {name.span=>
+        let ext_step_impl = quote_spanned! {name.span.into()=>
             #[allow(clippy::unused_unit)]
             impl ::chandeliers_sem::traits::Step for #ext_name {
                 type Input = #inputs_ty_4;
@@ -372,7 +372,7 @@ impl Sp<&Tuple<Sp<decl::TyVar>>> {
             tup.next()
                 .unwrap_or_else(|| chandeliers_err::provably_unreachable!())
         } else {
-            quote_spanned! {self.span=>
+            quote_spanned! {self.span.into()=>
                 ( #( #tup ),* )
             }
         }
@@ -381,7 +381,7 @@ impl Sp<&Tuple<Sp<decl::TyVar>>> {
     /// Get the type tuple post-embedding (with `Nillable` everywhere).
     fn as_embedded_tys(&self) -> TokenStream {
         let tys = self.as_defined_tys();
-        quote_spanned! {self.span=>
+        quote_spanned! {self.span.into()=>
             <#tys as ::chandeliers_sem::traits::Embed>::Target
         }
     }
@@ -393,11 +393,11 @@ impl Sp<&Tuple<Sp<decl::TyVar>>> {
             let first = tup
                 .next()
                 .unwrap_or_else(|| chandeliers_err::provably_unreachable!());
-            quote_spanned! {self.span=>
+            quote_spanned! {self.span.into()=>
                 #first
             }
         } else {
-            quote_spanned! {self.span=>
+            quote_spanned! {self.span.into()=>
                 ( #( #tup ),* )
             }
         }
@@ -406,7 +406,7 @@ impl Sp<&Tuple<Sp<decl::TyVar>>> {
     /// Simply a comma-separated flat tuple.
     fn flattened_trailing_comma(&self) -> TokenStream {
         let tup = self.t.iter().map(|sv| sv.name_of().as_sanitized_ident());
-        quote_spanned! {self.span=>
+        quote_spanned! {self.span.into()=>
             #( #tup, )*
         }
     }
@@ -425,7 +425,7 @@ impl Sp<&Tuple<Sp<decl::TyVar>>> {
     /// and the rest to a normal destructuring tuple.
     fn as_assignment_target(&self) -> TokenStream {
         if self.t.is_empty() {
-            quote_spanned!(self.span=> _)
+            quote_spanned!(self.span.into()=> _)
         } else {
             self.as_values()
         }
@@ -464,7 +464,7 @@ impl ToTokens for decl::ExtNode {
 
         let expected_output_tys = outputs.as_embedded_tys();
         let expected_input_tys = inputs.as_embedded_tys();
-        let actual_inputs = quote_spanned! {inputs.span=> __inputs };
+        let actual_inputs = quote_spanned! {inputs.span.into()=> __inputs };
         let rustc_allow = options.rustc_allow.fetch::<This>().iter();
 
         let input_asst = inputs.as_assignment_target();
@@ -473,7 +473,7 @@ impl ToTokens for decl::ExtNode {
 
         let (trace_pre, trace_post) = options.traces("[ext] ", name, inputs, outputs);
 
-        toks.extend(quote_spanned! {name.span=>
+        toks.extend(quote_spanned! {name.span.into()=>
             #[derive(Debug, Default)]
             #[allow(non_camel_case_types)]
             #( #[allow( #rustc_allow )] )*
@@ -516,7 +516,7 @@ impl decl::NodeName {
     fn as_sanitized_ident(&self, _span: Span) -> TokenStream {
         let id = Ident::new(
             &format!("__{}__node_{}", self.run_uid, &self.repr.t),
-            self.repr.span,
+            self.repr.span.into(),
         );
         quote!( #id )
     }
@@ -524,7 +524,7 @@ impl decl::NodeName {
     /// Format the name without sanitization. Still needs to be raw
     /// because it could be a Rust keyword.
     fn as_raw_ident(&self, _span: Span) -> TokenStream {
-        let id = Ident::new_raw(&self.repr.t.to_string(), self.repr.span);
+        let id = Ident::new_raw(&self.repr.t.to_string(), self.repr.span.into());
         quote!( #id )
     }
 }
@@ -538,7 +538,7 @@ impl var::Global {
     fn as_sanitized_ident(&self, _span: Span) -> TokenStream {
         let id = Ident::new(
             &format!("__{}__global_{}", self.run_uid, &self.repr.t),
-            self.repr.span,
+            self.repr.span.into(),
         );
         quote!( #id )
     }
@@ -546,7 +546,7 @@ impl var::Global {
     /// Format the name without sanitization. Still needs to be raw
     /// because it could be a Rust keyword.
     fn as_raw_ident(&self, _span: Span) -> TokenStream {
-        let id = Ident::new_raw(&self.repr.t.to_string(), self.repr.span);
+        let id = Ident::new_raw(&self.repr.t.to_string(), self.repr.span.into());
         quote!( #id )
     }
 }
@@ -555,7 +555,7 @@ crate::sp::transparent_impl!(fn as_sanitized_ident return TokenStream where var:
 impl var::Local {
     /// Format as a name that cannot have collisions with existing global variables.
     fn as_sanitized_ident(&self, _span: Span) -> TokenStream {
-        let id = Ident::new(&format!("__local_{}", &self.repr.t), self.repr.span);
+        let id = Ident::new(&format!("__local_{}", &self.repr.t), self.repr.span.into());
         quote!( #id )
     }
 }
@@ -779,7 +779,7 @@ impl ToTokens for expr::Expr {
                 quote!(::chandeliers_sem::ifx!((#cond) then { #yes } else { #no }))
             }
             Self::Substep { clk, id, args } => {
-                let id_lit = syn::LitInt::new(&format!("{}", id.t.id), id.span);
+                let id_lit = syn::LitInt::new(&format!("{}", id.t.id), id.span.into());
                 quote! {
                     ::chandeliers_sem::substep!(
                         self <~ #clk;

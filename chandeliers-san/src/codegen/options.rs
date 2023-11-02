@@ -5,9 +5,37 @@ use proc_macro2::TokenStream;
 use quote::quote;
 
 use crate::ast;
-use crate::ast::options::usage;
+use crate::ast::options::usage::Codegen as This;
 use ast::options::{Const, ExtNode, Node};
 
+/// Define the behavior of an option.
+///
+/// We expect most options to be specific enough that their functionality
+/// can be implemented homogeneously between all declarations that it can
+/// apply to, to we define this macro as a way to provide the implementation
+/// of an option for all declarations at once.
+///
+/// Typical usage will look like this:
+/// ```skip
+/// generic_option! {
+///     #[doc = "Explanation of the option"]
+///     // This defines the name of the trait that implements this option,
+///     // and the implementors of the trait in question among `Node`, `ExtNode`,
+///     // `Const`, and `ExtConst`.
+///     trait Stuff for { Node, Const }
+///     impl {
+///         // All option groups should have a `stuff` field of type
+///         // `UseOpt<bool, context[Codegen]>`
+///         // See [`chandeliers_san::ast::options::UseOpt`]
+///         // for more information.
+///         from stuff return bool;
+///         // Finally the implementation.
+///         fn stuff(&self) -> TokenStream {
+///             unimplemented!()
+///         }
+///     }
+/// }
+/// ```
 macro_rules! generic_option {
     (
       $( #[$($doc:tt)*] )*
@@ -29,7 +57,7 @@ macro_rules! generic_option {
         $(
             impl $trait for $implementor {
                 fn fetch(&self) -> $fetch {
-                    *self.$field.fetch::<usage::Codegen>()
+                    *self.$field.fetch::<This>()
                 }
             }
         )*
@@ -37,9 +65,7 @@ macro_rules! generic_option {
 }
 
 generic_option! {
-    #[doc = "Print debug information."]
-    #[doc = "Format: `#[trace]`."]
-    #[doc = "Default: disabled."]
+    #[doc = "`#[trace]`: print debug information."]
     trait Traces for { Node, ExtNode }
     impl {
         from trace return bool;
@@ -74,9 +100,7 @@ generic_option! {
 }
 
 generic_option! {
-    #[doc = "Build a `main` function that executes this node."]
-    #[doc = "Format: `#[main(42)]`."]
-    #[doc = "Default: disabled."]
+    #[doc = "`#[main(42)]`: build a `main` function that executes this node a set number of times."]
     trait FnMain for { Node, ExtNode }
     impl {
         from main return Option<usize>;
@@ -110,9 +134,7 @@ generic_option! {
 }
 
 generic_option! {
-    #[doc = "Make this declaration public."]
-    #[doc = "Format: `#[export]`"]
-    #[doc = "Default: disabled."]
+    #[doc = "`#[export]`: make this declaration public."]
     trait PubQualifier for { Const, Node }
     impl {
         from export return bool;

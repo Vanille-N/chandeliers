@@ -156,6 +156,7 @@ pub mod ty {
         Bool,
     }
 
+    crate::sp::derive_with_span!(Clock);
     /// A clock type.
     #[derive(Debug, Clone)]
     pub enum Clock {
@@ -240,7 +241,7 @@ pub mod ty {
 
 /// Variables and other kinds of referencese to external values.
 pub mod var {
-    use crate::sp::Sp;
+    use crate::sp::{Sp, Transparent};
     use std::fmt;
 
     crate::sp::derive_with_span!(Local);
@@ -250,7 +251,7 @@ pub mod var {
         /// Name.
         pub repr: Sp<String>,
         /// Number to generate unique identifiers.
-        pub run_uid: usize,
+        pub run_uid: Transparent<usize>,
     }
 
     crate::sp::derive_with_span!(Global);
@@ -260,7 +261,7 @@ pub mod var {
         /// Name.
         pub repr: Sp<String>,
         /// Number to generate unique identifiers.
-        pub run_uid: usize,
+        pub run_uid: Transparent<usize>,
     }
 
     impl fmt::Display for Local {
@@ -628,7 +629,7 @@ pub mod stmt {
 pub mod decl {
     use super::Tuple;
     use super::{expr, options, stmt, ty, var};
-    use crate::sp::Sp;
+    use crate::sp::{Sp, Transparent};
     use std::fmt;
 
     /// A typed variable.
@@ -647,7 +648,7 @@ pub mod decl {
         /// Name of the node.
         pub repr: Sp<String>,
         /// Number to generate unique identifiers.
-        pub run_uid: usize,
+        pub run_uid: Transparent<usize>,
     }
 
     impl fmt::Display for NodeName {
