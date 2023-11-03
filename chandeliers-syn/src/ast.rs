@@ -472,7 +472,7 @@ pub mod op {
     /// Comparison operators: `<=`, `>=`, `<`, `>`, `=`, `<>`.
     ///
     /// NOTE: these operators are associative at the parsing level,
-    /// but the typechecker will ensure that they are exactly binary.
+    /// but the translator will ensure that they are exactly binary.
     #[derive(syn_derive::Parse)]
     pub enum Cmp {
         #[parse(peek = punct::Neq)]

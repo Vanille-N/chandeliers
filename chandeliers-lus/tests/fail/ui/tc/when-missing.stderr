@@ -1,17 +1,23 @@
-error: Variable b not found in the context.
+error: Variable b is not available yet at this point of the typechecking.
  --> tests/fail/ui/tc/when-missing.rs:2:27
   |
 2 |     node foo(x : int when b) returns ();
   |                           ^
   |
-  = note: Perhaps you meant one of the local variables: (none declared)
-  = note: or one of the global variables: (none declared)
+  = note: During this incremental typechecking, you cannot access global
+          variables and you may only use local variables that have been
+          declared strictly beforehand, in the order of inputs then outputs
+          then locals.
+  = note: These are the variables that are already useable: (none declared)
 
-error: Variable b not found in the context.
+error: Variable b is not available yet at this point of the typechecking.
  --> tests/fail/ui/tc/when-missing.rs:7:27
   |
 7 |     node foo(x : int when b) returns (b : bool);
   |                           ^
   |
-  = note: Perhaps you meant one of the local variables: (none declared)
-  = note: or one of the global variables: (none declared)
+  = note: During this incremental typechecking, you cannot access global
+          variables and you may only use local variables that have been
+          declared strictly beforehand, in the order of inputs then outputs
+          then locals.
+  = note: These are the variables that are already useable: (none declared)

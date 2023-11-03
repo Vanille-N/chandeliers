@@ -10,7 +10,7 @@ checksum = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd"
 
 [[package]]
 name = "chandeliers"
-version = "0.4.1"
+version = "0.4.2"
 dependencies = [
  "chandeliers-lus",
  "chandeliers-sem",
@@ -19,14 +19,14 @@ dependencies = [
 
 [[package]]
 name = "chandeliers-err"
-version = "0.4.1"
+version = "0.4.2"
 dependencies = [
  "proc-macro2",
 ]
 
 [[package]]
 name = "chandeliers-lus"
-version = "0.4.1"
+version = "0.4.2"
 dependencies = [
  "chandeliers-err",
  "chandeliers-san",
@@ -38,7 +38,7 @@ dependencies = [
 
 [[package]]
 name = "chandeliers-san"
-version = "0.4.1"
+version = "0.4.2"
 dependencies = [
  "chandeliers-err",
  "chandeliers-sem",
@@ -49,14 +49,14 @@ dependencies = [
 
 [[package]]
 name = "chandeliers-sem"
-version = "0.4.1"
+version = "0.4.2"
 dependencies = [
  "replace_with",
 ]
 
 [[package]]
 name = "chandeliers-std"
-version = "0.4.1"
+version = "0.4.2"
 dependencies = [
  "chandeliers-sem",
  "rand",
@@ -64,7 +64,7 @@ dependencies = [
 
 [[package]]
 name = "chandeliers-syn"
-version = "0.4.1"
+version = "0.4.2"
 dependencies = [
  "chandeliers-err",
  "chandeliers-san",
