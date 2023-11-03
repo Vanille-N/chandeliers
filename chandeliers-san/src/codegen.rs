@@ -206,11 +206,14 @@ impl decl::Node {
             locals,
             blocks,
             stmts,
+            deptys,
             options,
         } = self;
         let inputs = inputs.as_ref();
         let outputs = outputs.as_ref();
         let locals = locals.as_ref();
+
+        let deptys = deptys.iter().map(|v| v.as_sanitized_ident());
 
         let uid_name = name.as_sanitized_ident();
 
@@ -294,6 +297,8 @@ impl decl::Node {
                     #( ::chandeliers_sem::update!(self, #pos_inputs_use ); )*
                     #( ::chandeliers_sem::update!(self, #pos_outputs_use ); )*
                     #( ::chandeliers_sem::update!(self, #pos_locals_use ); )*
+                    "Ghost reads to tell the Rustc dead code analysis about dependent types";
+                    #( let _ = #deptys; )*
                     "Finish by returning the outputs";
                     #trace_post
                     #outputs_vs_2.embed()

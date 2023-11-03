@@ -69,6 +69,7 @@ impl Causality for ast::decl::Node {
             outputs,
             locals,
             blocks,
+            deptys,
             stmts,
         } = self;
         let mut g = Graph::default();
@@ -96,6 +97,7 @@ impl Causality for ast::decl::Node {
             outputs,
             locals,
             blocks,
+            deptys,
             stmts,
         })
     }

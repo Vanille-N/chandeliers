@@ -677,6 +677,8 @@ pub mod decl {
         pub locals: Sp<Tuple<Sp<TyVar>>>,
         /// Other nodes that are used by this one (function calls in `<body>`).
         pub blocks: Vec<Sp<NodeName>>,
+        /// Dependent types (useful for dead code analysis).
+        pub deptys: Vec<Sp<var::Local>>,
         /// Body of the node declaration (`<body>`).
         pub stmts: Vec<Sp<stmt::Statement>>,
     }

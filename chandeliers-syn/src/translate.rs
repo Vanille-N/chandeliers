@@ -262,6 +262,8 @@ where
     }
 }
 
+type DepTyAccum<'i> = &'i mut Vec<Sp<tgt::var::Local>>;
+
 /// `Box<_>` is transparently translatable, *and it consumes the `Box<_>`*.
 ///
 /// The output is not wrapped by default because the parsing AST and the analysis
@@ -365,7 +367,7 @@ impl Translate for src::ExtConst {
             repr: name.to_string().with_span(span),
             run_uid,
         });
-        let ty = self.ty.translate(run_uid, ())?;
+        let ty = self.ty.translate(run_uid, &mut Vec::new())?;
         Ok(tgt::decl::ExtConst {
             name,
             ty: ty.t.inner,
@@ -387,8 +389,8 @@ impl Translate for src::ExtNode {
             repr: name.to_string().with_span(span),
             run_uid,
         });
-        let inputs = self.inputs.translate(run_uid, ())?;
-        let outputs = self.outputs.translate(run_uid, ())?;
+        let inputs = self.inputs.translate(run_uid, &mut Vec::new())?;
+        let outputs = self.outputs.translate(run_uid, &mut Vec::new())?;
         Ok(tgt::decl::ExtNode {
             name,
             inputs,
@@ -480,9 +482,10 @@ impl Translate for src::Node {
             repr: name.to_string().with_span(span),
             run_uid,
         });
-        let inputs = self.inputs.translate(run_uid, ())?;
-        let outputs = self.outputs.translate(run_uid, ())?;
-        let locals = self.locals.translate(run_uid, ())?;
+        let mut deptys = Vec::default();
+        let inputs = self.inputs.translate(run_uid, &mut deptys)?;
+        let outputs = self.outputs.translate(run_uid, &mut deptys)?;
+        let locals = self.locals.translate(run_uid, &mut deptys)?;
         let mut ectx = ExprCtx::default();
         for shadows in &[&inputs, &outputs, &locals] {
             for s in shadows.t.iter() {
@@ -501,6 +504,7 @@ impl Translate for src::Node {
             outputs,
             locals,
             blocks,
+            deptys,
             stmts,
         })
     }
@@ -539,28 +543,28 @@ impl Translate for src::Const {
 }
 
 impl Translate for src::ArgsTys {
-    type Ctx<'i> = ();
+    type Ctx<'i> = DepTyAccum<'i>;
     type Output = tgt::Tuple<Sp<tgt::decl::TyVar>>;
     fn translate(
         self,
         run_uid: Transparent<usize>,
         _span: Span,
-        (): (),
+        ctx: Self::Ctx<'_>,
     ) -> Result<tgt::Tuple<Sp<tgt::decl::TyVar>>> {
         let mut vs = tgt::Tuple::default();
         for item in self.items {
-            item.translate(run_uid, &mut vs)?;
+            item.translate(run_uid, (&mut vs, ctx))?;
         }
         Ok(vs)
     }
 }
 
 impl Translate for src::ArgsTy {
-    type Ctx<'i> = &'i mut tgt::Tuple<Sp<tgt::decl::TyVar>>;
+    type Ctx<'i> = (&'i mut tgt::Tuple<Sp<tgt::decl::TyVar>>, DepTyAccum<'i>);
     type Output = ();
     fn translate(self, run_uid: Transparent<usize>, _span: Span, ctx: Self::Ctx<'_>) -> Result<()> {
-        let ty = self.ty.translate(run_uid, ())?;
-        self.args.translate(run_uid, (ctx, ty))?;
+        let ty = self.ty.translate(run_uid, ctx.1)?;
+        self.args.translate(run_uid, (ctx.0, ty))?;
         Ok(())
     }
 }
@@ -604,12 +608,17 @@ impl Translate for src::Decls {
 }
 
 impl Translate for src::ty::Type {
-    type Ctx<'i> = ();
+    type Ctx<'i> = DepTyAccum<'i>;
     type Output = tgt::ty::Clocked<tgt::ty::Base>;
-    fn translate(self, run_uid: Transparent<usize>, _span: Span, (): ()) -> Result<Self::Output> {
+    fn translate(
+        self,
+        run_uid: Transparent<usize>,
+        _span: Span,
+        ctx: Self::Ctx<'_>,
+    ) -> Result<Self::Output> {
         // FIXME: translate the clock
         let inner = self.base.translate(run_uid, ())?;
-        let clk = self.clock.translate(run_uid, ())?;
+        let clk = self.clock.translate(run_uid, ctx)?;
         Ok(tgt::ty::Clocked { inner, clk })
     }
 }
@@ -627,21 +636,38 @@ impl Translate for src::ty::Base {
 }
 
 impl Translate for src::ty::Clock {
-    type Ctx<'i> = ();
+    type Ctx<'i> = DepTyAccum<'i>;
     type Output = tgt::ty::Clock;
-    fn translate(self, run_uid: Transparent<usize>, _span: Span, (): ()) -> Result<Self::Output> {
+    fn translate(
+        self,
+        run_uid: Transparent<usize>,
+        _span: Span,
+        ctx: Self::Ctx<'_>,
+    ) -> Result<Self::Output> {
         match self {
-            Self::When(w) => w.flat_translate(run_uid, ()),
-            Self::Whenot(w) => w.flat_translate(run_uid, ()),
+            Self::When(w) => w.flat_translate(run_uid, ctx),
+            Self::Whenot(w) => w.flat_translate(run_uid, ctx),
             Self::None => Ok(tgt::ty::Clock::Implicit),
         }
     }
 }
 
 impl Translate for src::ty::When {
-    type Ctx<'i> = ();
+    type Ctx<'i> = DepTyAccum<'i>;
     type Output = tgt::ty::Clock;
-    fn translate(self, _run_uid: Transparent<usize>, _span: Span, (): ()) -> Result<Self::Output> {
+    fn translate(
+        self,
+        run_uid: Transparent<usize>,
+        _span: Span,
+        ctx: Self::Ctx<'_>,
+    ) -> Result<Self::Output> {
+        ctx.push(
+            tgt::var::Local {
+                repr: self.clock.as_ref().map(|_, c| format!("{c}")),
+                run_uid,
+            }
+            .with_span(self.clock.span),
+        );
         Ok(tgt::ty::Clock::Explicit {
             activation: true,
             id: self.clock.map(|_, c| format!("{c}")),
@@ -650,9 +676,21 @@ impl Translate for src::ty::When {
 }
 
 impl Translate for src::ty::Whenot {
-    type Ctx<'i> = ();
+    type Ctx<'i> = DepTyAccum<'i>;
     type Output = tgt::ty::Clock;
-    fn translate(self, _run_uid: Transparent<usize>, _span: Span, (): ()) -> Result<Self::Output> {
+    fn translate(
+        self,
+        run_uid: Transparent<usize>,
+        _span: Span,
+        ctx: Self::Ctx<'_>,
+    ) -> Result<Self::Output> {
+        ctx.push(
+            tgt::var::Local {
+                repr: self.clock.as_ref().map(|_, c| format!("{c}")),
+                run_uid,
+            }
+            .with_span(self.clock.span),
+        );
         Ok(tgt::ty::Clock::Explicit {
             activation: false,
             id: self.clock.map(|_, c| format!("{c}")),
@@ -661,21 +699,31 @@ impl Translate for src::ty::Whenot {
 }
 
 impl Translate for src::OptionalVarsDecl {
-    type Ctx<'i> = ();
+    type Ctx<'i> = DepTyAccum<'i>;
     type Output = tgt::Tuple<Sp<tgt::decl::TyVar>>;
-    fn translate(self, run_uid: Transparent<usize>, _span: Span, (): ()) -> Result<Self::Output> {
+    fn translate(
+        self,
+        run_uid: Transparent<usize>,
+        _span: Span,
+        ctx: Self::Ctx<'_>,
+    ) -> Result<Self::Output> {
         match self {
-            Self::Decls(d) => d.flat_translate(run_uid, ()),
+            Self::Decls(d) => d.flat_translate(run_uid, ctx),
             Self::None => Ok(tgt::Tuple::default()),
         }
     }
 }
 
 impl Translate for src::VarsDecl {
-    type Ctx<'i> = ();
+    type Ctx<'i> = DepTyAccum<'i>;
     type Output = tgt::Tuple<Sp<tgt::decl::TyVar>>;
-    fn translate(self, run_uid: Transparent<usize>, _span: Span, (): ()) -> Result<Self::Output> {
-        self.decls.flat_translate(run_uid, ())
+    fn translate(
+        self,
+        run_uid: Transparent<usize>,
+        _span: Span,
+        ctx: Self::Ctx<'_>,
+    ) -> Result<Self::Output> {
+        self.decls.flat_translate(run_uid, ctx)
     }
 }
 
