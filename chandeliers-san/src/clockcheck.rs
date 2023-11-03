@@ -1,17 +1,18 @@
 //! Verify the consistency of clocks within and between nodes.
 
-#![allow(missing_docs)]
+#![allow(missing_docs, clippy::missing_docs_in_private_items)] // FIXME
 
 use std::collections::HashMap;
+
+use chandeliers_err::{self as err, Result};
 
 use crate::ast::ty::Clock;
 use crate::ast::{decl, expr, var};
 use crate::sp::{Sp, Span};
-use chandeliers_err::{self as err, Result};
 
 crate::sp::derive_with_span!(WithDefSite<T> where <T>);
 #[derive(Clone)]
-#[allow(dead_code)]
+#[expect(dead_code)] // FIXME
 struct WithDefSite<T> {
     data: T,
     def_site: Option<Span>,
@@ -47,34 +48,37 @@ pub struct ClkMap {}
 
 trait ClockCheckExpr {
     type Ctx<'i>;
-    fn clockcheck<'i>(&self, span: Span, ctx: Self::Ctx<'i>) -> Result<WithDefSite<Clock>>;
+    fn clockcheck(&self, span: Span, ctx: Self::Ctx<'_>) -> Result<WithDefSite<Clock>>;
 }
 trait ClockCheckSpanExpr {
     type Ctx<'i>;
-    fn clockcheck<'i>(&self, ctx: Self::Ctx<'i>) -> Result<Sp<WithDefSite<Clock>>>;
+    fn clockcheck(&self, ctx: Self::Ctx<'_>) -> Result<Sp<WithDefSite<Clock>>>;
 }
 trait ClockCheckStmt {
     type Ctx<'i>;
-    fn clockcheck<'i>(&self, span: Span, ctx: Self::Ctx<'i>) -> Result<()>;
+    fn clockcheck(&self, span: Span, ctx: Self::Ctx<'_>) -> Result<()>;
 }
 trait ClockCheckSpanStmt {
     type Ctx<'i>;
-    fn clockcheck<'i>(&self, ctx: Self::Ctx<'i>) -> Result<Sp<()>>;
+    fn clockcheck(&self, ctx: Self::Ctx<'_>) -> Result<Sp<()>>;
 }
 trait ClockCheckDecl {
     type Ctx<'i>;
-    fn clockcheck<'i>(&self, span: Span) -> Result<()>;
+    fn clockcheck(&self, span: Span) -> Result<()>;
     fn signature(&self) -> ClkMap;
 }
 trait ClockCheckSpanDecl {
     type Ctx<'i>;
-    fn clockcheck<'i>(&self) -> Result<Sp<()>>;
+    fn clockcheck(&self) -> Result<Sp<()>>;
     fn signature(&self) -> Sp<ClkMap>;
+}
+pub trait ClockCheck {
+    fn clockcheck(&self) -> Result<()>;
 }
 
 impl<T: ClockCheckExpr> ClockCheckSpanExpr for Sp<T> {
     type Ctx<'i> = T::Ctx<'i>;
-    fn clockcheck<'i>(&self, ctx: T::Ctx<'i>) -> Result<Sp<WithDefSite<Clock>>> {
+    fn clockcheck(&self, ctx: T::Ctx<'_>) -> Result<Sp<WithDefSite<Clock>>> {
         self.as_ref()
             .map(|span, t| t.clockcheck(span, ctx))
             .transpose()
@@ -82,7 +86,7 @@ impl<T: ClockCheckExpr> ClockCheckSpanExpr for Sp<T> {
 }
 impl<T: ClockCheckStmt> ClockCheckSpanStmt for Sp<T> {
     type Ctx<'i> = T::Ctx<'i>;
-    fn clockcheck<'i>(&self, ctx: T::Ctx<'i>) -> Result<Sp<()>> {
+    fn clockcheck(&self, ctx: T::Ctx<'_>) -> Result<Sp<()>> {
         self.as_ref()
             .map(|span, t| t.clockcheck(span, ctx))
             .transpose()
@@ -114,13 +118,13 @@ impl ClockCheckExpr for var::Global {
 
 impl ClockCheckExpr for var::Local {
     type Ctx<'i> = ExprClkCtx<'i>;
-    fn clockcheck<'i>(&self, _: Span, ctx: Self::Ctx<'i>) -> Result<WithDefSite<Clock>> {
-        Ok(ctx.clock_of(&self))
+    fn clockcheck(&self, _: Span, ctx: Self::Ctx<'_>) -> Result<WithDefSite<Clock>> {
+        Ok(ctx.clock_of(self))
     }
 }
 
-impl Sp<decl::Prog> {
-    pub fn clockcheck(&self) -> Result<()> {
-        Ok(())
+impl ClockCheck for Sp<decl::Prog> {
+    fn clockcheck(&self) -> Result<()> {
+        Ok(()) // FIXME
     }
 }

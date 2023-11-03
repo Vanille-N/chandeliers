@@ -38,13 +38,14 @@
 //! - a proof that this is impossible, in the form of a `Unit` that
 //!   is part of a dependency cycle.
 
-use proc_macro2::Span;
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::hash::Hash;
 
-use super::depends::Depends;
 use chandeliers_err::{self as err, IntoError, Result, TrySpan};
+
+use crate::causality::depends::Depends;
+use crate::sp::Span;
 
 /// The manipulations in this file are prone to out-of-bounds accesses,
 /// and because we are in a proc macro we won't get a nice error message
@@ -434,9 +435,10 @@ where
         // We're going to remove all elements one at a time, let's make that easier.
         let mut unused: Vec<Option<Obj>> = self.elements.into_iter().map(Some).collect();
         for c in &scc {
-            if c.is_empty() {
-                unreachable!("Malformed SCC of size 0");
-            }
+            err::assert!(
+                !c.is_empty(),
+                "It should be impossible to have SCCs of size zero"
+            );
             if c.len() > 1 {
                 // Oops, here's a loop.
                 let looping = c.iter().map(|l| at!(self.atomics.0, *l).elements());
@@ -444,7 +446,7 @@ where
             }
             // Correctly of size 1, we can use it next.
             let Some(&id) = c.last() else {
-                unreachable!("Length was determined to be 1");
+                err::provably_unreachable!();
             };
             // This is faillible because we have `Unit`s that are not provided by anyone.
             if let Some(Some(prov)) = provider.get(id) {

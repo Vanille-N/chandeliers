@@ -327,6 +327,9 @@ macro_rules! later {
 /// allowing delayed execution of subnodes.
 #[macro_export]
 macro_rules! substep {
+    ($this:ident <~ 0 ; $id:tt => { $args:expr } ) => {{
+        $this.__nodes.$id.step($args.embed())
+    }};
     ($this:ident <~ $dt:expr ; $id:tt => { $args:expr } ) => {{
         use $crate::traits::*;
         if $this.__clock >= $dt {

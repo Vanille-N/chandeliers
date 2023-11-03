@@ -24,64 +24,15 @@
 //! is lessened, and passing `&Sp<T>` may reduce copies of `Span` that come with
 //! each invocation of `as_ref`.
 
-use chandeliers_err as err;
+use std::fmt;
+
 pub use proc_macro2::Span;
 use proc_macro2::TokenStream;
 use quote::{quote_spanned, ToTokens};
-use std::fmt;
 
-/// A type that transparently implements `PartialEq` and `Hash`, to be used
-/// in structs that carry additional data that should not be relevant in comparisons.
-#[derive(Debug, Clone, Copy)]
-pub struct Transparent<T> {
-    /// Payload.
-    pub inner: T,
-}
+use chandeliers_err as err;
 
-impl Into<Span> for Transparent<Span> {
-    fn into(self) -> Span {
-        self.inner
-    }
-}
-
-impl From<Span> for Transparent<Span> {
-    fn from(span: Span) -> Self {
-        Self { inner: span }
-    }
-}
-
-impl From<usize> for Transparent<usize> {
-    fn from(i: usize) -> Self {
-        Self { inner: i }
-    }
-}
-
-impl<T> PartialEq for Transparent<T> {
-    fn eq(&self, _: &Self) -> bool {
-        true
-    }
-}
-
-impl<T> Eq for Transparent<T> {}
-
-impl<T> std::hash::Hash for Transparent<T> {
-    fn hash<H: std::hash::Hasher>(&self, _: &mut H) {}
-}
-
-impl<T: fmt::Display> fmt::Display for Transparent<T> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.inner)
-    }
-}
-
-impl Transparent<Span> {
-    /// Map `join` to the inner `span`s
-    pub fn join(self, other: Self) -> Option<Self> {
-        Some(Self {
-            inner: self.inner.join(other.inner)?,
-        })
-    }
-}
+use crate::transparent::Transparent;
 
 /// Span wrapper.
 ///
@@ -103,12 +54,6 @@ impl<T> err::TrySpan for Sp<T> {
     /// `Sp` always has a span, so `TrySpan` is guaranteed to succeed.
     fn try_span(&self) -> Option<Span> {
         Some(self.span.inner)
-    }
-}
-impl<T: err::TrySpan> err::TrySpan for Transparent<T> {
-    /// `Sp` always has a span, so `TrySpan` is guaranteed to succeed.
-    fn try_span(&self) -> Option<Span> {
-        self.inner.try_span()
     }
 }
 
@@ -302,7 +247,7 @@ macro_rules! derive_with_span {
         #[doc = "simply wraps it in `Sp`"]
         impl $crate::sp::WithSpan for $T {
             type Output = $crate::sp::Sp<Self>;
-            fn with_span<S: Into<$crate::sp::Transparent<$crate::sp::Span>>>(self, span: S) -> $crate::sp::Sp<Self> {
+            fn with_span<S: Into<$crate::transparent::Transparent<$crate::sp::Span>>>(self, span: S) -> $crate::sp::Sp<Self> {
                 $crate::sp::Sp { t: self, span: span.into() }
             }
         }
@@ -313,7 +258,7 @@ macro_rules! derive_with_span {
         #[doc = "simply wraps it in `Sp`"]
         impl$($t)* $crate::sp::WithSpan for $T {
             type Output = $crate::sp::Sp<Self>;
-            fn with_span<S: Into<$crate::sp::Transparent<$crate::sp::Span>>>(self, span: S) -> $crate::sp::Sp<Self> {
+            fn with_span<S: Into<$crate::transparent::Transparent<$crate::sp::Span>>>(self, span: S) -> $crate::sp::Sp<Self> {
                 $crate::sp::Sp { t: self, span: span.into() }
             }
         }

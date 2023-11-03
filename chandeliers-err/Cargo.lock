@@ -7,7 +7,6 @@ name = "chandeliers-err"
 version = "0.4.1"
 dependencies = [
  "proc-macro2",
- "quote",
 ]
 
 [[package]]
@@ -17,15 +16,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "134c189feb4956b20f6f547d2cf727d4c0fe06722b20a0eec87ed445a97f92da"
 dependencies = [
  "unicode-ident",
-]
-
-[[package]]
-name = "quote"
-version = "1.0.33"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5267fca4496028628a95160fc423a33e8b2e6af8a5302579e322e4b520293cae"
-dependencies = [
- "proc-macro2",
 ]
 
 [[package]]

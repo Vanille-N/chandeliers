@@ -60,7 +60,6 @@ macro_rules! embed_for_tuple {
         {
             type Target = ( $( <$T>::Target, )* );
             #[inline]
-            #[allow(clippy::unused_unit)]
             fn embed(self) -> Self::Target {
                 ( $( self.$i.embed(), )* )
             }
@@ -104,7 +103,6 @@ macro_rules! trusted_for_tuple {
         {
             type Target = ( $( <$T>::Target, )* );
             #[inline]
-            #[allow(clippy::unused_unit)]
             fn trusted(self) -> Self::Target {
                 ( $( self.$i.trusted(), )* )
             }

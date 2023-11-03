@@ -22,7 +22,6 @@ name = "chandeliers-err"
 version = "0.4.1"
 dependencies = [
  "proc-macro2",
- "quote",
 ]
 
 [[package]]
@@ -31,7 +30,6 @@ version = "0.4.1"
 dependencies = [
  "chandeliers-err",
  "chandeliers-san",
- "chandeliers-sem",
  "chandeliers-syn",
  "proc-macro2",
  "quote",
@@ -71,7 +69,6 @@ dependencies = [
  "chandeliers-err",
  "chandeliers-san",
  "proc-macro2",
- "quote",
  "syn",
  "syn_derive",
 ]

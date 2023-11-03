@@ -108,6 +108,8 @@
 //! - invoque `fetch` and `assert_used` on the main path and not behind conditionals.
 //!
 
+use crate::sp::Sp;
+
 /// Places where options can be relevant.
 pub mod usage {
     /// A type whose name can be printed (since we are using this in error
@@ -155,12 +157,13 @@ trait Usage<T> {
 
 /// Verify that the option was used everywhere.
 trait AssertUsed {
+    /// Panic if one of the declared use sites is missing.
     fn assert_used(&self, msg: &'static str);
 }
 
 impl<T, Sites: Default> UseOpt<T, Sites> {
     /// Get the value of this option and record it as used for the corresponding site.
-    #[allow(private_bounds)]
+    #[expect(private_bounds, reason = "Sealed trait pattern")]
     pub fn fetch<Use>(&self) -> &T
     where
         Sites: Usage<Use>,
@@ -178,7 +181,7 @@ impl<T, Sites: Default> UseOpt<T, Sites> {
     }
 
     /// Finish the handling of the option by asserting that it was used somewhere.
-    #[allow(private_bounds)]
+    #[expect(private_bounds, reason = "Sealed trait pattern")]
     pub fn assert_used(&self, msg: &'static str)
     where
         Sites: AssertUsed,
@@ -254,8 +257,8 @@ macro_rules! matching_head {
 }
 
 matching_head! {
-    usage::Codegen,
-    usage::Typecheck,
+    Codegen,
+    Typecheck,
 }
 
 /// Black magic to generate option sets.
@@ -303,6 +306,12 @@ macro_rules! selection_aux_decl {
                 #[doc = "`#[rustc_allow[dead_code]]`: forward the attribute to Rustc as an `#[allow(dead_code)]`"]
                 pub rustc_allow: UseOpt<Vec<syn::Ident>, Sites<Codegen, Over>>,
             ) ++ ( $($rest)* ) ); };
+    ( $struct:ident ( $($done:tt)* ) ++ ( doc , $($rest:tt)* ) )
+        // #[doc] is of type `Vec<Sp<String>>` and is useful only during codegen.
+        => { selection_aux_decl!($struct ( $($done)*
+                #[doc = "`#[doc(\"Message\")]`: forward the attribute to Rustc for documentation purposes`"]
+                pub doc: UseOpt<Vec<Sp<String>>, Sites<Codegen, Over>>,
+            ) ++ ( $($rest)* ) ); };
     // Base case: generate the struct definition from all the accumulated tokens in `<handled>`
     // (by now `<unhandled>` is empty).
     ( $struct:ident ( $($done:tt)* ) ++ () )
@@ -347,7 +356,7 @@ macro_rules! selection {
     };
 }
 
-selection! { pub struct Node { trace, export, main, rustc_allow } }
+selection! { pub struct Node { trace, export, main, rustc_allow, doc } }
 selection! { pub struct ExtNode { trace, main, rustc_allow } }
-selection! { pub struct Const { export, rustc_allow } }
+selection! { pub struct Const { export, rustc_allow, doc } }
 selection! { pub struct ExtConst { rustc_allow } }

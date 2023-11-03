@@ -16,10 +16,9 @@
 //! only those applicable to each declaration, and emits appropriate and
 //! homogeneous error messages.
 
-use crate::ast as lus;
 use chandeliers_err::{self as err, IntoError, Result};
 use chandeliers_san::ast::options::{Const, ExtConst, ExtNode, Node};
-use chandeliers_san::sp::{Sp, Span};
+use chandeliers_san::sp::{Sp, Span, WithSpan};
 
 /// The main helper to set options.
 ///
@@ -130,6 +129,8 @@ pub struct Decl {
     main: SetOpt<Option<usize>>,
     /// `#[rustc_allow[dead_code]]`: forward the attribute as a `#[allow(_)]`.
     rustc_allow: SetOpt<Vec<syn::Ident>>,
+    /// `#[doc("Message")]`: insert documentation for this node.
+    doc: SetOpt<Vec<Sp<String>>>,
 }
 
 impl Default for Decl {
@@ -139,6 +140,7 @@ impl Default for Decl {
             export: SetOpt::create("#[export]", false),
             main: SetOpt::create("#[main(nb_iter)]", None),
             rustc_allow: SetOpt::create("#[rustc_allow(attr)]", vec![]),
+            doc: SetOpt::create("#[doc(\"Message\")]", vec![]),
         }
     }
 }
@@ -172,7 +174,7 @@ impl Decl {
     pub fn for_const(self) -> Result<Const> {
         project! {
             self: Decl => Const {
-                take { export, rustc_allow, }
+                take { export, rustc_allow, doc, }
                 skip { trace, main, }
             }
         }
@@ -182,7 +184,7 @@ impl Decl {
     pub fn for_node(self) -> Result<Node> {
         project! {
             self: Decl => Node {
-                take { trace, export, main, rustc_allow, }
+                take { trace, export, main, rustc_allow, doc, }
                 skip {}
             }
         }
@@ -193,7 +195,7 @@ impl Decl {
         project! {
             self: Decl => ExtConst {
                 take { rustc_allow, }
-                skip { trace, export, main, }
+                skip { trace, export, main, doc, }
             }
         }
     }
@@ -203,40 +205,52 @@ impl Decl {
         project! {
             self: Decl => ExtNode {
                 take { trace, main, rustc_allow, }
-                skip { export, }
+                skip { export, doc, }
             }
         }
     }
 
     /// Update the current options with a new attribute.
-    pub fn with(mut self, attr: Sp<lus::Attribute>) -> Result<Self> {
+    pub fn with(mut self, attr: Sp<crate::ast::Attribute>) -> Result<Self> {
         use syn::Lit;
+        let action = attr.t.attr.t.action.t.inner.to_string();
+
+        macro_rules! malformed {
+            ( ($($msg:tt)*) ) => {
+                return Err(err::Basic {
+                    msg: format!("Malformed attribute {}: {}", action, format!($($msg)*)),
+                    span: attr.span.into(),
+                }.into_err())
+            };
+        }
+
         let params = attr.t.attr.t.params.map(|_, t| t.flatten());
         let targets = attr.t.attr.t.targets.map(|_, t| t.flatten());
-        match (
-            attr.t.attr.t.action.t.inner.to_string().as_str(),
-            &params.t[..],
-            &targets.t[..],
-        ) {
+        match (action.as_str(), &params.t[..], &targets.t[..]) {
             ("trace", [], []) => self.trace.set(true, attr.span.into()),
+            ("trace", _, _) => malformed!(("expects no arguments")),
             ("export", [], []) => self.export.set(true, attr.span.into()),
+            ("export", _, _) => malformed!(("expects no arguments")),
             ("main", [], []) => self.main.some(100, attr.span.into()),
             ("main", [], [Lit::Int(i)]) => self.main.some(
                 i.base10_parse()
                     .unwrap_or_else(|e| err::panic!("{i} cannot be parsed in base 10: {e}")),
                 attr.span.into(),
             ),
+            ("main", _, _) => malformed!(("expects at most one integer argument")),
             ("rustc_allow", [inner], []) => {
                 self.rustc_allow
                     .push(syn::Ident::new(inner, params.span.into()), attr.span.into());
             }
-            (other, _, _) => {
-                return Err(err::Basic {
-                    msg: format!("Unknown or malformed attribute {other:?}"),
-                    span: attr.span.into(),
-                }
-                .into_err())
+            ("rustc_allow", _, _) => malformed!(("expects exactly one identifier")),
+            ("doc", [], [Lit::Str(doc)]) => {
+                self.doc.push(
+                    format!("{}", doc.value()).with_span(params.span),
+                    attr.span.into(),
+                );
             }
+            ("doc", _, _) => malformed!(("expects exactly one string")),
+            (_, _, _) => malformed!(("no such attribute")),
         }
         Ok(self)
     }

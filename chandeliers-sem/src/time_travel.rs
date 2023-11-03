@@ -92,7 +92,7 @@ macro_rules! s {
 }
 
 /// Fetch value from `dt` instants ago.
-#[allow(private_bounds)]
+#[expect(private_bounds, reason = "Sealed trait pattern")]
 pub trait Ago<T>: Counting<T> {
     /// Read a past value.
     fn ago(&self, dt: usize) -> &Nillable<T>;
@@ -104,7 +104,7 @@ where
 {
     #[inline]
     #[track_caller]
-    #[allow(clippy::panic)]
+    #[expect(clippy::panic, reason = "Panic at the semantic level")]
     fn ago(&self, dt: usize) -> &Nillable<T> {
         match dt {
             0 => panic!(
@@ -123,7 +123,7 @@ where
 {
     #[inline]
     #[track_caller]
-    #[allow(clippy::panic)]
+    #[expect(clippy::panic, reason = "Panic at the semantic level")]
     fn ago(&self, dt: usize) -> &Nillable<T> {
         match dt {
             0 => panic!(
@@ -164,7 +164,6 @@ where
 }
 
 /// Prepend a new value to the history to add one level of `S<_, _>` to the type.
-#[allow(private_bounds)]
 pub trait Extend<N, T>: Sized {
     /// Extend the history with the most recent value.
     fn extend(self, new: Nillable<T>) -> N;
@@ -197,7 +196,7 @@ where
 ///
 /// We add a new value a the front and at the same time we forget an
 /// old value from the back to keep the same size.
-#[allow(private_bounds)]
+#[expect(private_bounds, reason = "Sealed trait pattern")]
 pub trait Update<T>: Counting<T> {
     /// Prepend a new value.
     #[must_use]
@@ -233,7 +232,7 @@ where
 }
 
 /// Construct a new empty or singleton history of a given type.
-#[allow(private_bounds)]
+#[expect(private_bounds, reason = "Sealed trait pattern")]
 pub trait IntoHistory: Sealed {
     /// History of size one (always an `O<_>`).
     #[inline]

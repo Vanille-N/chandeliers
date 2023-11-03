@@ -51,32 +51,32 @@
 //! to implement in other ways, but you should be careful not to drop your
 //! AST because you thought it was changed in-place.
 
-#![feature(associated_type_defaults)]
-#![warn(missing_docs)]
+#![feature(lint_reasons)]
 #![warn(
-    clippy::missing_docs_in_private_items,
-    clippy::pedantic,
+    missing_docs,
+    unused_crate_dependencies,
+    unused_macro_rules,
+    variant_size_differences,
+    clippy::allow_attributes,
+    clippy::allow_attributes_without_reason,
     clippy::expect_used,
-    clippy::unwrap_used,
     clippy::indexing_slicing,
+    clippy::missing_docs_in_private_items,
     clippy::multiple_inherent_impl,
     clippy::panic,
+    clippy::pedantic,
     clippy::str_to_string,
-    clippy::use_debug,
-    clippy::unreachable
+    clippy::unreachable,
+    clippy::unwrap_used,
+    clippy::use_debug
 )]
 
 pub mod ast;
-pub mod sp;
-
-pub mod causality;
-
-pub mod codegen;
-
-pub mod typecheck;
-
-pub mod clockcheck;
-
-pub mod positivity;
-
 pub mod candle;
+pub mod causality;
+pub mod clockcheck;
+pub mod codegen;
+pub mod positivity;
+pub mod sp;
+pub mod transparent;
+pub mod typecheck;

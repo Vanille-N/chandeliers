@@ -3,28 +3,32 @@
 //! This crate defines the `proc_macro`s provided to compile Lustre code.
 //! For now only the `decl` macro is available to compile an entire program.
 
+#![feature(lint_reasons)]
 #![feature(proc_macro_diagnostic)]
-#![warn(missing_docs)]
 #![warn(
-    clippy::missing_docs_in_private_items,
-    clippy::pedantic,
+    missing_docs,
+    unused_crate_dependencies,
+    unused_macro_rules,
+    variant_size_differences,
+    clippy::allow_attributes,
+    clippy::allow_attributes_without_reason,
     clippy::expect_used,
-    clippy::unwrap_used,
     clippy::indexing_slicing,
+    clippy::missing_docs_in_private_items,
     clippy::multiple_inherent_impl,
     clippy::panic,
+    clippy::pedantic,
     clippy::str_to_string,
-    clippy::use_debug,
-    clippy::unreachable
+    clippy::unreachable,
+    clippy::unwrap_used,
+    clippy::use_debug
 )]
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use chandeliers_err as err;
-use chandeliers_san as sanitizer;
+use chandeliers_san::{self as sanitizer, sp::Sp};
 use chandeliers_syn as syntax;
-
-use sanitizer::sp::Sp;
 
 /// Generate unique identifiers for each macro invocation. We need this to avoid
 /// name collisions in `extern node` and `extern const` declarations.
@@ -72,12 +76,13 @@ pub fn decl(i: proc_macro::TokenStream) -> proc_macro::TokenStream {
 /// positivity + clockchecking.
 fn prog_pipeline(prog: Sp<syntax::Prog>) -> Result<Sp<sanitizer::ast::decl::Prog>, err::Error> {
     use sanitizer::causality::Causality;
+    use sanitizer::clockcheck::ClockCheck;
     use sanitizer::positivity::MakePositive;
     use syntax::translate::SpanTranslate;
     let run_uid = new_run_uid();
     let prog = prog.translate(run_uid.into(), ())?;
     let mut prog = prog.causality()?;
-    prog.typecheck()?;
+    prog.typecheck()?; // FIXME: trait for this
     prog.clockcheck()?;
     prog.make_positive()?;
     // FIXME: clockchecking coming soon.

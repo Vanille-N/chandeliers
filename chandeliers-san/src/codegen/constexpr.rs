@@ -5,11 +5,13 @@
 //! a different way depending on whether they are in a `const` or in a local
 //! variable.
 
-use crate::sp::{Sp, Span, WithSpan};
 use proc_macro2::TokenStream;
 use quote::quote;
 
+use chandeliers_err as err;
+
 use crate::ast::{expr, var};
+use crate::sp::{Sp, Span, WithSpan};
 
 /// Trait to generate `const` expressions.
 pub trait ConstExprTokens {
@@ -75,12 +77,12 @@ impl ConstExprTokens for expr::Expr {
             Self::Tuple(t) => {
                 let ts =
                     t.t.iter()
-                        .map(|e| e.const_expr_tokens())
+                        .map(ConstExprSpanTokens::const_expr_tokens)
                         .collect::<Vec<_>>();
                 quote!( ( #( #ts ),* ) )
             }
-            Self::Later { .. } => unreachable!("Later is not valid in const contexts"),
-            Self::Substep { .. } => unreachable!("Substep is not valid in const contexts"),
+            Self::Later { .. } => err::panic!("Later is not valid in const contexts, which should have been caught during typecheck"),
+            Self::Substep { .. } => err::panic!("Substep is not valid in const contexts, which should have been caught during typecheck"),
             Self::Ifx { cond, yes, no } => {
                 let cond = cond.const_expr_tokens();
                 let yes = yes.const_expr_tokens();
@@ -89,8 +91,8 @@ impl ConstExprTokens for expr::Expr {
                     if #cond { #yes } else { #no }
                 }
             }
-            Self::Merge { .. } => unreachable!("Merge is not valid in const contexts"),
-            Self::Clock { .. } => unreachable!("Clock is not valid in const contexts"),
+            Self::Merge { .. } => err::panic!("Merge is not valid in const contexts, which should have been caught during typecheck"),
+            Self::Clock { .. } => err::panic!("Clock is not valid in const contexts, which should have been caught during typecheck"),
         }
     }
 }
@@ -113,7 +115,9 @@ impl ConstExprTokens for expr::Lit {
 impl ConstExprTokens for var::Reference {
     fn const_expr_tokens(&self, _span: Span) -> TokenStream {
         match self {
-            Self::Var(_) => unreachable!("Var is invalid in const contexts"),
+            Self::Var(_) => err::panic!(
+                "Var is invalid in const contexts, which should have been caught during typecheck"
+            ),
             Self::Global(v) => {
                 let g = v.as_sanitized_ident();
                 quote!( #g )

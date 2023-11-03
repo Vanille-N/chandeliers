@@ -1,7 +1,5 @@
 //! Type conversion functions.
 
-#![allow(non_camel_case_types)]
-
 use chandeliers_sem::traits::Step;
 use chandeliers_sem::ty;
 
@@ -13,7 +11,7 @@ impl Step for float_of_int {
     type Input = i64;
     type Output = f64;
     #[inline]
-    #[allow(clippy::cast_precision_loss)]
+    #[expect(clippy::cast_precision_loss, reason = "Required by the user")]
     fn step(&mut self, inputs: ty!(i64)) -> ty!(f64) {
         inputs.map(|i| i as f64)
     }
@@ -28,7 +26,7 @@ impl Step for int_of_float {
     type Output = i64;
 
     #[inline]
-    #[allow(clippy::cast_possible_truncation)]
+    #[expect(clippy::cast_possible_truncation, reason = "Required by the user")]
     fn step(&mut self, inputs: ty!(f64)) -> ty!(i64) {
         inputs.map(|i| i as i64)
     }

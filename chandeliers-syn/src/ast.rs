@@ -10,7 +10,9 @@
 //! A node has inputs, outputs, and a body constituted of definitions of
 //! outputs from inputs.
 
-#![allow(clippy::missing_docs_in_private_items)]
+#![allow(clippy::missing_docs_in_private_items, reason = "Only AST definitions")]
+#![allow(clippy::allow_attributes, reason = "Foreign code")]
+#![allow(clippy::allow_attributes_without_reason, reason = "Foreign code")]
 
 use std::fmt;
 

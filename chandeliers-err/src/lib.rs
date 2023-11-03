@@ -1,22 +1,28 @@
 //! Error message generation.
 
-#![warn(missing_docs)]
-#![warn(clippy::missing_docs_in_private_items)]
+#![feature(lint_reasons)]
 #![warn(
-    clippy::missing_docs_in_private_items,
-    clippy::pedantic,
+    missing_docs,
+    unused_crate_dependencies,
+    unused_macro_rules,
+    variant_size_differences,
+    clippy::allow_attributes,
+    clippy::allow_attributes_without_reason,
     clippy::expect_used,
-    clippy::unwrap_used,
     clippy::indexing_slicing,
+    clippy::missing_docs_in_private_items,
     clippy::multiple_inherent_impl,
     clippy::panic,
+    clippy::pedantic,
     clippy::str_to_string,
-    clippy::use_debug,
-    clippy::unreachable
+    clippy::unreachable,
+    clippy::unwrap_used,
+    clippy::use_debug
 )]
 
-use proc_macro2::Span;
 use std::fmt::Display;
+
+use proc_macro2::Span;
 
 /// Repository of this project, to be displayed in error messages.
 #[macro_export]
@@ -214,6 +220,59 @@ where
                 None,
             ),
             (format!("or one of the global variables: {suggest2}"), None),
+        ]
+    }
+}
+
+/// Generate an error for a type variable that was not declared yet,
+/// which has consequences on what we should say is and isn't available.
+pub struct TyVarNotFound<Var, Suggest> {
+    /// What is missing.
+    pub var: Var,
+    /// Local variable suggestions.
+    pub suggest: Suggest,
+}
+
+impl<Var, Suggest, S> IntoError for TyVarNotFound<Var, Suggest>
+where
+    Var: Display + TrySpan,
+    Suggest: IntoIterator<Item = S>,
+    S: Display,
+{
+    fn into_err(self) -> Vec<(String, Option<Span>)> {
+        let mut suggest = self
+            .suggest
+            .into_iter()
+            .map(|v| format!("{v}"))
+            .collect::<Vec<_>>();
+        suggest.sort();
+        let suggest = if suggest.is_empty() {
+            String::from("(none declared)")
+        } else {
+            suggest.join(", ")
+        };
+
+        vec![
+            (
+                format!(
+                    "Variable {} is not available yet at this point of the typechecking.",
+                    self.var
+                ),
+                self.var.try_span(),
+            ),
+            (
+                format!(
+                    "During this incremental typechecking, you cannot access global
+variables and you may only use local variables that have been
+declared strictly beforehand, in the order of inputs then outputs
+then locals."
+                ),
+                None,
+            ),
+            (
+                format!("These are the variables that are already useable: {suggest}"),
+                None,
+            ),
         ]
     }
 }

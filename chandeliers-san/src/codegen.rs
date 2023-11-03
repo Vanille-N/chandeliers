@@ -1,22 +1,17 @@
-// This lint falsely flags some `|x| x.foo()` that are actually helpful
-// because the alternative would require specifying the explicit type of
-// `foo` which is overloaded on `Sp<T>` for several different `T`.
-#![allow(clippy::redundant_closure_for_method_calls)]
-
 //! Generate actual Candle statements from an AST.
 
-use crate::sp::{Sp, Span};
 use proc_macro2::{Ident, TokenStream};
 use quote::{quote, quote_spanned, ToTokens};
 
-use super::ast::options::usage::Codegen as This;
-use super::ast::{decl, expr, op, past, stmt, ty, var, Tuple};
+use crate::ast::options::usage::Codegen as This;
+use crate::ast::{decl, expr, op, past, stmt, ty, var, Tuple};
+use crate::sp::{Sp, Span};
 
 mod constexpr;
-use constexpr::ConstExprSpanTokens;
-
 pub mod options;
-use options::{FnMain, PubQualifier, Traces};
+
+use constexpr::ConstExprSpanTokens;
+use options::{Docs, FnMain, PubQualifier, Traces};
 
 /// Generate a program simply by generating all declarations.
 impl ToTokens for decl::Prog {
@@ -64,23 +59,28 @@ impl ToTokens for decl::Const {
         let value = value.const_expr_tokens();
         let ty = ty.as_defined_ty();
         let pub_qualifier = options.pub_qualifier();
+        let rustc_allow_1 = options.rustc_allow.fetch::<This>().iter();
+        let rustc_allow_2 = options.rustc_allow.fetch::<This>().iter();
 
+        let docs = options.docs();
         let declaration = quote_spanned! {span.into()=>
             #pub_qualifier const #ext_name : #ty = #glob ;
         };
-        let rustc_allow = options.rustc_allow.fetch::<This>().iter();
 
         let doc = format!("Toplevel constant `{name}`");
         toks.extend(quote! {
             #[doc = #doc]
             #[doc = "(Declared with UID for internal usage)"]
             #[allow(non_upper_case_globals)]
+            #( #[allow( #rustc_allow_2 )] )*
             const #glob : #ty = #value ;
 
+            #docs
+            #[doc = "\n"]
             #[doc = #doc]
             #[doc = "(Visible by the outside)"]
             #[allow(non_upper_case_globals)]
-            #( #[allow( #rustc_allow )] )*
+            #( #[allow( #rustc_allow_1 )] )*
             #declaration
         });
 
@@ -181,12 +181,15 @@ impl ToTokens for decl::Node {
     }
 }
 
-#[allow(clippy::multiple_inherent_impl)]
 impl decl::Node {
     /// Generate the node declaration and implementation
     /// with the sanitized name for internal use only.
     /// This is not expected to be used by either other Lustre blocks
     /// or the interfacing Rust code.
+    #[expect(
+        clippy::redundant_closure_for_method_calls,
+        reason = "Required for type inference"
+    )] // FIXME: make it a trait
     fn internal_decl(&self) -> TokenStream {
         let Self {
             name,
@@ -269,7 +272,7 @@ impl decl::Node {
                 ) ->
                     #expected_output_tys_impl
                 {
-                    use ::chandeliers_sem::traits::*;
+                    use ::chandeliers_sem::traits::{Embed, Step};
                     ::chandeliers_sem::implicit_clock!(__inputs);
                     "Implicit clock is running";
                     let #inputs_vs_asst = __inputs;
@@ -319,6 +322,7 @@ impl decl::Node {
 
         let rustc_allow = options.rustc_allow.fetch::<This>().iter();
 
+        let docs = options.docs();
         let doc_name = format!(" `{name}` ");
         let ext_declaration = quote_spanned! {name.span.into()=>
             #pub_qualifier struct #ext_name { inner: #uid_name }
@@ -351,6 +355,8 @@ impl decl::Node {
         };
 
         quote! {
+            #docs
+            #[doc = "\n"]
             #[doc = " Wrapper declaration of"]
             #[doc = #doc_name]
             #[doc = " (part of the public interface)"]
@@ -489,11 +495,12 @@ impl ToTokens for decl::ExtNode {
                     #actual_inputs: #expected_input_tys,
                 ) -> #expected_output_tys
                 {
+                    use ::chandeliers_sem::traits::{Embed, Step};
                     ::chandeliers_sem::implicit_clock!(__inputs);
+
                     let #input_asst = __inputs;
                     #trace_pre
 
-                    use ::chandeliers_sem::traits::*;
                     let #output_asst = self.inner.step(#actual_inputs);
 
                     #trace_post
@@ -727,6 +734,10 @@ impl stmt::VarTuple {
     /// We need a case analysis on the size of the tuple, where
     /// `_` is needed to bind an empty return `()`, and otherwise we need
     /// exactly one or several variable names to bind one scalar per variable.
+    #[expect(
+        clippy::redundant_closure_for_method_calls,
+        reason = "Required for type inference"
+    )] // FIXME: make it a trait
     fn as_assignment_target(&self, _span: Span) -> TokenStream {
         match self {
             Self::Single(s) => s.as_sanitized_ident(),

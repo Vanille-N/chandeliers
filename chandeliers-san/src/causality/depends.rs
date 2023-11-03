@@ -10,14 +10,16 @@
 //! an implementor of `Depends` that will output a list of constraints
 //! to resolve.
 
-#![allow(clippy::redundant_closure_call)]
+#![expect(
+    clippy::redundant_closure_call,
+    reason = "Required for macro expansion"
+)]
 
 use std::fmt;
 
 use crate::ast::{decl, expr, stmt, var};
-use crate::sp::Sp;
+use crate::sp::{Sp, Span};
 use chandeliers_err as err;
-use proc_macro2::Span;
 
 /// Construct the dependency constraints introduced by `Self`.
 /// A typical implementation will consist of

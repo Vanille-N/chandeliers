@@ -1,7 +1,12 @@
+//! Tests
+
+#![feature(lint_reasons)]
+
 use chandeliers_lus as lustre;
 
 #[cfg(test)]
 use chandeliers_sem::traits::*;
+
 use chandeliers_std::cast::float_of_int;
 
 lustre::decl! {
@@ -13,6 +18,7 @@ lustre::decl! {
 }
 
 lustre::decl! {
+    #[doc("Half adder from two bits to one bit and one carry")]
     node half_add(a, b : bool) returns (s, co : bool);
     let
       s = (a <> b);
@@ -225,8 +231,10 @@ lustre::decl! {
 }
 
 lustre::decl! {
+    #[doc("Value of the fibonacci sequence at index 0")]
     #[rustc_allow[dead_code]]
     const FIB0 : int = 0;
+    #[doc("Value of the fibonacci sequence at index 1")]
     #[rustc_allow[dead_code]]
     const FIB1 : int = 1;
 
@@ -342,7 +350,6 @@ chandeliers_lus::decl! {
 */
 
 chandeliers_lus::decl! {
-    #[trace]
     node count1() returns (n : int);
     let n = 0 fby n + 1; tel
 }

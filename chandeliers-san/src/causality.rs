@@ -6,12 +6,14 @@
 //! the structures that need to have their dependencies analyzed,
 //! which is done by the `Causality` trait.
 
+use chandeliers_err::Result;
+
 use crate::ast;
 use crate::sp::Sp;
-use chandeliers_err::Result;
 
 pub mod depends;
 pub mod graph;
+
 use depends::Reference;
 use graph::Graph;
 

@@ -7,9 +7,10 @@
 //! and you can use them after performing the proper verifications by
 //! converting them into interpretable code using the methods from `codegen.rs`.
 
-use crate::causality::depends::Depends;
 use std::fmt;
 use std::hash::Hash;
+
+use crate::causality::depends::Depends;
 
 pub mod options;
 
@@ -140,9 +141,10 @@ where
 
 /// Types of expressions.
 pub mod ty {
-    use super::past;
-    use crate::sp::Sp;
     use std::fmt;
+
+    use crate::ast::past;
+    use crate::sp::Sp;
 
     crate::sp::derive_with_span!(Base);
     /// A basic scalar type.
@@ -241,8 +243,10 @@ pub mod ty {
 
 /// Variables and other kinds of referencese to external values.
 pub mod var {
-    use crate::sp::{Sp, Transparent};
     use std::fmt;
+
+    use crate::sp::Sp;
+    use crate::transparent::Transparent;
 
     crate::sp::derive_with_span!(Local);
     /// A local variable.
@@ -442,10 +446,10 @@ pub mod op {
 
 /// Definitions of expressions.
 pub mod expr {
-    use super::Tuple;
-    use super::{op, past};
-    use crate::sp::Sp;
     use std::fmt;
+
+    use crate::ast::{op, past, Tuple};
+    use crate::sp::Sp;
 
     crate::sp::derive_with_span!(Lit);
     /// A literal.
@@ -585,10 +589,10 @@ pub mod expr {
 
 /// Statements and operations with side-effects.
 pub mod stmt {
-    use super::Tuple;
-    use super::{expr, var};
-    use crate::sp::Sp;
     use std::fmt;
+
+    use crate::ast::{expr, var, Tuple};
+    use crate::sp::Sp;
 
     /// The target of an assignment `(x, y, z) = ...`.
     /// May be abritrarily nested.
@@ -627,10 +631,11 @@ pub mod stmt {
 
 /// Toplevel declarations.
 pub mod decl {
-    use super::Tuple;
-    use super::{expr, options, stmt, ty, var};
-    use crate::sp::{Sp, Transparent};
     use std::fmt;
+
+    use crate::ast::{expr, options, stmt, ty, var, Tuple};
+    use crate::sp::Sp;
+    use crate::transparent::Transparent;
 
     /// A typed variable.
     #[derive(Debug, Clone)]

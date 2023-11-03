@@ -2,13 +2,13 @@
 
 use std::collections::HashMap;
 
-use crate::ast;
-use crate::sp::{Sp, Span, Transparent, WithSpan};
 use chandeliers_err::{self as err, IntoError, Result};
 
+use crate::ast::{self, ty, Tuple};
+use crate::sp::{Sp, Span, WithSpan};
+use crate::transparent::Transparent;
+
 use ast::options::usage::Typecheck as This;
-use ast::ty;
-use ast::Tuple;
 
 /// This is the type of all interfaces (node inputs and outputs),
 /// lets' give it a less confusing alias.
@@ -48,7 +48,7 @@ impl<T> WithDefSite<T> {
 
 /// Context that the typechecking is done in.
 #[derive(Debug)]
-pub struct TyCtx<'i> {
+struct TyCtx<'i> {
     /// Global variables with their types (all scalar).
     global: &'i HashMap<ast::var::Global, WithDefSite<ty::Base>>,
     /// Local variables (both inputs/outputs and hidden locals).
@@ -92,6 +92,22 @@ impl TyCtx<'_> {
         }
     }
 
+    /// Try to get the type of a local variable, meant to be used during the
+    /// typechecking of types so we don't have access to globals and we haven't
+    /// yet declared all the local variables.
+    fn get_var_during_ty(&self, var: Sp<&ast::var::Local>) -> Result<WithDefSite<ty::Tuple>> {
+        match self.vars.get(var.t) {
+            Some(vardef) => Ok(vardef
+                .as_ref()
+                .map(|span, ty| ty::Tuple::Single(ty.with_span(span)))),
+            None => Err(err::TyVarNotFound {
+                var: &var,
+                suggest: self.vars.keys(),
+            }
+            .into_err()),
+        }
+    }
+
     /// Interpret a variable as a global variable and get its type if it exists.
     fn get_global(&self, var: Sp<&ast::var::Global>) -> Result<WithDefSite<ty::Tuple>> {
         match self.global.get(var.t) {
@@ -112,7 +128,17 @@ impl TyCtx<'_> {
         match self.nodes_out.get(node.t) {
             Some(tup) => tup.as_flat_tytuple(),
             None => {
-                unreachable!("TyCtx is improperly initialized: it does not know {node}");
+                err::panic!("The typing context is improperly initialized: either {node} is missing and it should have been caught during the causality check, or it was not added to the map.");
+            }
+        }
+    }
+
+    /// Get the input tuple of a nade.
+    fn get_node_in(&self, node: Sp<&ast::var::Node>) -> Sp<ty::Tuple> {
+        match self.nodes_in.get(node.t) {
+            Some(tup) => tup.as_flat_tytuple(),
+            None => {
+                err::panic!("The typing context is improperly initialized: either {node} is missing and it should have been caught during the causality check, or it was not added to the map.");
             }
         }
     }
@@ -120,7 +146,7 @@ impl TyCtx<'_> {
 
 /// Typechecking a statement is only a yes-or-no problem, as statements
 /// do not introduce type constraints.
-pub trait TypeCheckStmt {
+trait TypeCheckStmt {
     /// Verify internal consistency.
     /// # Errors
     /// Fails if one of the elements of the statement cannot be typed.
@@ -128,7 +154,7 @@ pub trait TypeCheckStmt {
 }
 
 /// Helper trait for `Sp<T>` to project `TypeCheckStmt` to its contents.
-pub trait TypeCheckSpanStmt {
+trait TypeCheckSpanStmt {
     /// Verify that the inner content is consistent.
     /// # Errors
     /// Fails if one of the elements of the statement cannot be typed.
@@ -145,7 +171,7 @@ impl<T: TypeCheckStmt> TypeCheckSpanStmt for Sp<T> {
 
 /// Verify that the expression is internally consistent, and get the type
 /// of the resulting value.
-pub trait TypeCheckExpr {
+trait TypeCheckExpr {
     /// Typechecking expressions is slightly more tricky, because we need to check
     /// not only if the expression is internally consistent, but also we need to
     /// compute its type to check it against the immediate context.
@@ -164,7 +190,7 @@ pub trait TypeCheckExpr {
 }
 
 /// Helper trait for `Sp<T>` to project `TypeCheckExpr` to its contents.
-pub trait TypeCheckSpanExpr {
+trait TypeCheckSpanExpr {
     /// Get the inner type.
     ///
     /// # Errors
@@ -277,13 +303,9 @@ impl TypeCheckExpr for ast::expr::Expr {
                 Ok(yes.t)
             }
             Self::Substep { clk: _, id, args } => {
-                let Some(expected_tys) = ctx.nodes_in.get(&id.t) else {
-                    unreachable!("Substep is malformed: {id} is not a block");
-                };
+                let expected_tys = ctx.get_node_in(id.as_ref());
                 let actual_tys = args.typecheck(ctx)?;
-                expected_tys
-                    .as_flat_tytuple()
-                    .identical(&actual_tys, span)?;
+                expected_tys.identical(&actual_tys, span)?;
                 Ok(ctx.get_node_out(id.as_ref()).t)
             }
             Self::Clock {
@@ -640,28 +662,63 @@ impl SpTyBaseTuple {
     }
 }
 
-impl Sp<ast::decl::Node> {
-    /// Projection of `typecheck`: verify the internal consistency of a node.
+/// Typing interface for toplevel declarations (nodes and constants).
+trait TypeCheckDecl {
+    /// Public interface of the object.
+    type Signature;
+
+    /// Verify that the object is internally consistent.
+    ///
+    /// May depend on `extfun` and `extvar` the contexts of typed function and global
+    /// names respectively.
+    fn typecheck(
+        &mut self,
+        span: Span,
+        extfun: &HashMap<ast::decl::NodeName, (SpTyBaseTuple, SpTyBaseTuple)>,
+        extvar: &HashMap<ast::var::Global, WithDefSite<ty::Base>>,
+    ) -> Result<()>;
+
+    /// Extract the public interface of the item, typically its name and input/output types
+    /// when relevant.
+    fn signature(&self) -> Self::Signature;
+}
+
+/// Helper trait for `Sp<T>` to implement `TypeCheckDecl`.
+trait TypeCheckSpanDecl {
+    /// Projection to the inner `Signature`.
+    type Signature;
+    /// Projection to the inner `typecheck` with an added span available.
+    fn typecheck(
+        &mut self,
+        extfun: &HashMap<ast::decl::NodeName, (SpTyBaseTuple, SpTyBaseTuple)>,
+        extvar: &HashMap<ast::var::Global, WithDefSite<ty::Base>>,
+    ) -> Result<()>;
+    /// Projection to the inner `signature`.
+    fn signature(&self) -> Self::Signature;
+}
+
+impl<T: TypeCheckDecl> TypeCheckSpanDecl for Sp<T> {
+    type Signature = T::Signature;
     fn typecheck(
         &mut self,
         extfun: &HashMap<ast::decl::NodeName, (SpTyBaseTuple, SpTyBaseTuple)>,
         extvar: &HashMap<ast::var::Global, WithDefSite<ty::Base>>,
     ) -> Result<()> {
-        self.t.typecheck(extfun, extvar)
+        self.t.typecheck(self.span.into(), extfun, extvar)
     }
-
-    /// Projection of `signature`: get inputs and outputs of a node.
-    fn signature(&self) -> (SpTyBaseTuple, SpTyBaseTuple) {
+    fn signature(&self) -> Self::Signature {
         self.t.signature()
     }
 }
 
 /// Typechecking a node involves first building the context that it makes available
 /// to its statements, and then checking those.
-impl ast::decl::Node {
+impl TypeCheckDecl for ast::decl::Node {
+    type Signature = (Sp<ast::decl::NodeName>, SpTyBaseTuple, SpTyBaseTuple);
     /// Verify inner consistency.
     fn typecheck(
         &mut self,
+        _span: Span,
         extfun: &HashMap<ast::decl::NodeName, (SpTyBaseTuple, SpTyBaseTuple)>,
         extvar: &HashMap<ast::var::Global, WithDefSite<ty::Base>>,
     ) -> Result<()> {
@@ -732,7 +789,7 @@ impl ast::decl::Node {
 
     /// Fetch the input and output tuple types of this node.
     #[must_use]
-    pub fn signature(&self) -> (SpTyBaseTuple, SpTyBaseTuple) {
+    fn signature(&self) -> (Sp<ast::decl::NodeName>, SpTyBaseTuple, SpTyBaseTuple) {
         let inputs = self
             .inputs
             .t
@@ -742,31 +799,38 @@ impl ast::decl::Node {
             .t
             .map_ref(|v| v.t.ty.as_ref().map(|_, t| t.ty.t.inner.t));
         (
+            self.name.clone(),
             inputs.with_span(self.inputs.span),
             outputs.with_span(self.outputs.span),
         )
     }
 }
 
-impl Sp<ast::decl::ExtNode> {
+impl TypeCheckDecl for ast::decl::ExtNode {
+    type Signature = (Sp<ast::decl::NodeName>, SpTyBaseTuple, SpTyBaseTuple);
     /// Same signature as `Node` but we trust its type as there are no contents to check.
     /// We still check that there are no duplicate declarations of variables.
-    fn typecheck(&mut self) -> Result<()> {
+    fn typecheck(
+        &mut self,
+        _span: Span,
+        _extfun: &HashMap<ast::decl::NodeName, (SpTyBaseTuple, SpTyBaseTuple)>,
+        _extvar: &HashMap<ast::var::Global, WithDefSite<ty::Base>>,
+    ) -> Result<()> {
         let extvar = HashMap::default();
         let mut ctx = TyCtx::from_ext(&extvar);
         // FIXME: prettify
-        if self.t.options.main.fetch::<This>().is_some() {
-            if !self.t.inputs.t.is_empty() {
+        if self.options.main.fetch::<This>().is_some() {
+            if !self.inputs.t.is_empty() {
                 return Err(err::Basic {
                     msg: "Node declared as main should not have any inputs".to_owned(),
-                    span: self.t.inputs.span.into(),
+                    span: self.inputs.span.into(),
                 }
                 .into_err());
             }
-            if !self.t.outputs.t.is_empty() {
+            if !self.outputs.t.is_empty() {
                 return Err(err::Basic {
                     msg: "Node declared as main should not have any outputs".to_owned(),
-                    span: self.t.inputs.span.into(),
+                    span: self.inputs.span.into(),
                 }
                 .into_err());
             }
@@ -774,7 +838,7 @@ impl Sp<ast::decl::ExtNode> {
         // These are all the extra variables that we provide in addition
         // to `extvar`.
         // The order in which we handle them is relevant for the clocks.
-        for vs in &[&self.t.inputs, &self.t.outputs] {
+        for vs in &[&self.inputs, &self.outputs] {
             for v in vs.t.iter() {
                 if let Some(prior) = ctx.vars.get(&v.t.name.t) {
                     return Err(err::GraphUnitDeclTwice {
@@ -802,20 +866,19 @@ impl Sp<ast::decl::ExtNode> {
     /// Get the declared inputs and outputs of this node, assuming that
     /// they have already been checked to be internally consistent.
     #[must_use]
-    fn signature(&self) -> (SpTyBaseTuple, SpTyBaseTuple) {
+    fn signature(&self) -> (Sp<ast::decl::NodeName>, SpTyBaseTuple, SpTyBaseTuple) {
         let inputs = self
-            .t
             .inputs
             .t
             .map_ref(|v| v.t.ty.as_ref().map(|_, t| t.ty.t.inner.t));
         let outputs = self
-            .t
             .outputs
             .t
             .map_ref(|v| v.t.ty.as_ref().map(|_, t| t.ty.t.inner.t));
         (
-            inputs.with_span(self.t.inputs.span),
-            outputs.with_span(self.t.outputs.span),
+            self.name.clone(),
+            inputs.with_span(self.inputs.span),
+            outputs.with_span(self.outputs.span),
         )
     }
 }
@@ -830,7 +893,7 @@ impl TypeCheckExpr for ty::Clock {
                 // FIXME: we should not be using the same error message
                 // as for normal variables because there are weird interactions.
                 // See test `when-self.rs` for example.
-                let ty = ctx.get_var(
+                let ty = ctx.get_var_during_ty(
                     id.as_ref()
                         .map(|span, repr| ast::var::Local {
                             repr: repr.clone().with_span(span),
@@ -850,22 +913,13 @@ impl TypeCheckExpr for ty::Clock {
     }
 }
 
-impl Sp<ast::decl::Const> {
-    /// Projection of `typecheck`: verify internal consistency.
-    fn typecheck(&self, varctx: &HashMap<ast::var::Global, WithDefSite<ty::Base>>) -> Result<()> {
-        self.t.typecheck(self.span.into(), varctx)
-    }
-
-    /// Projection of `signature`: get name and type of a global variable.
-    fn signature(&self) -> (Sp<ast::var::Global>, Sp<ty::Base>) {
-        self.t.signature()
-    }
-}
-impl ast::decl::Const {
+impl TypeCheckDecl for ast::decl::Const {
+    type Signature = (Sp<ast::var::Global>, Sp<ty::Base>);
     /// Verify inner consistency.
     fn typecheck(
-        &self,
+        &mut self,
         span: Span,
+        _functx: &HashMap<ast::decl::NodeName, (SpTyBaseTuple, SpTyBaseTuple)>,
         varctx: &HashMap<ast::var::Global, WithDefSite<ty::Base>>,
     ) -> Result<()> {
         self.value.is_const()?;
@@ -883,11 +937,21 @@ impl ast::decl::Const {
     }
 }
 
-impl Sp<ast::decl::ExtConst> {
+impl TypeCheckDecl for ast::decl::ExtConst {
+    type Signature = (Sp<ast::var::Global>, Sp<ty::Base>);
+    fn typecheck(
+        &mut self,
+        _span: Span,
+        _functx: &HashMap<ast::decl::NodeName, (SpTyBaseTuple, SpTyBaseTuple)>,
+        _varctx: &HashMap<ast::var::Global, WithDefSite<ty::Base>>,
+    ) -> Result<()> {
+        Ok(())
+    }
+
     /// The (name, type) pair that we need to add to the context.
     #[must_use]
     fn signature(&self) -> (Sp<ast::var::Global>, Sp<ty::Base>) {
-        (self.t.name.clone(), self.t.ty)
+        (self.name.clone(), self.ty)
     }
 }
 
@@ -905,7 +969,7 @@ impl Sp<ast::decl::Prog> {
         for decl in &mut self.t.decls {
             match &mut decl.t {
                 ast::decl::Decl::Const(c) => {
-                    c.typecheck(&varctx)?;
+                    c.typecheck(&functx, &varctx)?;
                     let (name, ty) = c.signature();
                     if varctx
                         .insert(
@@ -927,8 +991,8 @@ impl Sp<ast::decl::Prog> {
                 }
                 ast::decl::Decl::Node(n) => {
                     n.typecheck(&functx, &varctx)?;
-                    let (i, o) = n.signature();
-                    if functx.insert(n.t.name.t.clone(), (i, o)).is_some() {
+                    let (name, i, o) = n.signature();
+                    if functx.insert(name.t, (i, o)).is_some() {
                         let s = format!("Redefinition of node {}", n.t.name);
                         return Err(err::Basic {
                             span: n.span.into(),
@@ -938,6 +1002,7 @@ impl Sp<ast::decl::Prog> {
                     }
                 }
                 ast::decl::Decl::ExtConst(c) => {
+                    c.typecheck(&functx, &varctx)?;
                     let (name, ty) = c.signature();
                     if varctx
                         .insert(
@@ -958,9 +1023,9 @@ impl Sp<ast::decl::Prog> {
                     }
                 }
                 ast::decl::Decl::ExtNode(n) => {
-                    n.typecheck()?;
-                    let (i, o) = n.signature();
-                    if functx.insert(n.t.name.t.clone(), (i, o)).is_some() {
+                    n.typecheck(&functx, &varctx)?;
+                    let (name, i, o) = n.signature();
+                    if functx.insert(name.t, (i, o)).is_some() {
                         let s = format!("Redefinition of node {}", n.t.name);
                         return Err(err::Basic {
                             span: n.span.into(),

@@ -1,22 +1,25 @@
 //! Tools for defining the semantics of Lustre.
 
-// `candle` may generate comparisons `n >= 0` for `n: u64`
-#![feature(concat_idents)]
+#![feature(lint_reasons)]
 #![warn(missing_docs)]
-//#![allow(unused_comparisons)]
 #![warn(
-    clippy::missing_docs_in_private_items,
-    clippy::pedantic,
+    unused_crate_dependencies,
+    unused_macro_rules,
+    variant_size_differences,
+    clippy::allow_attributes,
+    clippy::allow_attributes_without_reason,
     clippy::expect_used,
-    clippy::unwrap_used,
     clippy::indexing_slicing,
+    clippy::missing_docs_in_private_items,
+    clippy::missing_inline_in_public_items,
     clippy::multiple_inherent_impl,
     clippy::panic,
+    clippy::pedantic,
     clippy::str_to_string,
-    clippy::use_debug,
-    clippy::unreachable
+    clippy::unreachable,
+    clippy::unwrap_used,
+    clippy::use_debug
 )]
-#![warn(clippy::missing_inline_in_public_items)]
 
 #[cfg(test)]
 mod tests;

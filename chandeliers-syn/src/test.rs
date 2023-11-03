@@ -1,8 +1,8 @@
 #![cfg(test)]
 
-use crate::ast::*;
-
 use syn::Token;
+
+use crate::ast::*;
 
 macro_rules! success {
     ($obj:expr) => {{

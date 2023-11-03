@@ -1,12 +1,12 @@
 //! Generate code depending on options passed through declaration attributes.
 
-use crate::sp::Sp;
 use proc_macro2::TokenStream;
 use quote::quote;
 
 use crate::ast;
 use crate::ast::options::usage::Codegen as This;
-use ast::options::{Const, ExtNode, Node};
+use crate::ast::options::{Const, ExtNode, Node};
+use crate::sp::Sp;
 
 /// Define the behavior of an option.
 ///
@@ -57,7 +57,7 @@ macro_rules! generic_option {
         $(
             impl $trait for $implementor {
                 fn fetch(&self) -> $fetch {
-                    *self.$field.fetch::<This>()
+                    self.$field.fetch::<This>()
                 }
             }
         )*
@@ -68,7 +68,7 @@ generic_option! {
     #[doc = "`#[trace]`: print debug information."]
     trait Traces for { Node, ExtNode }
     impl {
-        from trace return bool;
+        from trace return &bool;
         fn traces(
             &self,
             prefix: &str,
@@ -83,7 +83,7 @@ generic_option! {
             let outputs = outputs.flattened_trailing_comma();
             let input_fmt = format!("{{}}{{}} <- {input_var_fmt}");
             let output_fmt = format!("{{}}{{}} -> {output_var_fmt}",);
-            if self.fetch() {
+            if *self.fetch() {
                 (
                     quote! {
                         println!(#input_fmt, #prefix, #name, #inputs);
@@ -103,7 +103,7 @@ generic_option! {
     #[doc = "`#[main(42)]`: build a `main` function that executes this node a set number of times."]
     trait FnMain for { Node, ExtNode }
     impl {
-        from main return Option<usize>;
+        from main return &Option<usize>;
         fn fn_main(&self, name: &Sp<ast::decl::NodeName>) -> TokenStream {
             if let Some(nb_iter) = self.fetch() {
                 let ext_name = name.as_raw_ident();
@@ -137,12 +137,32 @@ generic_option! {
     #[doc = "`#[export]`: make this declaration public."]
     trait PubQualifier for { Const, Node }
     impl {
-        from export return bool;
+        from export return &bool;
         fn pub_qualifier(&self) -> TokenStream {
-            if self.fetch() {
+            if *self.fetch() {
                 quote!(pub)
             } else {
                 quote!()
+            }
+        }
+    }
+}
+
+generic_option! {
+    #[doc = "`[doc(\"Message\")]`: insert documentation in the generated code."]
+    trait Docs for { Const, Node }
+    impl {
+        from doc return &Vec<Sp<String>>;
+        fn docs(&self) -> TokenStream {
+            let docs = self.fetch();
+            if docs.is_empty() {
+                quote! {
+                    #[doc = "(No user documentation provided)"]
+                }
+            } else {
+                quote! {
+                    #( #[doc = #docs] )*
+                }
             }
         }
     }

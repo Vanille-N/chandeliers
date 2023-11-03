@@ -64,7 +64,7 @@ impl<T> Nillable<T> {
     /// if `self` is `Nil`.
     #[inline]
     #[track_caller]
-    #[allow(clippy::panic)]
+    #[expect(clippy::panic, reason = "Panic at the semantic level")]
     pub fn unwrap(self) -> T {
         match self {
             Defined(t) => t,
@@ -230,7 +230,6 @@ macro_rules! all_nil_for_tuple {
         where $( $T : AllNil ),*
         {
             #[inline]
-            #[allow(clippy::unused_unit)]
             fn auto_size() -> Self {
                 ( $( <$T as AllNil>::auto_size(), )* )
             }
@@ -288,7 +287,6 @@ macro_rules! first_is_nil_for_tuple {
         where $( $T : FirstIsNil ),*
         {
             #[inline]
-            #[allow(clippy::unused_unit)]
             fn first_is_nil(&self) -> bool {
                 self.0.first_is_nil()
             }
