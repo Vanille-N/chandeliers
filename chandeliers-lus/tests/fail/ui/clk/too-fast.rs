@@ -1,9 +1,9 @@
 chandeliers_lus::decl! {
     node system() returns ();
-    var b : bool; n : int when b;
+    var b : bool; _n : int when b;
     let
         b = true fby not b;
-        n = 1;
+        _n = 1;
     tel
 }
 

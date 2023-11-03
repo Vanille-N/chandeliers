@@ -1,4 +1,5 @@
 chandeliers_lus::decl! {
+    #[export]
     node assoc() returns ();
     let
         assert 5 - 1 - 1 - 1 = 2;

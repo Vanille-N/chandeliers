@@ -1,7 +1,8 @@
 use chandeliers_sem::traits::*;
 
 chandeliers_lus::decl! {
-    node check (x: bool) returns (OK: bool);
+    #[export]
+    node check (_x: bool) returns (OK: bool);
     var n1, n2: int;
     let
       n1 = 0 -> pre n1 + 1;

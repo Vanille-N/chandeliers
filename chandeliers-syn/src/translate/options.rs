@@ -123,8 +123,10 @@ impl<T> SetOpt<T> {
 pub struct Decl {
     /// `#[trace]`: print debug information.
     trace: SetOpt<bool>,
-    /// `#[export]`: make the declaration public.
+    /// `#[export]`: make the declaration visible.
     export: SetOpt<bool>,
+    /// `#[pub]`: make the declaration public. (implies `#[export]`)
+    public: SetOpt<bool>,
     /// `#[main(10)]`: generate a `fn main` that runs for `n` (integer) steps.
     main: SetOpt<Option<usize>>,
     /// `#[rustc_allow[dead_code]]`: forward the attribute as a `#[allow(_)]`.
@@ -138,6 +140,7 @@ impl Default for Decl {
         Self {
             trace: SetOpt::create("#[trace]", false),
             export: SetOpt::create("#[export]", false),
+            public: SetOpt::create("#[pub]", false),
             main: SetOpt::create("#[main(nb_iter)]", None),
             rustc_allow: SetOpt::create("#[rustc_allow(attr)]", vec![]),
             doc: SetOpt::create("#[doc(\"Message\")]", vec![]),
@@ -174,7 +177,7 @@ impl Decl {
     pub fn for_const(self) -> Result<Const> {
         project! {
             self: Decl => Const {
-                take { export, rustc_allow, doc, }
+                take { export, rustc_allow, doc, public, }
                 skip { trace, main, }
             }
         }
@@ -184,7 +187,7 @@ impl Decl {
     pub fn for_node(self) -> Result<Node> {
         project! {
             self: Decl => Node {
-                take { trace, export, main, rustc_allow, doc, }
+                take { trace, export, main, rustc_allow, doc, public, }
                 skip {}
             }
         }
@@ -195,7 +198,7 @@ impl Decl {
         project! {
             self: Decl => ExtConst {
                 take { rustc_allow, }
-                skip { trace, export, main, doc, }
+                skip { trace, export, main, doc, public, }
             }
         }
     }
@@ -205,7 +208,7 @@ impl Decl {
         project! {
             self: Decl => ExtNode {
                 take { trace, main, rustc_allow, }
-                skip { export, doc, }
+                skip { export, doc, public, }
             }
         }
     }
@@ -247,6 +250,16 @@ impl Decl {
                 _ => malformed!(
                     msg:("expects no arguments")
                     syn:("`#[export]`")
+                ),
+            },
+            "pub" => match args {
+                ([], []) => {
+                    self.public.set(true, attr.span.into());
+                    self.export.set(true, attr.span.into());
+                }
+                _ => malformed!(
+                    msg:("expects no arguments")
+                    syn:("`#[pub]`")
                 ),
             },
             "main" => match args {

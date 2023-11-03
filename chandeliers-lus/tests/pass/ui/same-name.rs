@@ -1,5 +1,8 @@
 chandeliers_lus::decl! {
+    #[export]
     const X : int = 0;
+
+    #[export]
     node X() returns (X : int);
     let X = 1; tel
 }

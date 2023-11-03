@@ -5,11 +5,11 @@ chandeliers_lus::decl! {
     tel;
 
     node system1() returns ();
-    var b1, b2 : bool;
-        n : int when b2;
+    var b1, _b2 : bool;
+        _n : int when _b2;
     let
-        b1 = true; b2 = true;
-        n = foo(b1);
+        b1 = true; _b2 = true;
+        _n = foo(b1);
     tel;
 }
 
@@ -21,15 +21,15 @@ chandeliers_lus::decl! {
 
     node system2() returns ();
     var b1, b2 : bool;
-        n : int;
+        _n : int;
     let
         b1 = true; b2 = true;
-        n = bar(b2, 1 whenot b1);
+        _n = bar(b2, 1 whenot b1);
     tel;
 }
 
 chandeliers_lus::decl! {
-    node baz(b1, b2 : bool; i : int when b1) returns ();
+    node baz(_b1, _b2 : bool; _i : int when _b1) returns ();
     let tel;
 
     node system3() returns ();

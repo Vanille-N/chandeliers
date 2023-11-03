@@ -4,17 +4,17 @@ chandeliers_lus::decl! {
     node test_zero() returns ();
     let () = zero((())); tel;
 
-    node one(i : int) returns ();
+    node one(_i : int) returns ();
     let tel;
     node test_one() returns ();
     let () = one((1)); tel;
 
-    node two(i, j : int) returns ();
+    node two(_i, _j : int) returns ();
     let tel;
     node test_two() returns ();
     let () = two((1, 2)); tel;
 
-    node three(i, j, k : int) returns ();
+    node three(_i, _j, _k : int) returns ();
     let tel;
     node test_three() returns ();
     let () = three((1, 2, 3)); tel;

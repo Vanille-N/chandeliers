@@ -6,6 +6,7 @@ chandeliers_lus::decl! {
       cpt = (0 -> pre cpt) + if tic then 1 else 0;
     tel;
 
+    #[export]
     node check (x: bool) returns (ok: bool);
     var cpt : int;
     let

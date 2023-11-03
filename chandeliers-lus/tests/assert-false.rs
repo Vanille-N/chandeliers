@@ -1,4 +1,5 @@
 chandeliers_lus::decl! {
+    #[export]
     node False() returns ();
     let
         assert false;

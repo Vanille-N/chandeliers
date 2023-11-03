@@ -61,6 +61,7 @@ impl ToTokens for decl::Const {
         let pub_qualifier = options.pub_qualifier();
         let rustc_allow_1 = options.rustc_allow.fetch::<This>().iter();
         let rustc_allow_2 = options.rustc_allow.fetch::<This>().iter();
+        let export = *options.export.fetch::<This>(); // FIXME: sanitized globs
 
         let docs = options.docs();
         let declaration = quote_spanned! {span.into()=>
@@ -74,15 +75,19 @@ impl ToTokens for decl::Const {
             #[allow(non_upper_case_globals)]
             #( #[allow( #rustc_allow_2 )] )*
             const #glob : #ty = #value ;
-
-            #docs
-            #[doc = "\n"]
-            #[doc = #doc]
-            #[doc = "(Visible by the outside)"]
-            #[allow(non_upper_case_globals)]
-            #( #[allow( #rustc_allow_1 )] )*
-            #declaration
         });
+
+        if export {
+            toks.extend(quote! {
+                #docs
+                #[doc = "\n"]
+                #[doc = #doc]
+                #[doc = "(Visible by the outside)"]
+                #[allow(non_upper_case_globals)]
+                #( #[allow( #rustc_allow_1 )] )*
+                #declaration
+            });
+        }
 
         options.assert_used();
     }
@@ -92,7 +97,7 @@ impl ToTokens for decl::Const {
 ///
 /// There is not really a value to generate, we simply create a dummy const
 /// to assert that the one declared was found. While we're at it,
-/// we create an alias of `G` into `__global_G` to avoid further collisions.
+/// we create an alias of `G` into `lus__global_G` to avoid further collisions.
 ///
 /// The trick here to get a decent error message that
 /// - points to the right place, and also
@@ -176,7 +181,10 @@ impl ToTokens for decl::Node {
 
         toks.extend(int);
         toks.extend(ext);
-        toks.extend(self.options.fn_main(&self.name));
+        toks.extend(
+            self.options
+                .fn_main(&self.name, self.options.rustc_allow.fetch::<This>()),
+        );
         self.options.assert_used();
     }
 }
@@ -220,13 +228,13 @@ impl decl::Node {
         let pos_locals_use = locals
             .strictly_positive()
             .map(|v| v.name_of().as_sanitized_ident());
-        let inputs_ty_3 = inputs.as_defined_tys();
+        //let inputs_ty_3 = inputs.as_defined_tys();
         let expected_input_tys_impl = inputs.as_embedded_tys();
         let expected_output_tys_impl = outputs.as_embedded_tys();
 
         let inputs_vs_asst = inputs.as_assignment_target();
 
-        let outputs_ty_3 = outputs.as_defined_tys();
+        //let outputs_ty_3 = outputs.as_defined_tys();
         let outputs_vs_2 = outputs.as_values();
 
         let pub_qualifier = options.pub_qualifier();
@@ -236,7 +244,7 @@ impl decl::Node {
         let rustc_allow_2 = options.rustc_allow.fetch::<This>().iter();
 
         let doc_name = format!(" `{name}` ");
-        let declaration = quote! {
+        let declaration = quote_spanned! {name.span.into()=>
             #[doc = " Node definition"]
             #[doc = #doc_name]
             #[doc = "(for internal use)"]
@@ -257,15 +265,17 @@ impl decl::Node {
             }
         };
 
-        let implementation = quote! {
+        let implementation = quote_spanned! {name.span.into()=>
             #[doc = " Implementation of Step for"]
             #[doc = #doc_name]
             #[allow(non_snake_case)]
+            #[allow(unused_imports)]
+            #[allow(redundant_semicolons)]
             #( #[allow( #rustc_allow_2 )] )*
-            #[allow(clippy::unused_unit)]
-            impl ::chandeliers_sem::traits::Step for #uid_name {
-                type Input = #inputs_ty_3;
-                type Output = #outputs_ty_3;
+            //#[allow(clippy::unused_unit)]
+            impl /*::chandeliers_sem::traits::Step for*/ #uid_name {
+                //type Input = #inputs_ty_3;
+                //type Output = #outputs_ty_3;
                 fn step(
                     &mut self,
                     __inputs: #expected_input_tys_impl,
@@ -317,12 +327,15 @@ impl decl::Node {
         let expected_output_tys_decl = outputs.as_embedded_tys();
 
         let outputs_ty_4 = outputs.as_defined_tys();
+        let docs = options.docs();
 
         let pub_qualifier = options.pub_qualifier();
+        if !options.export.fetch::<This>() {
+            return quote!();
+        }
 
         let rustc_allow = options.rustc_allow.fetch::<This>().iter();
 
-        let docs = options.docs();
         let doc_name = format!(" `{name}` ");
         let ext_declaration = quote_spanned! {name.span.into()=>
             #pub_qualifier struct #ext_name { inner: #uid_name }
@@ -468,7 +481,8 @@ impl ToTokens for decl::ExtNode {
         let expected_output_tys = outputs.as_embedded_tys();
         let expected_input_tys = inputs.as_embedded_tys();
         let actual_inputs = quote_spanned! {inputs.span.into()=> __inputs };
-        let rustc_allow = options.rustc_allow.fetch::<This>().iter();
+        let rustc_allow_1 = options.rustc_allow.fetch::<This>().iter();
+        let rustc_allow_2 = options.rustc_allow.fetch::<This>().iter();
 
         let input_asst = inputs.as_assignment_target();
         let output_asst = outputs.as_assignment_target();
@@ -479,14 +493,17 @@ impl ToTokens for decl::ExtNode {
         toks.extend(quote_spanned! {name.span.into()=>
             #[derive(Debug, Default)]
             #[allow(non_camel_case_types)]
-            #( #[allow( #rustc_allow )] )*
+            //#[allow(dead_code)]
+            #( #[allow( #rustc_allow_1 )] )*
             struct #uid_name { inner: #ext_name }
 
-            #[allow(dead_code)]
             #[allow(clippy::let_and_return)]
-            // FIXME: impl Step
+            // FIXME: impl Step ?
+            #( #[allow( #rustc_allow_2 )] )*
             impl #uid_name {
                 #[allow(unused_imports)]
+                #[allow(non_snake_case)]
+                #[allow(unused_variables)]
                 pub fn step(
                     &mut self,
                     #actual_inputs: #expected_input_tys,
@@ -506,7 +523,7 @@ impl ToTokens for decl::ExtNode {
             }
         });
 
-        toks.extend(options.fn_main(&self.name));
+        toks.extend(options.fn_main(&self.name, self.options.rustc_allow.fetch::<This>()));
         options.assert_used();
     }
 }
@@ -519,7 +536,7 @@ impl decl::NodeName {
     /// the macro.
     fn as_sanitized_ident(&self, _span: Span) -> TokenStream {
         let id = Ident::new(
-            &format!("__{}__node_{}", self.run_uid, &self.repr.t),
+            &format!("{}__lus_{}_node", &self.repr.t, self.run_uid),
             self.repr.span.into(),
         );
         quote!( #id )
@@ -541,7 +558,7 @@ impl var::Global {
     /// the macro.
     fn as_sanitized_ident(&self, _span: Span) -> TokenStream {
         let id = Ident::new(
-            &format!("__{}__global_{}", self.run_uid, &self.repr.t),
+            &format!("{}__lus_{}_global", &self.repr.t, self.run_uid),
             self.repr.span.into(),
         );
         quote!( #id )
@@ -559,7 +576,10 @@ crate::sp::transparent_impl!(fn as_sanitized_ident return TokenStream where var:
 impl var::Local {
     /// Format as a name that cannot have collisions with existing global variables.
     fn as_sanitized_ident(&self, _span: Span) -> TokenStream {
-        let id = Ident::new(&format!("__local_{}", &self.repr.t), self.repr.span.into());
+        let id = Ident::new(
+            &format!("{}__lus_local", &self.repr.t),
+            self.repr.span.into(),
+        );
         quote!( #id )
     }
 }

@@ -4,6 +4,7 @@ chandeliers_lus::decl! {
     node verify(b : bool) returns ();
     let assert b; tel;
 
+    #[export]
     node never_odd(i : int) returns ();
     let
         () = verify(i % 2 = 0);

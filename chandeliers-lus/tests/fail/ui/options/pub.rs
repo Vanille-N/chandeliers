@@ -2,16 +2,18 @@
 
 mod vis {
     chandeliers_lus::decl! {
+        #[export]
         node private() returns ();
         let tel;
 
+        #[export]
         const PRIVATE: int = 0;
 
-        #[export]
+        #[pub]
         node public() returns ();
         let tel;
 
-        #[export]
+        #[pub]
         const PUBLIC : int = 0;
     }
 }

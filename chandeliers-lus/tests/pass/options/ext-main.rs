@@ -1,4 +1,5 @@
 chandeliers_lus::decl! {
+    #[export]
     node system() returns ();
     let assert true; tel;
 }
@@ -8,7 +9,7 @@ mod sub {
     chandeliers_lus::decl! {
         extern node system() returns ();
 
-        #[export]
+        #[pub]
         node main() returns ();
         let () = system(); tel;
     }

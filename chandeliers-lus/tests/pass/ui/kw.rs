@@ -11,6 +11,7 @@ chandeliers_lus::decl! {
     tel;
 
     const as : int = 0;
+    #[export]
     const break : int = 0;
     const continue : int = 0;
     const enum : int = 0;

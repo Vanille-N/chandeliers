@@ -6,6 +6,7 @@ chandeliers_lus::decl! {
         (outl, outr) = (inr, inl);
     tel;
 
+    #[export]
     node id(inl, inr : int) returns (outl, outr : int);
     let
         (outl, outr) = swap(swap(inl, inr));

@@ -56,6 +56,24 @@ are only tested thoroughly with the same version number everywhere.
 TODO
 
 
+## Compilation options
+
+Chandeliers follows the Rust-style syntax for specifying compilation options,
+and the following are available:
+- `#[trace]` (any `node`): print debug information after each step of the execution.
+  The output is not stable and should not be relied on for tests.
+- `#[export]` (non-`extern`): make the declaration visible to the environment
+  outside of the macro invocation (we follow the Rust convention of private-by-default).
+- `#[main]` or `#[main(42)]` (any `node`): generate a `main` function that will
+  execute this node. This requires that the node have signature `() returns ()`.
+- `#[rustc_allow[attr]]` (any declaration): forward to Rustc as a
+  `#[allow(attr)]`. Chandeliers itself inserts many such attributes, but if
+  one is missing you can add it manually. This is useful with e.g. `dead_code`
+  which Chandeliers intends to insert as little as possible to hopefully
+  minimize false negatives.
+- `#[doc("Message")]` (non-`extern`): insert documentation in the generated code.
+
+
 ## Example
 
 You may find self-contained examples of standalone executable programs in

@@ -1,6 +1,7 @@
 use chandeliers_sem::traits::*;
 
 chandeliers_lus::decl! {
+    #[export]
     node select(i : bool; a1, b1, c1, a2, b2, c2 : int) returns (a, b, c : int);
     let
         (a, b, c) = if i then (a1, b1, c1) else (a2, b2, c2);

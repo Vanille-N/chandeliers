@@ -1,5 +1,6 @@
 chandeliers_lus::decl! {
     #[trace]
+    #[export]
     node cumul(i : int) returns (s : int);
     let
         s = i + (0 fby s);

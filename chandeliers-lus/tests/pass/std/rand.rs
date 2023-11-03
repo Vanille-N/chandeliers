@@ -27,6 +27,7 @@ chandeliers_lus::decl! {
         s = (inc + (0 fby s)) % MOD;
     tel;
 
+    #[export]
     node randsum() returns (r, s : int);
     let
         r = RandomInt() % MOD;

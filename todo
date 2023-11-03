@@ -2,7 +2,7 @@ tests: crate trybuild
 docs: https://docs.rs/syn/latest/syn/#parsing-a-custom-syntax
 
 Lustre: https://homepage.cs.uiowa.edu/~tinelli/classes/181/Spring10/Notes/03-lustre.pdf
-
+FIXME: silence unused variable warnings on booleans used as clocks
 
 
 Feature: warning if #[export] without #[doc]

@@ -1,7 +1,7 @@
 //! Generate code depending on options passed through declaration attributes.
 
 use proc_macro2::TokenStream;
-use quote::quote;
+use quote::{quote, quote_spanned};
 
 use crate::ast;
 use crate::ast::options::usage::Codegen as This;
@@ -104,14 +104,16 @@ generic_option! {
     trait FnMain for { Node, ExtNode }
     impl {
         from main return &Option<usize>;
-        fn fn_main(&self, name: &Sp<ast::decl::NodeName>) -> TokenStream {
+        fn fn_main(&self, name: &Sp<ast::decl::NodeName>, rustc_allow: &Vec<syn::Ident>) -> TokenStream {
             if let Some(nb_iter) = self.fetch() {
-                let ext_name = name.as_raw_ident();
+                let ext_name = name.as_sanitized_ident();
+
                 let doc = format!(
                     "Main function automatically generated from {name} (runs for {nb_iter} steps)"
                 );
-                quote! {
+                quote_spanned! {name.span.into()=>
                     #[doc = #doc]
+                    #( #[allow( #rustc_allow )] )*
                     pub fn main() {
                         use ::chandeliers_sem::traits::*;
                         let mut sys = #ext_name::default();
@@ -134,10 +136,10 @@ generic_option! {
 }
 
 generic_option! {
-    #[doc = "`#[export]`: make this declaration public."]
+    #[doc = "`#[pub]`: make this declaration public. Implies `#[export]`."]
     trait PubQualifier for { Const, Node }
     impl {
-        from export return &bool;
+        from public return &bool;
         fn pub_qualifier(&self) -> TokenStream {
             if *self.fetch() {
                 quote!(pub)

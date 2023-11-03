@@ -10,6 +10,7 @@ use chandeliers_sem::traits::*;
 use chandeliers_std::cast::float_of_int;
 
 lustre::decl! {
+    #[rustc_allow[dead_code]]
     node full_add(a, b, c : bool) returns (s, co : bool);
     let
       s = (a <> b) <> c;
@@ -18,6 +19,7 @@ lustre::decl! {
 }
 
 lustre::decl! {
+    #[export]
     #[doc("Half adder from two bits to one bit and one carry")]
     node half_add(a, b : bool) returns (s, co : bool);
     let
@@ -28,6 +30,8 @@ lustre::decl! {
 
 lustre::decl! {
     extern node half_add(a, b : bool) returns (s, co : bool);
+
+    #[rustc_allow[dead_code]]
     node full_add_h(a, b, c : bool) returns (s, co : bool);
     var s1, c1, c2 : bool;
     let
@@ -136,6 +140,7 @@ lustre::decl! {
 */
 
 lustre::decl! {
+    #[export]
     node add(a, b : int) returns (sum : int);
     let
         sum = a + b;
@@ -152,6 +157,7 @@ fn add_correct() {
 lustre::decl! {
     extern node float_of_int(i : int) returns (f : float);
 
+    #[export]
     node test() returns ();
     var x : float;
     let
@@ -169,6 +175,7 @@ fn test_assertion() {
 lustre::decl! {
     extern node float_of_int(i : int) returns (f : float);
 
+    #[export]
     node failing() returns ();
     var x : float;
     let
@@ -188,6 +195,7 @@ lustre::decl! {
     node noio() returns ();
     let tel;
 
+    #[rustc_allow[dead_code]]
     node system() returns (i : int);
     let
         i = 1;
@@ -199,10 +207,11 @@ lustre::decl! {
     node ret2() returns (i, j : int);
     let i = 1; j = 2; tel;
 
+    #[rustc_allow[dead_code]]
     node system2() returns ();
-    var i, j : int;
+    var _i, _j : int;
     let
-        (i, j) = ret2();
+        (_i, _j) = ret2();
     tel
 }
 
@@ -219,11 +228,13 @@ lustre::decl! {
     #[rustc_allow[dead_code]]
     const X : int = 0;
 
+    #[rustc_allow[dead_code]]
     node X() returns (X : int);
     let X = 1; tel
 }
 
 lustre::decl! {
+    #[export]
     node count() returns (x : int);
     let
         x = 0 -> pre x + 1;
@@ -238,6 +249,7 @@ lustre::decl! {
     #[rustc_allow[dead_code]]
     const FIB1 : int = 1;
 
+    #[export]
     node fib() returns (x : int);
     let
         x = FIB0 -> FIB1 -> pre x + pre pre x;
@@ -247,6 +259,7 @@ lustre::decl! {
 lustre::decl! {
     extern node count() returns (out : int);
 
+    #[export]
     node counting_twice() returns (out : int);
     var b : bool;
     let
@@ -254,6 +267,7 @@ lustre::decl! {
         out = if true then count() else count();
     tel;
 
+    #[export]
     node counting_late() returns (out : int);
     let
         out = 0 fby 0 fby count();
@@ -316,6 +330,7 @@ mod random {
             s = inc + (0 fby s);
         tel;
 
+        #[export]
         node randsum() returns (r, s : int);
         let
             r = RandomInt();
@@ -350,6 +365,7 @@ chandeliers_lus::decl! {
 */
 
 chandeliers_lus::decl! {
+    #[export]
     node count1() returns (n : int);
     let n = 0 fby n + 1; tel
 }
@@ -375,6 +391,7 @@ chandeliers_lus::decl! {
 
 mod testing {
     chandeliers_lus::decl! {
+        #[export]
         node system() returns ();
         let assert true; tel;
     }
@@ -384,7 +401,7 @@ mod testing {
         chandeliers_lus::decl! {
             extern node system() returns ();
 
-            #[export]
+            #[pub]
             node main() returns ();
             let () = system(); tel;
         }
@@ -394,7 +411,14 @@ mod testing {
 
     chandeliers_lus::decl! {
         #[main(10)]
+        #[rustc_allow[dead_code]]
         extern node main() returns ();
+    }
+
+    chandeliers_lus::decl! {
+        #[rustc_allow[dead_code]]
+        node test() returns ();
+        let tel;
     }
 }
 
@@ -429,6 +453,7 @@ mod then_assoc {
         tel;
 
         #[main(2)]
+        #[rustc_allow[dead_code]]
         node system() returns ();
         var ti, tj, wi, wj : int;
         let
@@ -450,6 +475,7 @@ mod slow {
         let b = true fby not b; tel;
 
         #[main]
+        #[rustc_allow[dead_code]]
         node system() returns ();
         var b, m : bool; n : int when b; witness : int;
         let
@@ -459,5 +485,13 @@ mod slow {
             m = merge b (n = witness) true;
             assert m;
         tel;
+    }
+}
+
+mod dead {
+    chandeliers_lus::decl! {
+        #[rustc_allow[dead_code]]
+        node test() returns ();
+        let tel
     }
 }
