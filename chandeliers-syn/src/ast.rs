@@ -69,13 +69,11 @@ macro_rules! span_end_on_field {
 /// }
 /// ```
 macro_rules! span_end_by_match {
-    ( $ty:ident . $( $variant:ident ( $($field:tt),* ) => $select:ident ; )* ) => {
+    ( $ty:ident . $( $variant:ident $(( $($field:tt),* ))? => $($select:ident)? ; )* ) => {
         impl SpanEnd for $ty {
-            #[allow(unreachable_patterns)]
             fn span_end(&self) -> Option<Span> {
                 match self {
-                    $( Self::$variant ( $($field),* ) => $select.span_end(), )*
-                    _ => None,
+                    $( Self::$variant $(($($field),*))? => None$(.or($select.span_end()))?, )*
                 }
             }
         }
@@ -191,7 +189,7 @@ impl Parse for LusIdent {
                     // refers to the type or the builtin.
                     _ => {
                         let _ = input.call(Ident::parse_any).unwrap_or_else(|e| {
-                            chandeliers_err::panic!("{input} cannot be parsed as `Ident`: {e}")
+                            chandeliers_err::abort!("{input} cannot be parsed as `Ident`: {e}")
                         });
                         Ok(Self { inner })
                     }
@@ -263,6 +261,7 @@ pub mod ty {
         Clock.
             When(c) => c;
             Whenot(c) => c;
+            None =>;
     }
 
     #[derive(syn_derive::Parse)]
@@ -318,7 +317,7 @@ impl ArgsTys {
         let mut span = input.span();
         let items = Punctuated::parse_terminated(input)?;
         span = span.join(input.span()).unwrap_or_else(|| {
-            chandeliers_err::panic!("Malformed span between {span:?} and {input:?}")
+            chandeliers_err::abort!("Malformed span between {span:?} and {input:?}")
         });
         Ok(Sp {
             t: Self { items },
@@ -331,7 +330,7 @@ impl ArgsTys {
         let items =
             punctuated_parse_separated_trailing_until::<Sp<ArgsTy>, Token![;], Token![let]>(input)?;
         span = span.join(input.span()).unwrap_or_else(|| {
-            chandeliers_err::panic!("Malformed span between {span:?} and {input:?}")
+            chandeliers_err::abort!("Malformed span between {span:?} and {input:?}")
         });
 
         Ok(Sp {
@@ -442,9 +441,12 @@ pub mod op {
     pub type Arrow = Token![->];
 
     /// Multiplicative operators: `*`, `/`, `%`, all with the same precedence.
-    #[allow(clippy::enum_variant_names)]
     #[derive(syn_derive::Parse)]
     pub enum Mul {
+        #[expect(
+            clippy::enum_variant_names,
+            reason = "Same abbvreviation of different things"
+        )]
         #[parse(peek = Token![*])]
         Mul(Token![*]),
         #[parse(peek = Token![/])]
@@ -498,7 +500,6 @@ pub mod op {
 }
 
 /// Parsing expressions.
-#[allow(clippy::module_name_repetitions)]
 pub mod expr {
     //! Expressions by order of decreasing precedence
     //!    [ _ or _ ] (<-)
@@ -517,8 +518,10 @@ pub mod expr {
     //!    [ v ]
     //!    [ not _ ]
 
-    #[allow(clippy::wildcard_imports)]
-    use super::*;
+    use super::punctuated_parse_separated_nonempty_costly;
+    use super::{kw, op, Hint, LusIdent};
+    use super::{Parse, ParseStream, Punctuated, Token};
+    use super::{Result, Sp, Span, SpanEnd};
 
     /// A literal.
     ///
@@ -536,7 +539,7 @@ pub mod expr {
     span_end_on_field!(Lit.lit);
     impl Hint for Lit {
         fn hint(s: ParseStream) -> bool {
-            s.peek(Lit)
+            s.peek(syn::Lit)
         }
     }
 
@@ -572,7 +575,6 @@ pub mod expr {
             Paren(p) => p;
             Lit(l) => l;
             Var(v) => v;
-
     }
 
     /// An expression that consumes at least one token immediately.
@@ -955,6 +957,7 @@ pub enum OptionalVarsDecl {
 span_end_by_match! {
     OptionalVarsDecl.
         Decls(d) => d;
+        None =>;
 }
 
 /// A Lustre node.
@@ -1142,6 +1145,7 @@ pub enum OptionAttrTargets {
 span_end_by_match! {
     OptionAttrTargets.
         Targets(p) => p;
+        None =>;
 }
 
 #[derive(syn_derive::Parse)]
@@ -1173,6 +1177,7 @@ pub enum OptionAttrParams {
 span_end_by_match! {
     OptionAttrParams.
         Params(p) => p;
+        None =>;
 }
 
 impl OptionAttrParams {

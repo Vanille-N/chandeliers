@@ -108,7 +108,7 @@ impl<T> SetOpt<T> {
                     self.message
                 ),
                 span: self.span.unwrap_or_else(|| {
-                    err::panic!("Malformed `SetOpt`: it has a `value` but no `span`")
+                    err::abort!("Malformed `SetOpt`: it has a `value` but no `span`")
                 }),
             }
             .into_err())
@@ -215,42 +215,76 @@ impl Decl {
         use syn::Lit;
         let action = attr.t.attr.t.action.t.inner.to_string();
 
+        /// Automatically generate a helpful error message if the attribute
+        /// cannot be parsed.
         macro_rules! malformed {
-            ( ($($msg:tt)*) ) => {
-                return Err(err::Basic {
-                    msg: format!("Malformed attribute {}: {}", action, format!($($msg)*)),
-                    span: attr.span.into(),
-                }.into_err())
+            (
+                msg:( $($msg:tt)* )
+                $( syn:( $($syntax:tt)* ) )?
+                $( note:( $($suggestion:tt)* ) )?
+            ) => {
+                return Err(vec![
+                    (format!("Malformed attribute {}: {}", action, format!($($msg)*)), Some(attr.span.into())),
+                    $( (format!("Maybe try this syntax: {}", format!($($syntax)*)), None), )?
+                    $( (format!($($suggestion)*), None), )?
+                ])
             };
         }
 
-        let params = attr.t.attr.t.params.map(|_, t| t.flatten());
+        let params = &attr.t.attr.t.params.map(|_, t| t.flatten());
         let targets = attr.t.attr.t.targets.map(|_, t| t.flatten());
-        match (action.as_str(), &params.t[..], &targets.t[..]) {
-            ("trace", [], []) => self.trace.set(true, attr.span.into()),
-            ("trace", _, _) => malformed!(("expects no arguments")),
-            ("export", [], []) => self.export.set(true, attr.span.into()),
-            ("export", _, _) => malformed!(("expects no arguments")),
-            ("main", [], []) => self.main.some(100, attr.span.into()),
-            ("main", [], [Lit::Int(i)]) => self.main.some(
-                i.base10_parse()
-                    .unwrap_or_else(|e| err::panic!("{i} cannot be parsed in base 10: {e}")),
-                attr.span.into(),
-            ),
-            ("main", _, _) => malformed!(("expects at most one integer argument")),
-            ("rustc_allow", [inner], []) => {
-                self.rustc_allow
-                    .push(syn::Ident::new(inner, params.span.into()), attr.span.into());
-            }
-            ("rustc_allow", _, _) => malformed!(("expects exactly one identifier")),
-            ("doc", [], [Lit::Str(doc)]) => {
-                self.doc.push(
-                    format!("{}", doc.value()).with_span(params.span),
+        let args = (&params.t[..], &targets.t[..]);
+        match action.as_str() {
+            "trace" => match args {
+                ([], []) => self.trace.set(true, attr.span.into()),
+                _ => malformed!(
+                    msg:("expects no arguments")
+                    syn:("`#[trace]`")
+                ),
+            },
+            "export" => match args {
+                ([], []) => self.export.set(true, attr.span.into()),
+                _ => malformed!(
+                    msg:("expects no arguments")
+                    syn:("`#[export]`")
+                ),
+            },
+            "main" => match args {
+                ([], []) => self.main.some(100, attr.span.into()),
+                ([], [Lit::Int(i)]) => self.main.some(
+                    i.base10_parse()
+                        .unwrap_or_else(|e| err::abort!("{i} cannot be parsed in base 10: {e}")),
                     attr.span.into(),
-                );
-            }
-            ("doc", _, _) => malformed!(("expects exactly one string")),
-            (_, _, _) => malformed!(("no such attribute")),
+                ),
+                _ => malformed!(
+                    msg:("expects at most one integer argument")
+                    syn:("`#[main]` or `#[main(42)]`")
+                ),
+            },
+            "rustc_allow" => match args {
+                ([inner], []) => {
+                    self.rustc_allow
+                        .push(syn::Ident::new(inner, params.span.into()), attr.span.into());
+                }
+                _ => malformed!(
+                    msg:("expects exactly one identifier")
+                    syn:("`#[rustc_allow(dead_code)]`")
+                ),
+            },
+            "doc" => match args {
+                ([], [Lit::Str(doc)]) => {
+                    self.doc
+                        .push(doc.value().with_span(params.span), attr.span.into());
+                }
+                _ => malformed!(
+                    msg:("expects exactly one string")
+                    syn:("`#[doc(\"Message\")]`")
+                ),
+            },
+            _ => malformed!(
+                msg:("no such attribute")
+                note:("See the available options and their definition at {}", err::repo!()) //FIXME
+            ),
         }
         Ok(self)
     }

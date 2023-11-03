@@ -119,10 +119,10 @@ compiling!(pass_options with pass in pass/options/);
 fn emit(elements: Vec<(String, Option<proc_macro2::Span>)>) -> proc_macro2::TokenStream {
     let mut elements = elements.into_iter();
     let Some((msg, span)) = elements.next() else {
-        err::panic!("This error message is empty")
+        err::abort!("This error message is empty")
     };
     let Some(span) = span else {
-        err::panic!("The very first error should always have an associated span")
+        err::abort!("The very first error should always have an associated span")
     };
     let mut d = proc_macro::Diagnostic::spanned(span.unwrap(), proc_macro::Level::Error, msg);
     for (msg, span) in elements {

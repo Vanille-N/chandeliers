@@ -134,7 +134,7 @@ impl MakePositive for decl::Node {
 
 impl CheckPositive for stmt::Statement {
     fn check_positive(&self, depths: DepthCtx<'_>) -> Result<()> {
-        err::assert!(depths.current == 0, "Statement expects depth to be 0");
+        err::consistency!(depths.current == 0, "Statement expects depth to be 0");
         match self {
             Self::Let { source, .. } => source.check_positive(depths),
             Self::Assert(e) => e.check_positive(depths),

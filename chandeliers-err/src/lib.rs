@@ -34,9 +34,8 @@ macro_rules! repo {
 
 /// Generate an error message better than just "proc macro panicked".
 #[macro_export]
-macro_rules! panic {
+macro_rules! abort {
     ($($err:tt)*) => {{
-        #[allow(clippy::panic)]
         std::panic!("
 Chandeliers panicked: \x1b[1;31m{}.\x1b[0m
 This error occured in \x1b[1;35m{}:{}:{}\x1b[0m
@@ -56,18 +55,18 @@ with the code that produced it and the version of Chandeliers you are using.
 
 /// Special instance of `panic` for code that should be trivially unreachable.
 #[macro_export]
-macro_rules! provably_unreachable {
+macro_rules! malformed {
     () => {{
-        ::chandeliers_err::panic!("Entered unreachable code");
+        ::chandeliers_err::abort!("Entered unreachable code");
     }};
 }
 
 /// Special instance of `panic` for assertions.
 #[macro_export]
-macro_rules! assert {
+macro_rules! consistency {
     ($cond:expr, $($msg:tt)*) => {{
         if !$cond {
-            ::chandeliers_err::panic!($($msg)*);
+            ::chandeliers_err::abort!($($msg)*);
         }
     }};
 }
@@ -261,12 +260,11 @@ where
                 self.var.try_span(),
             ),
             (
-                format!(
-                    "During this incremental typechecking, you cannot access global
+                "During this incremental typechecking, you cannot access global
 variables and you may only use local variables that have been
 declared strictly beforehand, in the order of inputs then outputs
 then locals."
-                ),
+                    .to_owned(),
                 None,
             ),
             (

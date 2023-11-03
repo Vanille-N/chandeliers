@@ -59,7 +59,7 @@ macro_rules! at {
         if let Some(val) = arr.get(idx) {
             val
         } else {
-            chandeliers_err::panic!(
+            chandeliers_err::abort!(
                 "Out-of-bounds access: no index {} on array of length {}",
                 idx,
                 arr.len()
@@ -72,7 +72,7 @@ macro_rules! at {
         if let Some(val) = arr.get_mut(idx) {
             val
         } else {
-            chandeliers_err::panic!(
+            chandeliers_err::abort!(
                 "Out-of-bounds access: no index {} on array of length {}",
                 idx,
                 arr.len()
@@ -345,9 +345,10 @@ where
             let uid = self.get_or_insert_atomic(&req, false);
             require_uids.push(WithDefSite::try_with(&uid, req));
         }
-        if self.elements.len() != self.provide.len() || self.elements.len() != self.require.len() {
-            unreachable!("The internals are malformed")
-        }
+        err::consistency!(
+            self.elements.len() == self.provide.len() && self.elements.len() == self.require.len(),
+            "Internal arrays of Graph must have matching lengths"
+        );
         self.provide.push(provide_uids);
         self.require.push(require_uids);
         self.elements.push(t);
@@ -435,7 +436,7 @@ where
         // We're going to remove all elements one at a time, let's make that easier.
         let mut unused: Vec<Option<Obj>> = self.elements.into_iter().map(Some).collect();
         for c in &scc {
-            err::assert!(
+            err::consistency!(
                 !c.is_empty(),
                 "It should be impossible to have SCCs of size zero"
             );
@@ -446,7 +447,7 @@ where
             }
             // Correctly of size 1, we can use it next.
             let Some(&id) = c.last() else {
-                err::provably_unreachable!();
+                err::malformed!();
             };
             // This is faillible because we have `Unit`s that are not provided by anyone.
             if let Some(Some(prov)) = provider.get(id) {

@@ -128,7 +128,7 @@ impl TyCtx<'_> {
         match self.nodes_out.get(node.t) {
             Some(tup) => tup.as_flat_tytuple(),
             None => {
-                err::panic!("The typing context is improperly initialized: either {node} is missing and it should have been caught during the causality check, or it was not added to the map.");
+                err::abort!("The typing context is improperly initialized: either {node} is missing and it should have been caught during the causality check, or it was not added to the map.");
             }
         }
     }
@@ -138,7 +138,7 @@ impl TyCtx<'_> {
         match self.nodes_in.get(node.t) {
             Some(tup) => tup.as_flat_tytuple(),
             None => {
-                err::panic!("The typing context is improperly initialized: either {node} is missing and it should have been caught during the causality check, or it was not added to the map.");
+                err::abort!("The typing context is improperly initialized: either {node} is missing and it should have been caught during the causality check, or it was not added to the map.");
             }
         }
     }
@@ -438,7 +438,7 @@ impl ast::op::Bin {
         let span = left
             .span
             .join(right.span)
-            .unwrap_or_else(|| err::panic!("Malformed span between {left:?} and {right:?}"));
+            .unwrap_or_else(|| err::abort!("Malformed span between {left:?} and {right:?}"));
         if left.t != right.t {
             return Err(err::BinopMismatch {
                 oper: self,
@@ -512,7 +512,7 @@ impl ast::op::Cmp {
         let span = left
             .span
             .join(right.span)
-            .unwrap_or_else(|| err::panic!("Malformed span between {left:?} and {right:?}"));
+            .unwrap_or_else(|| err::abort!("Malformed span between {left:?} and {right:?}"));
         if left.t != right.t {
             return Err(err::BinopMismatch {
                 oper: self,
@@ -648,7 +648,7 @@ impl SpTyBaseTuple {
                 ty::Tuple::Single(
                     tup.iter()
                         .last()
-                        .unwrap_or_else(|| err::provably_unreachable!())
+                        .unwrap_or_else(|| err::malformed!())
                         .t
                         .with_span(span),
                 )
@@ -909,7 +909,7 @@ impl TypeCheckExpr for ty::Clock {
         }
     }
     fn is_const(&self, _: Span) -> Result<()> {
-        err::panic!("We shouldn't even attempt to use a clock in a const context")
+        err::abort!("We shouldn't even attempt to use a clock in a const context")
     }
 }
 

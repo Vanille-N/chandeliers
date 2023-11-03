@@ -171,7 +171,7 @@ where
             span: Transparent {
                 inner: begin
                     .join(end)
-                    .unwrap_or_else(|| err::panic!("Malformed span between {begin:?} and {end:?}")),
+                    .unwrap_or_else(|| err::abort!("Malformed span between {begin:?} and {end:?}")),
             },
         })
     }

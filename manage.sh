@@ -42,6 +42,11 @@ main() {
             version-bump "$2"
             ;;
         ("bless") shift; TRYBUILD=overwrite IN=( ${CRATES[@]} . ) each do-cargo test "$@";;
+        ("lint")
+            for crate in "${CRATES[@]}"; do
+                ./lint.sh ${crate#*-} $crate
+            done
+            ;;
         ("help"|*)
             echo "Submodule manager for the Chandeliers project"
             echo "Author: Neven <vanille@crans.org>"
@@ -50,6 +55,7 @@ main() {
             echo "with CMD among"
             echo "    bump x.y.z                   bump all crates chandeliers-* to version x.y.z"
             echo "    test, update, publish,...    passed directly to cargo"
+            echo "    bless                        blesses the output of 'cargo test'"
     esac
 }
 

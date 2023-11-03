@@ -218,21 +218,31 @@ impl AssertUsed for Over {
 
 impl<Head: usage::ShowTy, Tail: AssertUsed> AssertUsed for Sites<Head, Tail> {
     fn assert_used(&self, msg: &'static str) {
-        chandeliers_err::assert!(self.used, "{} during {}", msg, Head::NAME);
+        chandeliers_err::consistency!(self.used, "{} during {}", msg, Head::NAME);
         self.tail.assert_used(msg);
     }
 }
 
+/// `matching_head_aux!(Head; T1, T2, T3, T4, T5,)` implements
+/// `Usage<Head>` for `Sites<Head, _>` trivially,
+/// and `Usage<Ti>` for `Sites<Head, _>` by projection to the tail.
+///
+/// It necessary that `Head` is distinct from all the `Ti`,
+/// and recommended that the `Ti` form an exhaustive enumeration of all
+/// the other types you want to put in the lists.
 macro_rules! matching_head_aux {
-    ( $t:ty =/= $($other:ty,)* ) => {
+    ( $t:ty ; $($other:ty,)* ) => {
+        #[doc = "Head matches the uage site, this is a termination point of `Usage`"]
         impl<Tail> Usage<$t> for Sites<$t, Tail> {
             fn record(&mut self) {
                 self.used = true;
             }
         }
 
-        $( impl<Tail> Usage<$other> for Sites<$t, Tail>
-            where Tail: Usage<$other>,
+        $(
+            #[doc = "Head does not match the usage site, recurse into the `Tail`."]
+            impl<Tail> Usage<$other> for Sites<$t, Tail>
+                where Tail: Usage<$other>,
             {
                 fn record(&mut self) {
                     self.tail.record()
@@ -242,14 +252,19 @@ macro_rules! matching_head_aux {
     };
 }
 
+/// Recursive helper of `matching_head`, given a list
+/// `T1, T2, T3, ..., Tn` it will distribute `matching_head_aux`
+/// to every `Ti` and `T1, ..., ^Ti, ..., Tn`.
 macro_rules! matching_head_rec {
     ( ( $($handled:ty,)* ) -> () ) => {};
     ( ( $($handled:ty,)* ) -> ( $new:ty, $($remaining:ty,)* ) ) => {
-        matching_head_aux!($new =/= $($handled,)* $($remaining,)*);
+        matching_head_aux!($new ; $($handled,)* $($remaining,)*);
         matching_head_rec!( ($($handled,)* $new,) -> ( $($remaining,)* ));
     };
 }
 
+/// Initialization stage of the automatic implementation of `Usage`
+/// for all the types in the list.
 macro_rules! matching_head {
     ( $($remaining:ty,)* ) => {
         matching_head_rec!(() -> ( $($remaining,)* ));

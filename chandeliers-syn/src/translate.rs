@@ -743,7 +743,7 @@ impl Translate for src::TargetExprTuple {
             Ok(vs
                 .into_iter()
                 .next()
-                .unwrap_or_else(|| chandeliers_err::provably_unreachable!())
+                .unwrap_or_else(|| chandeliers_err::malformed!())
                 .t)
         } else {
             Ok(tgt::stmt::VarTuple::Multiple(vs.with_span(span)))
@@ -832,7 +832,7 @@ mod assoc {
             Item: Into<Accum>,
         {
             // We always assume that there is a trailing _element_, not a trailing punctuation.
-            chandeliers_err::assert!(
+            chandeliers_err::consistency!(
                 !elems.trailing_punct(),
                 "Bug in the parser: {} should not accept trailing punctuation",
                 self.label
@@ -844,7 +844,7 @@ mod assoc {
             // our accumulator. Otherwise this is a transparent expression
             // and we just defer directly to the translation for the inner type.
             let Some((depth, fst)) = pairs.next() else {
-                chandeliers_err::panic!("Should not be able to get an empty `Pairs` from a `Punctuated::parse_nonempty`");
+                chandeliers_err::abort!("Should not be able to get an empty `Pairs` from a `Punctuated::parse_nonempty`");
             };
             match fst {
                 Pair::Punctuated(elem, punct) => {
@@ -863,7 +863,7 @@ mod assoc {
                     Pair::Punctuated(elem, punct) => {
                         let expr = (self.convert)(elem, depth)?;
                         let Some(span) = expr.span.join(accum.span) else {
-                            chandeliers_err::panic!(
+                            chandeliers_err::abort!(
                                 "Malformed span between {:?} and {:?}",
                                 expr.span,
                                 accum.span
@@ -879,7 +879,7 @@ mod assoc {
                     }
                 }
             }
-            err::provably_unreachable!()
+            err::malformed!()
         }
 
         /// Build the tree of right associative operations from a flat representation.
@@ -896,7 +896,7 @@ mod assoc {
             Item: Into<Accum>,
         {
             // We always assume that there is a trailing _element_, not a trailing punctuation.
-            chandeliers_err::assert!(
+            chandeliers_err::consistency!(
                 !elems.trailing_punct(),
                 "Bug in the parser: {} should not accept trailing punctuation",
                 self.label
@@ -907,11 +907,11 @@ mod assoc {
             // Because we've reversed the iterator, the first element is always
             // and `End`.
             let Some((depth, last)) = pairs.next() else {
-                chandeliers_err::panic!("Should not be able to get an empty `Pairs` from a `Punctuated::parse_nonempty`");
+                chandeliers_err::abort!("Should not be able to get an empty `Pairs` from a `Punctuated::parse_nonempty`");
             };
 
             let Pair::End(elem) = last else {
-                err::provably_unreachable!()
+                err::malformed!()
             };
             accum = (self.convert)(elem, depth)?.map(|_, i| i.into());
             // Looping case.
@@ -920,11 +920,11 @@ mod assoc {
             // been seen in the handling of `last`.
             for (depth, pair) in pairs {
                 let Pair::Punctuated(elem, punct) = pair else {
-                    err::provably_unreachable!()
+                    err::malformed!()
                 };
                 let expr = (self.convert)(elem, depth)?;
                 let Some(span) = expr.span.join(accum.span) else {
-                    chandeliers_err::panic!(
+                    chandeliers_err::abort!(
                         "Malformed span between {:?} and {:?}",
                         expr.span,
                         accum.span
@@ -1012,26 +1012,26 @@ impl Translate for src::expr::Cmp {
         ctx: Self::Ctx<'_>,
     ) -> Result<tgt::expr::Expr> {
         use syn::punctuated::Pair;
-        chandeliers_err::assert!(
+        chandeliers_err::consistency!(
             !self.items.trailing_punct(),
             "Bug in the parser: Comparisons should not accept trailing punctuation",
         );
         let mut it = self.items.into_pairs();
         // We must have a first element
         let Some(first) = it.next() else {
-            err::panic!("Bug in the parser: comparison should have at least one member")
+            err::abort!("Bug in the parser: comparison should have at least one member")
         };
         let Some(second) = it.next() else {
             // If we don't have a second element then this is just dropping
             // to the level below.
             // The first one can't have punctuation
             let Pair::End(first) = first else {
-                err::provably_unreachable!()
+                err::malformed!()
             };
             return first.flat_translate(run_uid, ctx);
         };
         let Pair::Punctuated(lhs, op) = first else {
-            err::provably_unreachable!()
+            err::malformed!()
         };
         let lhs = lhs.translate(run_uid, fork!(ctx))?.boxed();
         let op = op.translate(run_uid, span, ())?;
@@ -1040,7 +1040,7 @@ impl Translate for src::expr::Cmp {
             // We're going to throw this path anyway, we might as well
             // make destructive changes to get a better error message.
             let Pair::Punctuated(second, oper2) = second else {
-                err::provably_unreachable!()
+                err::malformed!()
             };
             let second = second.translate(run_uid, fork!(ctx))?;
             let oper2 = oper2.translate(run_uid, span, ())?;
@@ -1059,7 +1059,7 @@ impl Translate for src::expr::Cmp {
             .into_err());
         }
         let Pair::End(rhs) = second else {
-            err::provably_unreachable!()
+            err::malformed!()
         };
         let rhs = rhs.translate(run_uid, ctx)?.boxed();
         Ok(tgt::expr::Expr::Cmp { op, lhs, rhs })
@@ -1101,7 +1101,7 @@ impl Translate for src::expr::Fby {
                         dt: ctx.depth + depth,
                     }
                     .with_span(before.span.join(after.span).unwrap_or_else(|| {
-                        err::panic!("Malformed span between {before:?} and {after:?}")
+                        err::abort!("Malformed span between {before:?} and {after:?}")
                     })),
                     before: before.boxed(),
                     after: after.boxed(),
@@ -1147,7 +1147,7 @@ impl Translate for src::expr::Then {
                         dt: ctx.depth + depth,
                     }
                     .with_span(before.span.join(after.span).unwrap_or_else(|| {
-                        chandeliers_err::panic!("Malformed span between {before:?} and {after:?}")
+                        chandeliers_err::abort!("Malformed span between {before:?} and {after:?}")
                     })),
                     before: before.boxed(),
                     after: after.boxed(),
@@ -1304,11 +1304,7 @@ impl Translate for src::expr::Paren {
             es.push(e.translate(run_uid, fork!(ctx))?);
         }
         if es.len() == 1 && !trail {
-            Ok(es
-                .into_iter()
-                .next()
-                .unwrap_or_else(|| err::provably_unreachable!())
-                .t)
+            Ok(es.into_iter().next().unwrap_or_else(|| err::malformed!()).t)
         } else {
             Ok(tgt::expr::Expr::Tuple(es.with_span(span)))
         }
@@ -1439,11 +1435,11 @@ impl Translate for src::expr::Lit {
             Lit::Bool(b) => tgt::expr::Lit::Bool(b.value()),
             Lit::Int(i) => tgt::expr::Lit::Int(
                 i.base10_parse()
-                    .unwrap_or_else(|e| err::panic!("Unable to parse {i} as an int: {e}")),
+                    .unwrap_or_else(|e| err::abort!("Unable to parse {i} as an int: {e}")),
             ),
             Lit::Float(f) => tgt::expr::Lit::Float(
                 f.base10_parse()
-                    .unwrap_or_else(|e| err::panic!("Unable to parse {f} as a float: {e}")),
+                    .unwrap_or_else(|e| err::abort!("Unable to parse {f} as a float: {e}")),
             ),
             _ => return Err(err::UnhandledLitType { site: span }.into_err()),
         };

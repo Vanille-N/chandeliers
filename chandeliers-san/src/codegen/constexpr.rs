@@ -81,8 +81,8 @@ impl ConstExprTokens for expr::Expr {
                         .collect::<Vec<_>>();
                 quote!( ( #( #ts ),* ) )
             }
-            Self::Later { .. } => err::panic!("Later is not valid in const contexts, which should have been caught during typecheck"),
-            Self::Substep { .. } => err::panic!("Substep is not valid in const contexts, which should have been caught during typecheck"),
+            Self::Later { .. } => err::abort!("Later is not valid in const contexts, which should have been caught during typecheck"),
+            Self::Substep { .. } => err::abort!("Substep is not valid in const contexts, which should have been caught during typecheck"),
             Self::Ifx { cond, yes, no } => {
                 let cond = cond.const_expr_tokens();
                 let yes = yes.const_expr_tokens();
@@ -91,8 +91,8 @@ impl ConstExprTokens for expr::Expr {
                     if #cond { #yes } else { #no }
                 }
             }
-            Self::Merge { .. } => err::panic!("Merge is not valid in const contexts, which should have been caught during typecheck"),
-            Self::Clock { .. } => err::panic!("Clock is not valid in const contexts, which should have been caught during typecheck"),
+            Self::Merge { .. } => err::abort!("Merge is not valid in const contexts, which should have been caught during typecheck"),
+            Self::Clock { .. } => err::abort!("Clock is not valid in const contexts, which should have been caught during typecheck"),
         }
     }
 }
@@ -115,7 +115,7 @@ impl ConstExprTokens for expr::Lit {
 impl ConstExprTokens for var::Reference {
     fn const_expr_tokens(&self, _span: Span) -> TokenStream {
         match self {
-            Self::Var(_) => err::panic!(
+            Self::Var(_) => err::abort!(
                 "Var is invalid in const contexts, which should have been caught during typecheck"
             ),
             Self::Global(v) => {
