@@ -101,13 +101,16 @@ macro_rules! compiling {
     };
 }
 
-compiling!(fail_ui_causality with compile_fail in fail/ui/causality/);
-compiling!(fail_ui_syn with compile_fail in fail/ui/syn/);
-compiling!(fail_ui_tc with compile_fail in fail/ui/tc/);
-compiling!(fail_ui_options with compile_fail in fail/ui/options/);
-compiling!(fail_std with compile_fail in fail/std/);
-compiling!(fail_ui_clk with compile_fail in fail/ui/clk/);
+compiling!(assert_false with fail in fail/);
 
+compiling!(fail_ui_causality with compile_fail in compile_fail/ui/causality/);
+compiling!(fail_ui_syn with compile_fail in compile_fail/ui/syn/);
+compiling!(fail_ui_tc with compile_fail in compile_fail/ui/tc/);
+compiling!(fail_ui_options with compile_fail in compile_fail/ui/options/);
+compiling!(fail_std with compile_fail in compile_fail/std/);
+compiling!(fail_ui_clk with compile_fail in compile_fail/ui/clk/);
+
+compiling!(pass_dead_code with compile_fail in pass/dead_code/);
 compiling!(pass_ui with pass in pass/ui/);
 compiling!(pass_syn with pass in pass/syn/);
 compiling!(pass_std with pass in pass/std/);

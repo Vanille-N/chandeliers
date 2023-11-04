@@ -1,9 +1,9 @@
 chandeliers_lus::decl! {
-    #[trace]
+    #[trace[stderr]]
     node counter() returns (n : int);
     let n = 0 fby n + 1; tel;
 
-    #[trace]
+    #[trace[stderr]]
     node blink() returns (b : bool);
     let b = true fby not b; tel;
 

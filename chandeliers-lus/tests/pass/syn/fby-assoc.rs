@@ -9,7 +9,7 @@ chandeliers_lus::decl! {
     node c() returns (i, j : int);
     let i = 2; j = count(); tel;
 
-    #[trace]
+    #[trace[stderr]]
     node testing() returns (i, j : int);
     let
         (i, j) = a() fby b() fby c();
