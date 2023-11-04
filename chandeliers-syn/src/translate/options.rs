@@ -17,7 +17,7 @@
 //! homogeneous error messages.
 
 use chandeliers_err::{self as err, IntoError, Result};
-use chandeliers_san::ast::options::{Const, ExtConst, ExtNode, Node};
+use chandeliers_san::ast::options::{Const, ExtConst, ExtNode, Node, TraceFile};
 use chandeliers_san::sp::{Sp, Span, WithSpan};
 
 /// The main helper to set options.
@@ -122,7 +122,7 @@ impl<T> SetOpt<T> {
 #[derive(Clone, Debug)]
 pub struct Decl {
     /// `#[trace]`: print debug information.
-    trace: SetOpt<bool>,
+    trace: SetOpt<Option<TraceFile>>,
     /// `#[export]`: make the declaration visible.
     export: SetOpt<bool>,
     /// `#[pub]`: make the declaration public. (implies `#[export]`)
@@ -138,7 +138,7 @@ pub struct Decl {
 impl Default for Decl {
     fn default() -> Self {
         Self {
-            trace: SetOpt::create("#[trace]", false),
+            trace: SetOpt::create("#[trace]", None),
             export: SetOpt::create("#[export]", false),
             public: SetOpt::create("#[pub]", false),
             main: SetOpt::create("#[main(nb_iter)]", None),
@@ -239,7 +239,13 @@ impl Decl {
         let args = (&params.t[..], &targets.t[..]);
         match action.as_str() {
             "trace" => match args {
-                ([], []) => self.trace.set(true, attr.span.into()),
+                ([], []) => self.trace.some(TraceFile::StdOut, attr.span.into()),
+                ([ident], []) if ident.as_str() == "stdout" => {
+                    self.trace.some(TraceFile::StdOut, attr.span.into())
+                }
+                ([ident], []) if ident.as_str() == "stderr" => {
+                    self.trace.some(TraceFile::StdErr, attr.span.into())
+                }
                 _ => malformed!(
                     msg:("expects no arguments")
                     syn:("`#[trace]`")

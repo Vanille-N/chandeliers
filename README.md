@@ -60,7 +60,7 @@ TODO
 
 Chandeliers follows the Rust-style syntax for specifying compilation options,
 and the following are available:
-- `#[trace]` (any `node`): print debug information after each step of the execution.
+- `#[trace]` or `#[trace[stderr]]` (any `node`): print debug information after each step of the execution.
   The output is not stable and should not be relied on for tests.
 - `#[export]` (non-`extern`): make the declaration visible to the environment
   outside of the macro invocation (we follow the Rust convention of private-by-default).

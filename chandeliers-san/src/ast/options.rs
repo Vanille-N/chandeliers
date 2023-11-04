@@ -276,6 +276,15 @@ matching_head! {
     Typecheck,
 }
 
+/// Where to write debug trace to.
+#[derive(Clone, Copy, Debug)]
+pub enum TraceFile {
+    /// Print to standard output.
+    StdOut,
+    /// Print to standard error.
+    StdErr,
+}
+
 /// Black magic to generate option sets.
 /// Will wrap types in `UseOpt` and attach to them the documentation
 /// for the defined item.
@@ -296,10 +305,10 @@ macro_rules! selection_aux_decl {
     // The processing in question includes inserting a `pub` qualifier to
     // all fields, adding documentation, and registering their type.
     ( $struct:ident ( $($done:tt)* ) ++ ( trace , $($rest:tt)* ) )
-        // #[trace] is of type `bool` and is useful only during codegen.
+        // #[trace] is of type `Option<TraceFile>` and is useful only during codegen.
         => { selection_aux_decl!($struct ( $($done)*
                 #[doc = "`#[trace]`: print debug information."]
-                pub trace: UseOpt<bool, Sites<Codegen, Over>>,
+                pub trace: UseOpt<Option<TraceFile>, Sites<Codegen, Over>>,
             ) ++ ( $($rest)* ) ); };
     ( $struct:ident ( $($done:tt)* ) ++ ( export , $($rest:tt)* ) )
         // #[export] is of type `bool` and is useful only during codegen.

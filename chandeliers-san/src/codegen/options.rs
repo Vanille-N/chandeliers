@@ -5,7 +5,7 @@ use quote::{quote, quote_spanned};
 
 use crate::ast;
 use crate::ast::options::usage::Codegen as This;
-use crate::ast::options::{Const, ExtNode, Node};
+use crate::ast::options::{Const, ExtNode, Node, TraceFile};
 use crate::sp::Sp;
 
 /// Define the behavior of an option.
@@ -68,7 +68,7 @@ generic_option! {
     #[doc = "`#[trace]`: print debug information."]
     trait Traces for { Node, ExtNode }
     impl {
-        from trace return &bool;
+        from trace return &Option<TraceFile>;
         fn traces(
             &self,
             prefix: &str,
@@ -83,13 +83,17 @@ generic_option! {
             let outputs = outputs.flattened_trailing_comma();
             let input_fmt = format!("{{}}{{}} <- {input_var_fmt}");
             let output_fmt = format!("{{}}{{}} -> {output_var_fmt}",);
-            if *self.fetch() {
+            if let Some(file) = self.fetch() {
+                let printer = match file {
+                    TraceFile::StdOut => quote!(println),
+                    TraceFile::StdErr => quote!(eprintln),
+                };
                 (
                     quote! {
-                        println!(#input_fmt, #prefix, #name, #inputs);
+                        #printer!(#input_fmt, #prefix, #name, #inputs);
                     },
                     quote! {
-                        println!(#output_fmt, #prefix, #name, #outputs);
+                        #printer!(#output_fmt, #prefix, #name, #outputs);
                     },
                 )
             } else {

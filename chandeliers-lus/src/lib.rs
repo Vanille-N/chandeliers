@@ -43,7 +43,7 @@ fn new_run_uid() -> usize {
 /// Usage:
 /// ```
 /// chandeliers_lus::decl! {
-///     #[trace] // This means that every invocation of the node will print
+///     #[trace[stderr]] // This means that every invocation of the node will print
 ///              // debug information.
 ///     node foo() returns (n : int);
 ///     let n = 0 fby n + 1; tel;
