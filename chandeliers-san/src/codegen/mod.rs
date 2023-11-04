@@ -327,11 +327,9 @@ impl decl::Node {
         let ext_name = name.as_raw_ident();
         let uid_name = name.as_sanitized_ident();
 
-        let inputs_ty_4 = inputs.as_defined_tys();
         let expected_input_tys_decl = inputs.as_embedded_tys();
         let expected_output_tys_decl = outputs.as_embedded_tys();
 
-        let outputs_ty_4 = outputs.as_defined_tys();
         let docs = options.docs();
 
         let pub_qualifier = options.pub_qualifier();
@@ -347,6 +345,11 @@ impl decl::Node {
         };
 
         let ext_annotated_declaration = quote_spanned! {name.span.into()=>
+            #docs
+            #[doc = "\n"]
+            #[doc = " Wrapper declaration of"]
+            #[doc = #doc_name]
+            #[doc = " (part of the public interface)"]
             #[derive(Debug, Default)]
             #[allow(non_camel_case_types)]
             #[allow(dead_code)]
@@ -355,12 +358,13 @@ impl decl::Node {
         };
 
         let ext_step_impl = quote_spanned! {name.span.into()=>
+            #[doc = " Implementation of Step for"]
+            #[doc = #doc_name]
+            #[doc = " (immediately defers to Step for inner)"]
             #[allow(clippy::unused_unit)]
-            impl ::chandeliers_sem::traits::Step for #ext_name {
-                type Input = #inputs_ty_4;
-                type Output = #outputs_ty_4;
+            impl #ext_name {
                 #[allow(unused_imports)]
-                fn step(
+                pub fn step(
                     &mut self,
                     __inputs: #expected_input_tys_decl,
                 ) ->
@@ -373,16 +377,7 @@ impl decl::Node {
         };
 
         quote! {
-            #docs
-            #[doc = "\n"]
-            #[doc = " Wrapper declaration of"]
-            #[doc = #doc_name]
-            #[doc = " (part of the public interface)"]
             #ext_annotated_declaration
-
-            #[doc = " Implementation of Step for"]
-            #[doc = #doc_name]
-            #[doc = " (immediately defers to Step for inner)"]
             #ext_step_impl
         }
     }
