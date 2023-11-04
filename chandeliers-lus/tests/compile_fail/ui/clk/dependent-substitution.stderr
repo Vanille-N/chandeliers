@@ -1,0 +1,5 @@
+error: No definition provided for Variable `b2` which is required
+ --> tests/compile_fail/ui/clk/dependent-substitution.rs:8:13
+  |
+8 |     var b1, b2 : bool;
+  |             ^^

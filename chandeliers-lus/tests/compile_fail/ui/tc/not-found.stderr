@@ -1,5 +1,5 @@
 error: Variable X not found in the context.
- --> tests/fail/ui/tc/not-found.rs:6:13
+ --> tests/compile_fail/ui/tc/not-found.rs:6:13
   |
 6 |         i = X;
   |             ^

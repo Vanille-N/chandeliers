@@ -1,5 +1,5 @@
 error: Variable i is not positive at this depth
-  --> tests/fail/ui/causality/positivity.rs:27:17
+  --> tests/compile_fail/ui/causality/positivity.rs:27:17
    |
 27 |         o = pre i;
    |                 ^
@@ -8,7 +8,7 @@ error: Variable i is not positive at this depth
    = note: Maybe add a `->` in front of the expression to increase the depth ?
 
 error: Variable i is not positive at this depth
-  --> tests/fail/ui/causality/positivity.rs:34:35
+  --> tests/compile_fail/ui/causality/positivity.rs:34:35
    |
 34 |         o = 0 -> 0 -> pre pre pre i;
    |                                   ^
@@ -17,7 +17,7 @@ error: Variable i is not positive at this depth
    = note: Maybe add a `->` in front of the expression to increase the depth ?
 
 error: Variable i is not positive at this depth
-  --> tests/fail/ui/causality/positivity.rs:41:80
+  --> tests/compile_fail/ui/causality/positivity.rs:41:80
    |
 41 |         o = 0 -> 0 -> 0 -> 0 -> 0 -> 0 -> 0 -> pre pre pre pre pre pre pre pre i;
    |                                                                                ^
@@ -26,7 +26,7 @@ error: Variable i is not positive at this depth
    = note: Maybe add a `->` in front of the expression to increase the depth ?
 
 error: Variable i is not positive at this depth
-  --> tests/fail/ui/causality/positivity.rs:48:59
+  --> tests/compile_fail/ui/causality/positivity.rs:48:59
    |
 48 |         o = 0 -> 0 -> pre pre pre pre pre pre pre pre pre i;
    |                                                           ^

@@ -1,5 +1,5 @@
 error: Comparison operator < is not associative
- --> tests/fail/ui/syn/noassoc.rs:2:21
+ --> tests/compile_fail/ui/syn/noassoc.rs:2:21
   |
 2 |     const B: bool = 0 < 1 > 2 < 3;
   |                     ^^^^^^^^^^^^^
@@ -7,7 +7,7 @@ error: Comparison operator < is not associative
   = note: Maybe replace `0 < 1 > 2` with `0 < 1 and 1 > 2` ?
 
 error: Comparison operator = is not associative
- --> tests/fail/ui/syn/noassoc.rs:6:22
+ --> tests/compile_fail/ui/syn/noassoc.rs:6:22
   |
 6 |     const B2: bool = 0 = 1 <> 2 = 3;
   |                      ^^^^^^^^^^^^^^

@@ -1,16 +1,16 @@
 error: Variable `w` was found to be part of a dependency cycle
- --> tests/fail/ui/causality/cycle-var.rs:6:9
+ --> tests/compile_fail/ui/causality/cycle-var.rs:6:9
   |
 6 |         w = i + v;
   |         ^
   |
 note: The cycle also goes through Variable `o`
- --> tests/fail/ui/causality/cycle-var.rs:7:9
+ --> tests/compile_fail/ui/causality/cycle-var.rs:7:9
   |
 7 |         o = w;
   |         ^
 note: The cycle also goes through Variable `v`
- --> tests/fail/ui/causality/cycle-var.rs:5:9
+ --> tests/compile_fail/ui/causality/cycle-var.rs:5:9
   |
 5 |         v = o;
   |         ^

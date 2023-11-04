@@ -1,5 +1,5 @@
 error: unexpected end of input, expected ident
- --> tests/fail/ui/syn/unclosed.rs:1:1
+ --> tests/compile_fail/ui/syn/unclosed.rs:1:1
   |
 1 | / chandeliers_lus::decl! {
 2 | |     node foo() returns ();

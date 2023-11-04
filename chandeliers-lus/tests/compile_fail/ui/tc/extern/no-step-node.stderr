@@ -1,5 +1,5 @@
 error[E0599]: no method named `step` found for struct `not_impl_step` in the current scope
- --> tests/fail/ui/tc/extern/no-step-node.rs:5:17
+ --> tests/compile_fail/ui/tc/extern/no-step-node.rs:5:17
   |
 3 | struct not_impl_step {}
   | -------------------- method `step` not found for this struct

@@ -1,5 +1,5 @@
 error: Variable b is not available yet at this point of the typechecking.
- --> tests/fail/ui/tc/when-missing.rs:2:27
+ --> tests/compile_fail/ui/tc/when-missing.rs:2:27
   |
 2 |     node foo(x : int when b) returns ();
   |                           ^
@@ -11,7 +11,7 @@ error: Variable b is not available yet at this point of the typechecking.
   = note: These are the variables that are already useable: (none declared)
 
 error: Variable b is not available yet at this point of the typechecking.
- --> tests/fail/ui/tc/when-missing.rs:7:27
+ --> tests/compile_fail/ui/tc/when-missing.rs:7:27
   |
 7 |     node foo(x : int when b) returns (b : bool);
   |                           ^

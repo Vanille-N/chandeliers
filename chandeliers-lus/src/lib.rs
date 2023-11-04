@@ -101,8 +101,6 @@ macro_rules! compiling {
     };
 }
 
-compiling!(assert_false with fail in fail/);
-
 compiling!(fail_ui_causality with compile_fail in compile_fail/ui/causality/);
 compiling!(fail_ui_syn with compile_fail in compile_fail/ui/syn/);
 compiling!(fail_ui_tc with compile_fail in compile_fail/ui/tc/);
@@ -110,13 +108,14 @@ compiling!(fail_ui_options with compile_fail in compile_fail/ui/options/);
 compiling!(fail_std with compile_fail in compile_fail/std/);
 compiling!(fail_ui_clk with compile_fail in compile_fail/ui/clk/);
 
-compiling!(pass_dead_code with compile_fail in pass/dead_code/);
 compiling!(pass_ui with pass in pass/ui/);
 compiling!(pass_syn with pass in pass/syn/);
 compiling!(pass_std with pass in pass/std/);
 compiling!(pass_fromslides with pass in pass/fromslides/);
 compiling!(pass_given with pass in pass/given/);
 compiling!(pass_options with pass in pass/options/);
+
+compiling!(warn_dead_code with compile_fail in warn/dead_code/);
 
 /// Emit one error message from a sequence of spans and associated hint messages.
 fn emit(elements: Vec<(String, Option<proc_macro2::Span>)>) -> proc_macro2::TokenStream {

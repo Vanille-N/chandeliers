@@ -1,5 +1,5 @@
 error[E0428]: the name `X` is defined multiple times
- --> tests/fail/ui/tc/extern/dupdef.rs:9:11
+ --> tests/compile_fail/ui/tc/extern/dupdef.rs:9:11
   |
 4 |     const X: int = 0;
   |           - previous definition of the value `X` here
@@ -10,7 +10,7 @@ error[E0428]: the name `X` is defined multiple times
   = note: `X` must be defined only once in the value namespace of this module
 
 error[E0428]: the name `foo` is defined multiple times
-  --> tests/fail/ui/tc/extern/dupdef.rs:20:10
+  --> tests/compile_fail/ui/tc/extern/dupdef.rs:20:10
    |
 14 |     node foo() returns ();
    |          --- previous definition of the type `foo` here
@@ -21,7 +21,7 @@ error[E0428]: the name `foo` is defined multiple times
    = note: `foo` must be defined only once in the type namespace of this module
 
 error[E0119]: conflicting implementations of trait `Debug` for type `foo`
-  --> tests/fail/ui/tc/extern/dupdef.rs:20:10
+  --> tests/compile_fail/ui/tc/extern/dupdef.rs:20:10
    |
 14 |     node foo() returns ();
    |          --- first implementation here
@@ -32,7 +32,7 @@ error[E0119]: conflicting implementations of trait `Debug` for type `foo`
    = note: this error originates in the derive macro `Debug` (in Nightly builds, run with -Z macro-backtrace for more info)
 
 error[E0119]: conflicting implementations of trait `Default` for type `foo`
-  --> tests/fail/ui/tc/extern/dupdef.rs:20:10
+  --> tests/compile_fail/ui/tc/extern/dupdef.rs:20:10
    |
 14 |     node foo() returns ();
    |          --- first implementation here
@@ -42,11 +42,11 @@ error[E0119]: conflicting implementations of trait `Default` for type `foo`
    |
    = note: this error originates in the derive macro `Default` (in Nightly builds, run with -Z macro-backtrace for more info)
 
-error[E0119]: conflicting implementations of trait `chandeliers_sem::stepping::Step` for type `foo`
-  --> tests/fail/ui/tc/extern/dupdef.rs:20:10
+error[E0592]: duplicate definitions with name `step`
+  --> tests/compile_fail/ui/tc/extern/dupdef.rs:14:10
    |
 14 |     node foo() returns ();
-   |          --- first implementation here
+   |          ^^^^^^^^^^^^^^^^ duplicate definitions for `step`
 ...
 20 |     node foo() returns ();
-   |          ^^^ conflicting implementation for `foo`
+   |          ---------------- other definition for `step`

@@ -1,5 +1,5 @@
 error[E0308]: mismatched types
- --> tests/fail/ui/tc/extern/wrong-ty-const.rs:3:18
+ --> tests/compile_fail/ui/tc/extern/wrong-ty-const.rs:3:18
   |
 3 |     extern const WRONG_TY: float;
   |                  ^^^^^^^^  ----- expected due to this

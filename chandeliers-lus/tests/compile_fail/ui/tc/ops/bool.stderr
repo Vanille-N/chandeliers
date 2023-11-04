@@ -1,23 +1,23 @@
 error: The condition of if should be of type bool
- --> tests/fail/ui/tc/ops/bool.rs:4:13
+ --> tests/compile_fail/ui/tc/ops/bool.rs:4:13
   |
 4 |         b = if i then 0 else 1;
   |             ^^^^^^^^^^^^^^^^^^
   |
 note: The argument is found to be of type int
- --> tests/fail/ui/tc/ops/bool.rs:4:16
+ --> tests/compile_fail/ui/tc/ops/bool.rs:4:16
   |
 4 |         b = if i then 0 else 1;
   |                ^
 
 error: The argument of assert should be of type bool
-  --> tests/fail/ui/tc/ops/bool.rs:11:9
+  --> tests/compile_fail/ui/tc/ops/bool.rs:11:9
    |
 11 |         assert i;
    |         ^^^^^^^^
    |
 note: The argument is found to be of type int
-  --> tests/fail/ui/tc/ops/bool.rs:11:16
+  --> tests/compile_fail/ui/tc/ops/bool.rs:11:16
    |
 11 |         assert i;
    |                ^

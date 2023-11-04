@@ -1,16 +1,16 @@
 error: Binary operator `=` expects arguments of type int or bool, not float because equality on float is not reliable
- --> tests/fail/ui/tc/floateq.rs:4:16
+ --> tests/compile_fail/ui/tc/floateq.rs:4:16
   |
 4 |         assert 0.1 + 0.2 = 0.3;
   |                ^^^^^^^^^^^^^^^
   |
 note: The left-hand-side is found to be of type float
- --> tests/fail/ui/tc/floateq.rs:4:16
+ --> tests/compile_fail/ui/tc/floateq.rs:4:16
   |
 4 |         assert 0.1 + 0.2 = 0.3;
   |                ^^^^^^^^^
 note: The right-hand-side is found to be of type float
- --> tests/fail/ui/tc/floateq.rs:4:28
+ --> tests/compile_fail/ui/tc/floateq.rs:4:28
   |
 4 |         assert 0.1 + 0.2 = 0.3;
   |                            ^^^

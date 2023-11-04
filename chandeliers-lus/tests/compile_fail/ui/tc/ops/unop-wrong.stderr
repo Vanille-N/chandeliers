@@ -1,23 +1,23 @@
 error: Unary operator `not` expects an argument of type bool or int, found float
- --> tests/fail/ui/tc/ops/unop-wrong.rs:2:23
+ --> tests/compile_fail/ui/tc/ops/unop-wrong.rs:2:23
   |
 2 |     const X : float = not 4.0;
   |                       ^^^^^^^
   |
 note: The inner value is found to be of type float
- --> tests/fail/ui/tc/ops/unop-wrong.rs:2:27
+ --> tests/compile_fail/ui/tc/ops/unop-wrong.rs:2:27
   |
 2 |     const X : float = not 4.0;
   |                           ^^^
 
 error: Unary operator `-` expects an argument of type int or float, found bool
- --> tests/fail/ui/tc/ops/unop-wrong.rs:6:22
+ --> tests/compile_fail/ui/tc/ops/unop-wrong.rs:6:22
   |
 6 |     const B : bool = -true;
   |                      ^^^^^
   |
 note: The inner value is found to be of type bool
- --> tests/fail/ui/tc/ops/unop-wrong.rs:6:23
+ --> tests/compile_fail/ui/tc/ops/unop-wrong.rs:6:23
   |
 6 |     const B : bool = -true;
   |                       ^^^^

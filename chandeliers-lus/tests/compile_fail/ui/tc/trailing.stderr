@@ -1,33 +1,33 @@
 error: Type mismatch between the left and right sides: expected (), got (()) instead that does not have the same length
- --> tests/fail/ui/tc/trailing.rs:4:9
+ --> tests/compile_fail/ui/tc/trailing.rs:4:9
   |
 4 |         () = ((),);
   |         ^^^^^^^^^^
   |
 note: This element has type ()
- --> tests/fail/ui/tc/trailing.rs:4:9
+ --> tests/compile_fail/ui/tc/trailing.rs:4:9
   |
 4 |         () = ((),);
   |         ^
 note: While this element has type (())
- --> tests/fail/ui/tc/trailing.rs:4:14
+ --> tests/compile_fail/ui/tc/trailing.rs:4:14
   |
 4 |         () = ((),);
   |              ^^^^^
 
 error: Type mismatch between the left and right sides: expected (), got (()) instead that does not have the same length
-  --> tests/fail/ui/tc/trailing.rs:13:14
+  --> tests/compile_fail/ui/tc/trailing.rs:13:14
    |
 13 |     let () = foo((),); tel;
    |              ^^^^^^^^
    |
 note: This element has type ()
-  --> tests/fail/ui/tc/trailing.rs:9:14
+  --> tests/compile_fail/ui/tc/trailing.rs:9:14
    |
 9  |     node foo() returns ();
    |              ^
 note: While this element has type (())
-  --> tests/fail/ui/tc/trailing.rs:13:17
+  --> tests/compile_fail/ui/tc/trailing.rs:13:17
    |
 13 |     let () = foo((),); tel;
    |                 ^^^^^

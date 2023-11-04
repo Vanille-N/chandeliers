@@ -1,11 +1,11 @@
 error: Attempt to redefine Variable `a`, when the context already defines it
- --> tests/fail/ui/causality/redef-var-io.rs:3:9
+ --> tests/compile_fail/ui/causality/redef-var-io.rs:3:9
   |
 3 |     let a = true; tel
   |         ^^^^^^^^
   |
 note: Already defined here
- --> tests/fail/ui/causality/redef-var-io.rs:2:14
+ --> tests/compile_fail/ui/causality/redef-var-io.rs:2:14
   |
 2 |     node foo(a : int) returns (a : bool);
   |              ^

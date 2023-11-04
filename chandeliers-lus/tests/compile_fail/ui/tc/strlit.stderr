@@ -1,5 +1,5 @@
 error: Lustre only accepts literals of type int, float, or bool
- --> tests/fail/ui/tc/strlit.rs:2:20
+ --> tests/compile_fail/ui/tc/strlit.rs:2:20
   |
 2 |     const S: int = "foobar";
   |                    ^^^^^^^^

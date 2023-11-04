@@ -1,5 +1,5 @@
 error: The later operator (-> / fby) is not valid in const contexts
- --> tests/fail/ui/tc/const/fby.rs:2:21
+ --> tests/compile_fail/ui/tc/const/fby.rs:2:21
   |
 2 |     const X : int = 0 fby 1 fby 2;
   |                     ^^^^^^^^^^^^^

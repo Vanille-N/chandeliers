@@ -1,35 +1,35 @@
 error: expected identifier, found keyword reserved by Rust
- --> tests/fail/ui/syn/kw.rs:2:11
+ --> tests/compile_fail/ui/syn/kw.rs:2:11
   |
 2 |     const crate : int = 0;
   |           ^^^^^
 
 error: expected identifier, found keyword reserved by Rust
- --> tests/fail/ui/syn/kw.rs:6:11
+ --> tests/compile_fail/ui/syn/kw.rs:6:11
   |
 6 |     const self : int = 0;
   |           ^^^^
 
 error: expected identifier, found keyword reserved by Rust
-  --> tests/fail/ui/syn/kw.rs:10:11
+  --> tests/compile_fail/ui/syn/kw.rs:10:11
    |
 10 |     const Self : int = 0;
    |           ^^^^
 
 error: expected identifier, found keyword reserved by Rust
-  --> tests/fail/ui/syn/kw.rs:14:10
+  --> tests/compile_fail/ui/syn/kw.rs:14:10
    |
 14 |     node super() returns ();
    |          ^^^^^
 
 error: expected identifier, found keyword reserved by Rust
-  --> tests/fail/ui/syn/kw.rs:19:10
+  --> tests/compile_fail/ui/syn/kw.rs:19:10
    |
 19 |     node move() returns ();
    |          ^^^^
 
 error: expected identifier, found keyword reserved by Rust
-  --> tests/fail/ui/syn/kw.rs:24:10
+  --> tests/compile_fail/ui/syn/kw.rs:24:10
    |
 24 |     node static() returns ();
    |          ^^^^^^

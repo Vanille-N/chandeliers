@@ -1,12 +1,12 @@
 error: Attempt to redefine Node `foo`, when a prior item already defines it
- --> tests/fail/ui/causality/redef-node.rs:5:5
+ --> tests/compile_fail/ui/causality/redef-node.rs:5:5
   |
 5 | /     node foo() returns ();
 6 | |     let tel;
   | |___________^
   |
 note: Already defined here
- --> tests/fail/ui/causality/redef-node.rs:2:5
+ --> tests/compile_fail/ui/causality/redef-node.rs:2:5
   |
 2 | /     node foo() returns ();
 3 | |     let tel;

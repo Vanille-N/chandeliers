@@ -1,5 +1,5 @@
 error[E0277]: the trait bound `no_default: Default` is not satisfied
- --> tests/fail/ui/tc/extern/no-default-node.rs:5:17
+ --> tests/compile_fail/ui/tc/extern/no-default-node.rs:5:17
   |
 5 |     extern node no_default() returns ();
   |                 ^^^^^^^^^^ the trait `Default` is not implemented for `no_default`
@@ -12,7 +12,7 @@ help: consider annotating `no_default` with `#[derive(Default)]`
   |
 
 error[E0599]: no method named `step` found for struct `no_default` in the current scope
- --> tests/fail/ui/tc/extern/no-default-node.rs:5:17
+ --> tests/compile_fail/ui/tc/extern/no-default-node.rs:5:17
   |
 3 | struct no_default {}
   | ----------------- method `step` not found for this struct
