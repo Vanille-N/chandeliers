@@ -10,14 +10,14 @@ checksum = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd"
 
 [[package]]
 name = "chandeliers-sem"
-version = "0.4.2"
+version = "0.4.3"
 dependencies = [
  "replace_with",
 ]
 
 [[package]]
 name = "chandeliers-std"
-version = "0.4.2"
+version = "0.4.3"
 dependencies = [
  "chandeliers-sem",
  "rand",

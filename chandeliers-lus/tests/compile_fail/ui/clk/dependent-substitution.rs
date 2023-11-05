@@ -8,7 +8,7 @@ chandeliers_lus::decl! {
     var b1, b2 : bool;
         _n : int when b2;
     let
-        b1 = true; _b2 = true;
+        b1 = true; b2 = true;
         _n = foo(b1);
     tel;
 }
