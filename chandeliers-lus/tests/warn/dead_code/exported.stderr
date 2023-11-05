@@ -9,3 +9,15 @@ note: the lint level is defined here
   |
 1 | #![deny(dead_code)]
   |         ^^^^^^^^^
+
+error: constant `FOO__lus_0_global` is never used
+  --> tests/warn/dead_code/exported.rs:10:15
+   |
+10 |         const FOO: int = 0;
+   |               ^^^
+
+error: constant `FOO` is never used
+  --> tests/warn/dead_code/exported.rs:10:15
+   |
+10 |         const FOO: int = 0;
+   |               ^^^

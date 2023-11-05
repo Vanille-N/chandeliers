@@ -61,7 +61,7 @@ impl ToTokens for decl::Const {
         let pub_qualifier = options.pub_qualifier(/*trait*/ false);
         let rustc_allow_1 = options.rustc_allow.fetch::<This>().iter();
         let rustc_allow_2 = options.rustc_allow.fetch::<This>().iter();
-        let export = *options.export.fetch::<This>(); // FIXME: sanitized globs
+        let export = *options.export.fetch::<This>();
 
         let pretty_ty = format!("`{}`", ty);
         let docs = options.docs();
@@ -69,7 +69,7 @@ impl ToTokens for decl::Const {
             #pub_qualifier const #ext_name : #rs_ty = #glob ;
         };
 
-        toks.extend(quote! {
+        toks.extend(quote_spanned! {span.into()=>
             #[doc(hidden)]
             #[allow(non_upper_case_globals)]
             #( #[allow( #rustc_allow_2 )] )*
@@ -120,7 +120,7 @@ impl ToTokens for decl::ExtConst {
         let real = quote_spanned!(name.span.into()=> real );
         let expected_wrapped = quote_spanned!(ty.span.into()=> Type<#expected> );
         let rustc_allow = options.rustc_allow.fetch::<This>().iter();
-        toks.extend(quote! {
+        toks.extend(quote_spanned! {name.span.into()=>
             #[doc(hidden)]
             #[allow(non_upper_case_globals)]
             #( #[allow( #rustc_allow )] )*
@@ -250,6 +250,7 @@ impl decl::Node {
             #[derive(Debug, Default)]
             #[allow(non_camel_case_types)]
             #[allow(non_snake_case)]
+            #[allow(dead_code)]
             #( #[allow( #rustc_allow_1 )] )*
             #pub_qualifier struct #uid_name {
                 __clock: usize,
@@ -502,6 +503,7 @@ impl ToTokens for decl::ExtNode {
             #[doc(hidden)]
             #[derive(Debug, Default)]
             #[allow(non_camel_case_types)]
+            #[allow(dead_code)]
             #( #[allow( #rustc_allow_1 )] )*
             struct #uid_name { inner: #ext_name }
 

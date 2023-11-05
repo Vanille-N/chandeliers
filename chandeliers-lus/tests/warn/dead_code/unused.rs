@@ -10,6 +10,8 @@ chandeliers_lus::decl! {
     node count3() returns (n : int);
     let n = 0 fby n + 1; tel;
 
+    const X: int = 0;
+
     #[main]
     node system() returns ();
     let

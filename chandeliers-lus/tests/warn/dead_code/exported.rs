@@ -5,6 +5,9 @@ mod hidden {
         #[export]
         node foo() returns ();
         let tel;
+
+        #[export]
+        const FOO: int = 0;
     }
 }
 
