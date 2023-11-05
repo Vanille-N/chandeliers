@@ -30,6 +30,14 @@ use chandeliers_err as err;
 use chandeliers_san::{self as sanitizer, sp::Sp};
 use chandeliers_syn as syntax;
 
+// Dependencies for integration tests: silence the "unused dependencies" warning.
+#[cfg(test)]
+mod integration_deps {
+    use chandeliers_sem as _;
+    use chandeliers_std as _;
+    use rand as _;
+}
+
 /// Generate unique identifiers for each macro invocation. We need this to avoid
 /// name collisions in `extern node` and `extern const` declarations.
 fn new_run_uid() -> usize {

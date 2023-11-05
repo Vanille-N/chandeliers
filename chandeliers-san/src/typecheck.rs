@@ -4,7 +4,7 @@ use std::collections::HashMap;
 
 use chandeliers_err::{self as err, IntoError, Result};
 
-use crate::ast::{self, ty, Tuple};
+use crate::ast::{self, ty, var, Tuple};
 use crate::sp::{Sp, Span, WithSpan};
 use crate::transparent::Transparent;
 
@@ -50,23 +50,23 @@ impl<T> WithDefSite<T> {
 #[derive(Debug)]
 struct TyCtx<'i> {
     /// Global variables with their types (all scalar).
-    global: &'i HashMap<ast::var::Global, WithDefSite<ty::Base>>,
+    global: &'i HashMap<var::Global, WithDefSite<ty::Base>>,
     /// Local variables (both inputs/outputs and hidden locals).
-    vars: HashMap<ast::var::Local, WithDefSite<ty::Base>>,
+    vars: HashMap<var::Local, WithDefSite<ty::Base>>,
     /// Known input and output types of nodes.
     /// Notice how these maps use `Node`s, not `NodeName`s:
     /// at the level at which typechecking on expressions is done, we have
     /// forgotten the name that blocks bind to and we only know their unique
     /// identifier.
-    nodes_in: HashMap<ast::var::Node, SpTyBaseTuple>,
+    nodes_in: HashMap<var::Node, SpTyBaseTuple>,
     /// Outputs, same as the inputs above.
-    nodes_out: HashMap<ast::var::Node, SpTyBaseTuple>,
+    nodes_out: HashMap<var::Node, SpTyBaseTuple>,
 }
 
 impl<'i> TyCtx<'i> {
     /// Construct a fresh context with known global variables but no
     /// locals or blocks.
-    fn from_ext(global: &'i HashMap<ast::var::Global, WithDefSite<ty::Base>>) -> TyCtx<'i> {
+    fn from_ext(global: &'i HashMap<var::Global, WithDefSite<ty::Base>>) -> TyCtx<'i> {
         Self {
             global,
             vars: HashMap::default(),
@@ -78,7 +78,7 @@ impl<'i> TyCtx<'i> {
 
 impl TyCtx<'_> {
     /// Interpret a variable as a local variable and get its type if it exists.
-    fn get_var(&self, var: Sp<&ast::var::Local>) -> Result<WithDefSite<ty::Tuple>> {
+    fn get_var(&self, var: Sp<&var::Local>) -> Result<WithDefSite<ty::Tuple>> {
         match self.vars.get(var.t) {
             Some(vardef) => Ok(vardef
                 .as_ref()
@@ -95,7 +95,7 @@ impl TyCtx<'_> {
     /// Try to get the type of a local variable, meant to be used during the
     /// typechecking of types so we don't have access to globals and we haven't
     /// yet declared all the local variables.
-    fn get_var_during_ty(&self, var: Sp<&ast::var::Local>) -> Result<WithDefSite<ty::Tuple>> {
+    fn get_var_during_ty(&self, var: Sp<&var::Local>) -> Result<WithDefSite<ty::Tuple>> {
         match self.vars.get(var.t) {
             Some(vardef) => Ok(vardef
                 .as_ref()
@@ -109,7 +109,7 @@ impl TyCtx<'_> {
     }
 
     /// Interpret a variable as a global variable and get its type if it exists.
-    fn get_global(&self, var: Sp<&ast::var::Global>) -> Result<WithDefSite<ty::Tuple>> {
+    fn get_global(&self, var: Sp<&var::Global>) -> Result<WithDefSite<ty::Tuple>> {
         match self.global.get(var.t) {
             Some(vardef) => Ok(vardef
                 .as_ref()
@@ -124,7 +124,7 @@ impl TyCtx<'_> {
     }
 
     /// Get the output tuple of a nade.
-    fn get_node_out(&self, node: Sp<&ast::var::Node>) -> Sp<ty::Tuple> {
+    fn get_node_out(&self, node: Sp<&var::Node>) -> Sp<ty::Tuple> {
         match self.nodes_out.get(node.t) {
             Some(tup) => tup.as_flat_tytuple(),
             None => {
@@ -134,7 +134,7 @@ impl TyCtx<'_> {
     }
 
     /// Get the input tuple of a nade.
-    fn get_node_in(&self, node: Sp<&ast::var::Node>) -> Sp<ty::Tuple> {
+    fn get_node_in(&self, node: Sp<&var::Node>) -> Sp<ty::Tuple> {
         match self.nodes_in.get(node.t) {
             Some(tup) => tup.as_flat_tytuple(),
             None => {
@@ -399,7 +399,7 @@ impl TypeCheckExpr for ast::expr::Lit {
 /// this should be assumed to be a local or a global variable.
 /// This is not modifiable after generation and this function will only check
 /// for one of the two.
-impl TypeCheckExpr for ast::var::Reference {
+impl TypeCheckExpr for var::Reference {
     fn typecheck(&self, _span: Span, ctx: &TyCtx) -> Result<ty::Tuple> {
         Ok(match self {
             Self::Var(v) => ctx.get_var(v.as_ref().map(|_, v| &v.var.t))?.inner.t,
@@ -675,7 +675,7 @@ trait TypeCheckDecl {
         &mut self,
         span: Span,
         extfun: &HashMap<ast::decl::NodeName, (SpTyBaseTuple, SpTyBaseTuple)>,
-        extvar: &HashMap<ast::var::Global, WithDefSite<ty::Base>>,
+        extvar: &HashMap<var::Global, WithDefSite<ty::Base>>,
     ) -> Result<()>;
 
     /// Extract the public interface of the item, typically its name and input/output types
@@ -691,7 +691,7 @@ trait TypeCheckSpanDecl {
     fn typecheck(
         &mut self,
         extfun: &HashMap<ast::decl::NodeName, (SpTyBaseTuple, SpTyBaseTuple)>,
-        extvar: &HashMap<ast::var::Global, WithDefSite<ty::Base>>,
+        extvar: &HashMap<var::Global, WithDefSite<ty::Base>>,
     ) -> Result<()>;
     /// Projection to the inner `signature`.
     fn signature(&self) -> Self::Signature;
@@ -702,7 +702,7 @@ impl<T: TypeCheckDecl> TypeCheckSpanDecl for Sp<T> {
     fn typecheck(
         &mut self,
         extfun: &HashMap<ast::decl::NodeName, (SpTyBaseTuple, SpTyBaseTuple)>,
-        extvar: &HashMap<ast::var::Global, WithDefSite<ty::Base>>,
+        extvar: &HashMap<var::Global, WithDefSite<ty::Base>>,
     ) -> Result<()> {
         self.t.typecheck(self.span.into(), extfun, extvar)
     }
@@ -720,7 +720,7 @@ impl TypeCheckDecl for ast::decl::Node {
         &mut self,
         _span: Span,
         extfun: &HashMap<ast::decl::NodeName, (SpTyBaseTuple, SpTyBaseTuple)>,
-        extvar: &HashMap<ast::var::Global, WithDefSite<ty::Base>>,
+        extvar: &HashMap<var::Global, WithDefSite<ty::Base>>,
     ) -> Result<()> {
         let mut ctx = TyCtx::from_ext(extvar);
         // FIXME: prettify
@@ -774,7 +774,7 @@ impl TypeCheckDecl for ast::decl::Node {
                 }
                 .into_err());
             };
-            let id = ast::var::Node {
+            let id = var::Node {
                 id: id.with_span(blk.span),
                 repr: blk.t.repr.clone(),
             };
@@ -814,7 +814,7 @@ impl TypeCheckDecl for ast::decl::ExtNode {
         &mut self,
         _span: Span,
         _extfun: &HashMap<ast::decl::NodeName, (SpTyBaseTuple, SpTyBaseTuple)>,
-        _extvar: &HashMap<ast::var::Global, WithDefSite<ty::Base>>,
+        _extvar: &HashMap<var::Global, WithDefSite<ty::Base>>,
     ) -> Result<()> {
         let extvar = HashMap::default();
         let mut ctx = TyCtx::from_ext(&extvar);
@@ -895,7 +895,7 @@ impl TypeCheckExpr for ty::Clock {
                 // See test `when-self.rs` for example.
                 let ty = ctx.get_var_during_ty(
                     id.as_ref()
-                        .map(|span, repr| ast::var::Local {
+                        .map(|span, repr| var::Local {
                             repr: repr.clone().with_span(span),
                             run_uid: Transparent { inner: 0 }, // We can forge the `run_uid` since it's not relevant in
                                                                // the `impl PartialEq` and `impl Hash`.
@@ -914,13 +914,13 @@ impl TypeCheckExpr for ty::Clock {
 }
 
 impl TypeCheckDecl for ast::decl::Const {
-    type Signature = (Sp<ast::var::Global>, Sp<ty::Base>);
+    type Signature = (Sp<var::Global>, Sp<ty::Base>);
     /// Verify inner consistency.
     fn typecheck(
         &mut self,
         span: Span,
         _functx: &HashMap<ast::decl::NodeName, (SpTyBaseTuple, SpTyBaseTuple)>,
-        varctx: &HashMap<ast::var::Global, WithDefSite<ty::Base>>,
+        varctx: &HashMap<var::Global, WithDefSite<ty::Base>>,
     ) -> Result<()> {
         self.value.is_const()?;
         let e = self.value.typecheck(&TyCtx::from_ext(varctx))?;
@@ -932,25 +932,25 @@ impl TypeCheckDecl for ast::decl::Const {
 
     /// The (name, type) pair that we need to add to the context.
     #[must_use]
-    fn signature(&self) -> (Sp<ast::var::Global>, Sp<ty::Base>) {
+    fn signature(&self) -> (Sp<var::Global>, Sp<ty::Base>) {
         (self.name.clone(), self.ty)
     }
 }
 
 impl TypeCheckDecl for ast::decl::ExtConst {
-    type Signature = (Sp<ast::var::Global>, Sp<ty::Base>);
+    type Signature = (Sp<var::Global>, Sp<ty::Base>);
     fn typecheck(
         &mut self,
         _span: Span,
         _functx: &HashMap<ast::decl::NodeName, (SpTyBaseTuple, SpTyBaseTuple)>,
-        _varctx: &HashMap<ast::var::Global, WithDefSite<ty::Base>>,
+        _varctx: &HashMap<var::Global, WithDefSite<ty::Base>>,
     ) -> Result<()> {
         Ok(())
     }
 
     /// The (name, type) pair that we need to add to the context.
     #[must_use]
-    fn signature(&self) -> (Sp<ast::var::Global>, Sp<ty::Base>) {
+    fn signature(&self) -> (Sp<var::Global>, Sp<ty::Base>) {
         (self.name.clone(), self.ty)
     }
 }

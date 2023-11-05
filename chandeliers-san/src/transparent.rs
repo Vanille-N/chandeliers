@@ -57,6 +57,12 @@ impl From<usize> for Transparent<usize> {
     }
 }
 
+impl<T> From<Option<T>> for Transparent<Option<T>> {
+    fn from(inner: Option<T>) -> Self {
+        Self { inner }
+    }
+}
+
 impl<T> PartialEq for Transparent<T> {
     fn eq(&self, _: &Self) -> bool {
         true
