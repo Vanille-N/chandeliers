@@ -99,7 +99,7 @@ chandeliers_lus::decl! {
     const PROBA_FAIL: float = 0.9;
 
     #[rustc_allow[unused_variables]] // We could also rename `i` into `_i`
-    #[doc("Return `true` with probability `PROBA_SUCCESS`.")]
+    #[doc("Return `true` with probability `PROBA_FAIL`.")]
     #[doc("Note: the input is ignored")]
     node ignore_input_and_pick_random(i : int) returns (b : bool);
     let
