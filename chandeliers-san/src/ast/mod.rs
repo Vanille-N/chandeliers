@@ -195,6 +195,12 @@ pub mod ty {
         pub clk: Sp<Clock>,
     }
 
+    impl<T: fmt::Display> fmt::Display for Clocked<T> {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            write!(f, "{}{}", self.inner, self.clk)
+        }
+    }
+
     /// A scalar type with a clock becomes a fixed-size rotating stream
     /// of values.
     #[derive(Debug, Clone)]
@@ -204,6 +210,12 @@ pub mod ty {
         /// How many steps into the past this variable is used
         /// (computed by `MakePositive`).
         pub depth: Sp<past::Depth>,
+    }
+
+    impl fmt::Display for Stream {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            write!(f, "{}", self.ty)
+        }
     }
 
     crate::sp::derive_with_span!(Tuple);
@@ -644,6 +656,12 @@ pub mod decl {
         pub name: Sp<var::Local>,
         /// Type of the variable (including the temporal depth and clock).
         pub ty: Sp<ty::Stream>,
+    }
+
+    impl fmt::Display for TyVar {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            write!(f, "{}: {}", self.name, self.ty)
+        }
     }
 
     crate::sp::derive_with_span!(NodeName);

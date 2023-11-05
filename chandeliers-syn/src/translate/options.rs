@@ -133,6 +133,8 @@ pub struct Decl {
     rustc_allow: SetOpt<Vec<syn::Ident>>,
     /// `#[doc("Message")]`: insert documentation for this node.
     doc: SetOpt<Vec<Sp<String>>>,
+    /// `#[trait]`: implement `Step` for this node rather than just an inherent impl.
+    impl_trait: SetOpt<bool>,
 }
 
 impl Default for Decl {
@@ -144,6 +146,7 @@ impl Default for Decl {
             main: SetOpt::create("#[main(nb_iter)]", None),
             rustc_allow: SetOpt::create("#[rustc_allow(attr)]", vec![]),
             doc: SetOpt::create("#[doc(\"Message\")]", vec![]),
+            impl_trait: SetOpt::create("`#[trait]`", false),
         }
     }
 }
@@ -178,7 +181,7 @@ impl Decl {
         project! {
             self: Decl => Const {
                 take { export, rustc_allow, doc, public, }
-                skip { trace, main, }
+                skip { trace, main, impl_trait, }
             }
         }
     }
@@ -187,7 +190,7 @@ impl Decl {
     pub fn for_node(self) -> Result<Node> {
         project! {
             self: Decl => Node {
-                take { trace, export, main, rustc_allow, doc, public, }
+                take { trace, export, main, rustc_allow, doc, public, impl_trait, }
                 skip {}
             }
         }
@@ -198,7 +201,7 @@ impl Decl {
         project! {
             self: Decl => ExtConst {
                 take { rustc_allow, }
-                skip { trace, export, main, doc, public, }
+                skip { trace, export, main, doc, public, impl_trait, }
             }
         }
     }
@@ -208,7 +211,7 @@ impl Decl {
         project! {
             self: Decl => ExtNode {
                 take { trace, main, rustc_allow, }
-                skip { export, doc, public, }
+                skip { export, doc, public, impl_trait, }
             }
         }
     }
@@ -268,6 +271,16 @@ impl Decl {
                     syn:("`#[pub]`")
                 ),
             },
+            "trait" => match args {
+                ([], []) => {
+                    self.impl_trait.set(true, attr.span.into());
+                }
+                _ => malformed!(
+                    msg:("expects no arguments")
+                    syn:("`#[trait]`")
+                ),
+            },
+
             "main" => match args {
                 ([], []) => self.main.some(100, attr.span.into()),
                 ([], [Lit::Int(i)]) => self.main.some(

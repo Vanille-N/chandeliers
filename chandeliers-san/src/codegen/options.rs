@@ -144,8 +144,8 @@ generic_option! {
     trait PubQualifier for { Const, Node }
     impl {
         from public return &bool;
-        fn pub_qualifier(&self) -> TokenStream {
-            if *self.fetch() {
+        fn pub_qualifier(&self, implementing_trait: bool) -> TokenStream {
+            if *self.fetch() && !implementing_trait{
                 quote!(pub)
             } else {
                 quote!()

@@ -322,6 +322,12 @@ macro_rules! selection_aux_decl {
                 #[doc = "`#[pub]`: make the struct public."]
                 pub public: UseOpt<bool, Sites<Codegen, Over>>,
         ) ++ ( $($rest)* ) ); };
+    ( $struct:ident ( $($done:tt)* ) ++ ( impl_trait , $($rest:tt)* ) )
+        // #[export] is of type `bool` and is useful only during codegen.
+        => { selection_aux_decl!($struct ( $($done)*
+                #[doc = "`#[trait]`: make the struct public."]
+                pub impl_trait: UseOpt<bool, Sites<Codegen, Over>>,
+        ) ++ ( $($rest)* ) ); };
     ( $struct:ident ( $($done:tt)* ) ++ ( main , $($rest:tt)* ) )
         // #[main] is of type `Option<usize>` and is useful only during both
         // typechecking (verify that the inputs and outputs are `()`) and codegen
@@ -386,7 +392,7 @@ macro_rules! selection {
     };
 }
 
-selection! { pub struct Node { trace, export, public, main, rustc_allow, doc } }
+selection! { pub struct Node { trace, export, public, main, rustc_allow, doc, impl_trait } }
 selection! { pub struct ExtNode { trace, main, rustc_allow } }
 selection! { pub struct Const { export, public, rustc_allow, doc } }
 selection! { pub struct ExtConst { rustc_allow } }

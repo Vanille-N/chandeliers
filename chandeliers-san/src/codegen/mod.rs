@@ -57,32 +57,31 @@ impl ToTokens for decl::Const {
         let ext_name = name.as_raw_ident();
         let glob = name.as_sanitized_ident();
         let value = value.const_expr_tokens();
-        let ty = ty.as_defined_ty();
-        let pub_qualifier = options.pub_qualifier();
+        let rs_ty = ty.as_defined_ty();
+        let pub_qualifier = options.pub_qualifier(/*trait*/ false);
         let rustc_allow_1 = options.rustc_allow.fetch::<This>().iter();
         let rustc_allow_2 = options.rustc_allow.fetch::<This>().iter();
         let export = *options.export.fetch::<This>(); // FIXME: sanitized globs
 
+        let pretty_ty = format!("`{}`", ty);
         let docs = options.docs();
         let declaration = quote_spanned! {span.into()=>
-            #pub_qualifier const #ext_name : #ty = #glob ;
+            #pub_qualifier const #ext_name : #rs_ty = #glob ;
         };
 
-        let doc = format!("Toplevel constant `{name}`");
         toks.extend(quote! {
-            #[doc = #doc]
-            #[doc = "(Declared with UID for internal usage)"]
+            #[doc(hidden)]
             #[allow(non_upper_case_globals)]
             #( #[allow( #rustc_allow_2 )] )*
-            const #glob : #ty = #value ;
+            const #glob : #rs_ty = #value ;
         });
 
         if export {
             toks.extend(quote! {
                 #docs
                 #[doc = "\n"]
-                #[doc = #doc]
-                #[doc = "(Visible by the outside)"]
+                #[doc = "Constant of type"]
+                #[doc = #pretty_ty]
                 #[allow(non_upper_case_globals)]
                 #( #[allow( #rustc_allow_1 )] )*
                 #declaration
@@ -121,9 +120,8 @@ impl ToTokens for decl::ExtConst {
         let real = quote_spanned!(name.span.into()=> real );
         let expected_wrapped = quote_spanned!(ty.span.into()=> Type<#expected> );
         let rustc_allow = options.rustc_allow.fetch::<This>().iter();
-        let doc = format!("Reimport of a toplevel constant; assumes that `{name}` is provided");
         toks.extend(quote! {
-            #[doc = #doc]
+            #[doc(hidden)]
             #[allow(non_upper_case_globals)]
             #( #[allow( #rustc_allow )] )*
             const #glob: #expected = {
@@ -240,7 +238,7 @@ impl decl::Node {
         //let outputs_ty_3 = outputs.as_defined_tys();
         let outputs_vs_2 = outputs.as_values();
 
-        let pub_qualifier = options.pub_qualifier();
+        let pub_qualifier = options.pub_qualifier(/*trait*/ false);
 
         let (trace_pre, trace_post) = options.traces("      ", name, inputs, outputs);
         let rustc_allow_1 = options.rustc_allow.fetch::<This>().iter();
@@ -248,9 +246,7 @@ impl decl::Node {
 
         let doc_name = format!(" `{name}` ");
         let declaration = quote_spanned! {name.span.into()=>
-            #[doc = " Node definition"]
-            #[doc = #doc_name]
-            #[doc = "(for internal use)"]
+            #[doc(hidden)]
             #[derive(Debug, Default)]
             #[allow(non_camel_case_types)]
             #[allow(non_snake_case)]
@@ -269,8 +265,6 @@ impl decl::Node {
         };
 
         let implementation = quote_spanned! {name.span.into()=>
-            #[doc = " Implementation of Step for"]
-            #[doc = #doc_name]
             #[allow(non_snake_case)]
             #[allow(unused_imports)]
             #[allow(redundant_semicolons)]
@@ -281,14 +275,14 @@ impl decl::Node {
                 //type Output = #outputs_ty_3;
                 fn step(
                     &mut self,
-                    __inputs: #expected_input_tys_impl,
+                    inputs: #expected_input_tys_impl,
                 ) ->
                     #expected_output_tys_impl
                 {
                     use ::chandeliers_sem::traits::{Embed, Step};
-                    ::chandeliers_sem::implicit_clock!(__inputs);
+                    ::chandeliers_sem::implicit_clock!(inputs);
                     "Implicit clock is running";
-                    let #inputs_vs_asst = __inputs;
+                    let #inputs_vs_asst = inputs;
                     #trace_pre
                     "Begin body of the node";
                     #( #stmts ; )*
@@ -332,10 +326,25 @@ impl decl::Node {
 
         let docs = options.docs();
 
-        let pub_qualifier = options.pub_qualifier();
+        let must_impl_trait = *options.impl_trait.fetch::<This>();
+        let (impl_trait, trait_input, trait_output) = if must_impl_trait {
+            let inputs = inputs.as_defined_tys();
+            let outputs = outputs.as_defined_tys();
+            (
+                quote!( ::chandeliers_sem::stepping::Step for ),
+                quote!( type Input = #inputs ; ),
+                quote!( type Output = #outputs ; ),
+            )
+        } else {
+            (quote!(), quote!(), quote!())
+        };
+
+        let pub_qualifier = options.pub_qualifier(must_impl_trait);
         if !options.export.fetch::<This>() {
             return quote!();
         }
+
+        let pretty_io = format!("`{} -> {}`", inputs, outputs);
 
         let rustc_allow = options.rustc_allow.fetch::<This>().iter();
 
@@ -347,9 +356,6 @@ impl decl::Node {
         let ext_annotated_declaration = quote_spanned! {name.span.into()=>
             #docs
             #[doc = "\n"]
-            #[doc = " Wrapper declaration of"]
-            #[doc = #doc_name]
-            #[doc = " (part of the public interface)"]
             #[derive(Debug, Default)]
             #[allow(non_camel_case_types)]
             #[allow(dead_code)]
@@ -358,20 +364,22 @@ impl decl::Node {
         };
 
         let ext_step_impl = quote_spanned! {name.span.into()=>
-            #[doc = " Implementation of Step for"]
-            #[doc = #doc_name]
-            #[doc = " (immediately defers to Step for inner)"]
             #[allow(clippy::unused_unit)]
-            impl #ext_name {
+            impl #impl_trait #ext_name {
+                #trait_input
+                #trait_output
+                #[doc = #doc_name]
+                #[doc = "is a Lustre node with signature"]
+                #[doc = #pretty_io]
                 #[allow(unused_imports)]
-                pub fn step(
+                #pub_qualifier fn step(
                     &mut self,
-                    __inputs: #expected_input_tys_decl,
+                    inputs: #expected_input_tys_decl,
                 ) ->
                     #expected_output_tys_decl
                 {
-                    ::chandeliers_sem::implicit_clock!(__inputs);
-                    self.inner.step(__inputs)
+                    ::chandeliers_sem::implicit_clock!(inputs);
+                    self.inner.step(inputs)
                 }
             }
         };
@@ -480,7 +488,7 @@ impl ToTokens for decl::ExtNode {
 
         let expected_output_tys = outputs.as_embedded_tys();
         let expected_input_tys = inputs.as_embedded_tys();
-        let actual_inputs = quote_spanned! {inputs.span.into()=> __inputs };
+        let actual_inputs = quote_spanned! {inputs.span.into()=> inputs };
         let rustc_allow_1 = options.rustc_allow.fetch::<This>().iter();
         let rustc_allow_2 = options.rustc_allow.fetch::<This>().iter();
 
@@ -491,14 +499,13 @@ impl ToTokens for decl::ExtNode {
         let (trace_pre, trace_post) = options.traces("[ext] ", name, inputs, outputs);
 
         toks.extend(quote_spanned! {name.span.into()=>
+            #[doc(hidden)]
             #[derive(Debug, Default)]
             #[allow(non_camel_case_types)]
-            //#[allow(dead_code)]
             #( #[allow( #rustc_allow_1 )] )*
             struct #uid_name { inner: #ext_name }
 
             #[allow(clippy::let_and_return)]
-            // FIXME: impl Step ?
             #( #[allow( #rustc_allow_2 )] )*
             impl #uid_name {
                 #[allow(unused_imports)]
@@ -510,9 +517,9 @@ impl ToTokens for decl::ExtNode {
                 ) -> #expected_output_tys
                 {
                     use ::chandeliers_sem::traits::{Embed, Step};
-                    ::chandeliers_sem::implicit_clock!(__inputs);
+                    ::chandeliers_sem::implicit_clock!(inputs);
 
-                    let #input_asst = __inputs;
+                    let #input_asst = inputs;
                     #trace_pre
 
                     let #output_asst = self.inner.step(#actual_inputs);

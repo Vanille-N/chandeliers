@@ -242,11 +242,11 @@ lustre::decl! {
 }
 
 lustre::decl! {
-    #[doc("Value of the fibonacci sequence at index 0")]
-    #[rustc_allow[dead_code]]
+    #[doc("Value of the Fibonacci sequence at index 0")]
+    #[export]
     const FIB0 : int = 0;
-    #[doc("Value of the fibonacci sequence at index 1")]
-    #[rustc_allow[dead_code]]
+    #[doc("Value of the Fibonacci sequence at index 1")]
+    #[export]
     const FIB1 : int = 1;
 
     #[export]
@@ -493,5 +493,14 @@ mod dead {
         #[rustc_allow[dead_code]]
         node test() returns ();
         let tel
+    }
+}
+
+mod by_trait {
+    chandeliers_lus::decl! {
+        #[trait]
+        #[export]
+        node test(i : int) returns (o : int);
+        let o = i + (0 fby o); tel;
     }
 }
