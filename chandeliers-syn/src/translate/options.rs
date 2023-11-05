@@ -244,10 +244,10 @@ impl Decl {
             "trace" => match args {
                 ([], []) => self.trace.some(TraceFile::StdOut, attr.span.into()),
                 ([ident], []) if ident.as_str() == "stdout" => {
-                    self.trace.some(TraceFile::StdOut, attr.span.into())
+                    self.trace.some(TraceFile::StdOut, attr.span.into());
                 }
                 ([ident], []) if ident.as_str() == "stderr" => {
-                    self.trace.some(TraceFile::StdErr, attr.span.into())
+                    self.trace.some(TraceFile::StdErr, attr.span.into());
                 }
                 _ => malformed!(
                     msg:("expects no arguments")

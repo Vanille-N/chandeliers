@@ -63,16 +63,18 @@ impl ToTokens for decl::Const {
         let rustc_allow_2 = options.rustc_allow.fetch::<This>().iter();
         let export = *options.export.fetch::<This>();
 
-        let pretty_ty = format!("`{}`", ty);
+        let pretty_ty = format!("`{ty}`");
         let docs = options.docs();
         let declaration = quote_spanned! {span.into()=>
             #pub_qualifier const #ext_name : #rs_ty = #glob ;
         };
 
         toks.extend(quote_spanned! {span.into()=>
-            #[doc(hidden)]
-            #[allow(non_upper_case_globals)]
-            #( #[allow( #rustc_allow_2 )] )*
+            #[doc(hidden)] // We don't want the inner decl to be visible at all
+            #[allow(non_upper_case_globals)] // Lustre naming conventions
+            // Completely nonsensical suggestion by Clippy.
+            #[allow(clippy::unreadable_literal, clippy::zero_prefixed_literal)]
+            #( #[allow( #rustc_allow_2 )] )* // User-provided
             const #glob : #rs_ty = #value ;
         });
 
@@ -82,8 +84,8 @@ impl ToTokens for decl::Const {
                 #[doc = "\n"]
                 #[doc = "Constant of type"]
                 #[doc = #pretty_ty]
-                #[allow(non_upper_case_globals)]
-                #( #[allow( #rustc_allow_1 )] )*
+                #[allow(non_upper_case_globals)] // Lustre naming conventions
+                #( #[allow( #rustc_allow_1 )] )* // User-provided
                 #declaration
             });
         }
@@ -121,9 +123,9 @@ impl ToTokens for decl::ExtConst {
         let expected_wrapped = quote_spanned!(ty.span.into()=> Type<#expected> );
         let rustc_allow = options.rustc_allow.fetch::<This>().iter();
         toks.extend(quote_spanned! {name.span.into()=>
-            #[doc(hidden)]
-            #[allow(non_upper_case_globals)]
-            #( #[allow( #rustc_allow )] )*
+            #[doc(hidden)] // Internal declaration only.
+            #[allow(non_upper_case_globals)] // Lustre naming conventions.
+            #( #[allow( #rustc_allow )] )* // User-provided
             const #glob: #expected = {
                 struct Type<T>(T);
                 let #real = Type(#ext_name);
@@ -246,12 +248,12 @@ impl decl::Node {
 
         let doc_name = format!(" `{name}` ");
         let declaration = quote_spanned! {name.span.into()=>
-            #[doc(hidden)]
+            #[doc(hidden)] // Inner declaration only.
             #[derive(Debug, Default)]
-            #[allow(non_camel_case_types)]
-            #[allow(non_snake_case)]
-            #[allow(dead_code)]
-            #( #[allow( #rustc_allow_1 )] )*
+            #[allow(non_camel_case_types)] // Lustre naming conventions.
+            #[allow(non_snake_case)] // Lustre naming conventions.
+            #[allow(dead_code)] // Trigger only for impl step.
+            #( #[allow( #rustc_allow_1 )] )* // User-provided.
             #pub_qualifier struct #uid_name {
                 __clock: usize,
                 #[doc = " Strictly positive variables of"]
@@ -266,14 +268,13 @@ impl decl::Node {
         };
 
         let implementation = quote_spanned! {name.span.into()=>
-            #[allow(non_snake_case)]
-            #[allow(unused_imports)]
-            #[allow(redundant_semicolons)]
-            #( #[allow( #rustc_allow_2 )] )*
-            //#[allow(clippy::unused_unit)]
-            impl /*::chandeliers_sem::traits::Step for*/ #uid_name {
-                //type Input = #inputs_ty_3;
-                //type Output = #outputs_ty_3;
+            #[allow(non_snake_case)] // Lustre naming conventions.
+            #[allow(unused_imports)] // Using sem::traits::* just in case.
+            #[allow(clippy::no_effect)] // We are inserting "comments" as strings.
+            // Completely nonsensical suggestion by Clippy.
+            #[allow(clippy::unreadable_literal, clippy::zero_prefixed_literal)]
+            #( #[allow( #rustc_allow_2 )] )* // User-provided.
+            impl #uid_name {
                 fn step(
                     &mut self,
                     inputs: #expected_input_tys_impl,
@@ -286,7 +287,7 @@ impl decl::Node {
                     let #inputs_vs_asst = inputs;
                     #trace_pre
                     "Begin body of the node";
-                    #( #stmts ; )*
+                    #( #stmts )*
                     "End body of the node";
                     ::chandeliers_sem::tick!(self);
                     #( ::chandeliers_sem::update!(self, #pos_inputs_use ); )*
@@ -345,9 +346,10 @@ impl decl::Node {
             return quote!();
         }
 
-        let pretty_io = format!("`{} -> {}`", inputs, outputs);
+        let pretty_io = format!("`{inputs} -> {outputs}`");
 
-        let rustc_allow = options.rustc_allow.fetch::<This>().iter();
+        let rustc_allow_1 = options.rustc_allow.fetch::<This>().iter();
+        let rustc_allow_2 = options.rustc_allow.fetch::<This>().iter();
 
         let doc_name = format!(" `{name}` ");
         let ext_declaration = quote_spanned! {name.span.into()=>
@@ -358,14 +360,14 @@ impl decl::Node {
             #docs
             #[doc = "\n"]
             #[derive(Debug, Default)]
-            #[allow(non_camel_case_types)]
-            #[allow(dead_code)]
-            #( #[allow( #rustc_allow )] )*
+            #[allow(non_camel_case_types)] // Lustre naming conventions.
+            #[allow(dead_code)] // Only trigger on impl.
+            #( #[allow( #rustc_allow_1 )] )* // User-provided.
             #ext_declaration
         };
 
         let ext_step_impl = quote_spanned! {name.span.into()=>
-            #[allow(clippy::unused_unit)]
+            #( #[allow( #rustc_allow_2 )] )* // User-provided.
             impl #impl_trait #ext_name {
                 #trait_input
                 #trait_output
@@ -500,19 +502,21 @@ impl ToTokens for decl::ExtNode {
         let (trace_pre, trace_post) = options.traces("[ext] ", name, inputs, outputs);
 
         toks.extend(quote_spanned! {name.span.into()=>
-            #[doc(hidden)]
+            #[doc(hidden)] // Internal only.
             #[derive(Debug, Default)]
-            #[allow(non_camel_case_types)]
-            #[allow(dead_code)]
-            #( #[allow( #rustc_allow_1 )] )*
-            struct #uid_name { inner: #ext_name }
+            #[allow(non_camel_case_types)] // Lustre naming conventions.
+            #[allow(dead_code)] // Only trigger on impl step.
+            #( #[allow( #rustc_allow_1 )] )* // User-provided.
+            struct #uid_name {
+                inner: #ext_name
+            }
 
-            #[allow(clippy::let_and_return)]
-            #( #[allow( #rustc_allow_2 )] )*
+            #[allow(clippy::let_and_return)] // In case there is no trace.
+            #( #[allow( #rustc_allow_2 )] )* // User-provided.
             impl #uid_name {
-                #[allow(unused_imports)]
-                #[allow(non_snake_case)]
-                #[allow(unused_variables)]
+                #[allow(unused_imports)] // Using sem::traits::* just in case.
+                #[allow(non_snake_case)] // Lustre naming conventions.
+                #[allow(unused_variables)] // Unpacked but not used.
                 pub fn step(
                     &mut self,
                     #actual_inputs: #expected_input_tys,
@@ -738,7 +742,7 @@ impl ToTokens for stmt::Statement {
                 let target = target.as_assignment_target();
                 toks.extend(quote! {
                     #pretty;
-                    let #target = #source
+                    let #target = #source;
                 });
             }
             Self::Assert(e) => {

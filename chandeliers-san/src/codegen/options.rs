@@ -117,9 +117,10 @@ generic_option! {
                 );
                 quote_spanned! {name.span.into()=>
                     #[doc = #doc]
+                    #[allow(unused_imports)] // Step, Embed, Trusted imported just in case.
                     #( #[allow( #rustc_allow )] )*
                     pub fn main() {
-                        use ::chandeliers_sem::traits::*;
+                        use ::chandeliers_sem::traits::{Step, Embed, Trusted};
                         let mut sys = #ext_name::default();
                         if #nb_iter == 0 {
                             loop {

@@ -262,6 +262,10 @@ where
     }
 }
 
+/// Accumulator of detected dependent types.
+///
+/// We find these in the input and output clocks and we're going
+/// to insert sode code to make them not appear as unused variables.
 type DepTyAccum<'i> = &'i mut Vec<Sp<tgt::var::Local>>;
 
 /// `Box<_>` is transparently translatable, *and it consumes the `Box<_>`*.

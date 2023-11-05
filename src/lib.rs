@@ -1,11 +1,14 @@
 //! Tests
 
 #![feature(lint_reasons)]
+#![warn(clippy::pedantic)]
 
 use chandeliers_lus as lustre;
 
 #[cfg(test)]
-use chandeliers_sem::traits::*;
+use chandeliers_sem::traits::Embed;
+#[cfg(test)]
+use chandeliers_sem::traits::Trusted;
 
 use chandeliers_std::cast::float_of_int;
 
@@ -141,6 +144,7 @@ lustre::decl! {
 
 lustre::decl! {
     #[export]
+    #[rustc_allow[dead_code]]
     node add(a, b : int) returns (sum : int);
     let
         sum = a + b;
@@ -157,7 +161,7 @@ fn add_correct() {
 lustre::decl! {
     extern node float_of_int(i : int) returns (f : float);
 
-    #[export]
+    #[pub]
     node test() returns ();
     var x : float;
     let
@@ -175,7 +179,7 @@ fn test_assertion() {
 lustre::decl! {
     extern node float_of_int(i : int) returns (f : float);
 
-    #[export]
+    #[pub]
     node failing() returns ();
     var x : float;
     let
@@ -234,7 +238,7 @@ lustre::decl! {
 }
 
 lustre::decl! {
-    #[export]
+    #[pub]
     node count() returns (x : int);
     let
         x = 0 -> pre x + 1;
@@ -243,13 +247,13 @@ lustre::decl! {
 
 lustre::decl! {
     #[doc("Value of the Fibonacci sequence at index 0")]
-    #[export]
+    #[pub]
     const FIB0 : int = 0;
     #[doc("Value of the Fibonacci sequence at index 1")]
-    #[export]
+    #[pub]
     const FIB1 : int = 1;
 
-    #[export]
+    #[pub]
     node fib() returns (x : int);
     let
         x = FIB0 -> FIB1 -> pre x + pre pre x;
@@ -259,7 +263,7 @@ lustre::decl! {
 lustre::decl! {
     extern node count() returns (out : int);
 
-    #[export]
+    #[pub]
     node counting_twice() returns (out : int);
     var b : bool;
     let
@@ -267,7 +271,7 @@ lustre::decl! {
         out = if true then count() else count();
     tel;
 
-    #[export]
+    #[pub]
     node counting_late() returns (out : int);
     let
         out = 0 fby 0 fby count();
@@ -304,8 +308,10 @@ fn counting_late_behavior() {
 }
 
 mod random {
-    use chandeliers_sem::traits::*;
-    use chandeliers_sem::*;
+    use chandeliers_sem::traits::Step;
+    #[cfg(test)]
+    use chandeliers_sem::traits::{Embed, Trusted};
+    use chandeliers_sem::{implicit_clock, lit, ty};
     //use rand::Rng;
 
     #[derive(Default, Debug)]
@@ -330,7 +336,8 @@ mod random {
             s = inc + (0 fby s);
         tel;
 
-        #[export]
+        #[pub]
+        #[rustc_allow[dead_code]]
         node randsum() returns (r, s : int);
         let
             r = RandomInt();
@@ -365,7 +372,7 @@ chandeliers_lus::decl! {
 */
 
 chandeliers_lus::decl! {
-    #[export]
+    #[pub]
     node count1() returns (n : int);
     let n = 0 fby n + 1; tel
 }
