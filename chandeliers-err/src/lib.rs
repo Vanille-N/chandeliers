@@ -22,7 +22,12 @@
 
 use std::fmt::Display;
 
-use proc_macro2::Span;
+pub mod transparent;
+pub use transparent::Transparent;
+
+/// Reexport of `Span`, but this time forgeable in tests and
+/// transparent to `Eq` and `Hash`.
+pub type Span = Transparent<proc_macro2::Span>;
 
 /// Repository of this project, to be displayed in error messages.
 #[macro_export]
@@ -48,7 +53,7 @@ with the code that produced it and the version of Chandeliers you are using.
             file!(),
             line!(),
             column!(),
-            ::chandeliers_err::repo!(),
+            $crate::repo!(),
         );
     }};
 }

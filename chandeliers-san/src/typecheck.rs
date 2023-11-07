@@ -2,11 +2,10 @@
 
 use std::collections::HashMap;
 
-use chandeliers_err::{self as err, IntoError, Result};
+use chandeliers_err::{self as err, IntoError, Result, Transparent};
 
 use crate::ast::{self, ty, var, Tuple};
 use crate::sp::{Sp, Span, WithSpan};
-use crate::transparent::Transparent;
 
 use ast::options::usage::Typecheck as This;
 
@@ -21,7 +20,7 @@ struct WithDefSite<T> {
     /// Object and its usage site.
     inner: Sp<T>,
     /// Where the object was first defined.
-    def_site: Transparent<Span>,
+    def_site: Span,
 }
 
 impl<T> WithDefSite<T> {
@@ -897,8 +896,8 @@ impl TypeCheckExpr for ty::Clock {
                     id.as_ref()
                         .map(|span, repr| var::Local {
                             repr: repr.clone().with_span(span),
-                            run_uid: Transparent { inner: 0 }, // We can forge the `run_uid` since it's not relevant in
-                                                               // the `impl PartialEq` and `impl Hash`.
+                            run_uid: Transparent::forge(), // We can forge the `run_uid` since it's not relevant in
+                                                           // the `impl PartialEq` and `impl Hash`.
                         })
                         .as_ref(),
                 )?;

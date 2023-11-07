@@ -166,10 +166,9 @@
 
 use std::collections::HashSet;
 
-use chandeliers_err::{self as err, IntoError, Result};
+use chandeliers_err::{self as err, IntoError, Result, Transparent};
 use chandeliers_san::ast as tgt;
 use chandeliers_san::sp::{Sp, Span, WithSpan};
-use chandeliers_san::transparent::Transparent;
 
 use crate::ast as src;
 

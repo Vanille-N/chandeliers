@@ -115,7 +115,7 @@ generic_option! {
                 let doc = format!(
                     "Main function automatically generated from {name} (runs for {nb_iter} steps)"
                 );
-                quote_spanned! {name.span.into()=>
+                quote_spanned! {name.span.unwrap()=>
                     #[doc = #doc]
                     #[allow(unused_imports)] // Step, Embed, Trusted imported just in case.
                     #( #[allow( #rustc_allow )] )*

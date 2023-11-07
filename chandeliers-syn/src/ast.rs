@@ -16,7 +16,6 @@
 
 use std::fmt;
 
-use proc_macro2::Span;
 use syn::ext::IdentExt;
 use syn::parse::{Parse, ParseStream, Result};
 use syn::punctuated::Punctuated;
@@ -24,7 +23,7 @@ use syn::spanned::Spanned;
 use syn::token::{Bracket, Paren};
 use syn::{Ident, Lit, Token};
 
-use chandeliers_san::sp::{Sp, SpanEnd};
+use chandeliers_san::sp::{Sp, Span, SpanEnd};
 
 /// Impl `SpanEnd` for structs.
 ///
@@ -86,7 +85,7 @@ macro_rules! span_end_from_spanned {
     ( $($ty:tt)* ) => {
         impl SpanEnd for $($ty)* {
             fn span_end(&self) -> Option<Span> {
-                Some(self.span())
+                Some(Span::from(self.span()))
             }
         }
     }
@@ -321,7 +320,7 @@ impl ArgsTys {
         });
         Ok(Sp {
             t: Self { items },
-            span: span.into(),
+            span: Span::from(span),
         })
     }
 
@@ -335,7 +334,7 @@ impl ArgsTys {
 
         Ok(Sp {
             t: Self { items },
-            span: span.into(),
+            span: Span::from(span),
         })
     }
 }

@@ -295,8 +295,10 @@ impl Decl {
             },
             "rustc_allow" => match args {
                 ([inner], []) => {
-                    self.rustc_allow
-                        .push(syn::Ident::new(inner, params.span.into()), attr.span.into());
+                    self.rustc_allow.push(
+                        syn::Ident::new(inner, params.span.unwrap()),
+                        attr.span.into(),
+                    );
                 }
                 _ => malformed!(
                     msg:("expects exactly one identifier")

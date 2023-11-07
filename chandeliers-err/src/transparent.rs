@@ -27,39 +27,38 @@
 use std::fmt;
 use std::hash::{Hash, Hasher};
 
-use chandeliers_err as err;
-
-use crate::sp::Span;
-
 /// A type that transparently implements `PartialEq` and `Hash`, to be used
 /// in structs that carry additional data that should not be relevant in comparisons.
+///
+/// It additionally supports creating dummy values and they will also compare
+/// equal to all other and hash identically.
 #[derive(Debug, Clone, Copy)]
 pub struct Transparent<T> {
     /// Payload.
-    pub inner: T,
+    inner: Option<T>,
 }
 
-impl From<Transparent<Span>> for Span {
-    fn from(val: Transparent<Span>) -> Self {
-        val.inner
+impl<T> Transparent<T> {
+    /// Assert that the value was not forged and get its contents.
+    /// # Panics
+    /// fails if `self` was obtainedy by `Transparent::forge()`.
+    pub fn unwrap(self) -> T {
+        match self.inner {
+            Some(x) => x,
+            None => crate::abort!("Attempted to read a forged transparent value"),
+        }
+    }
+
+    /// Create a dummy value.
+    pub fn forge() -> Self {
+        Self { inner: None }
     }
 }
 
-impl From<Span> for Transparent<Span> {
-    fn from(span: Span) -> Self {
-        Self { inner: span }
-    }
-}
-
-impl From<usize> for Transparent<usize> {
-    fn from(i: usize) -> Self {
-        Self { inner: i }
-    }
-}
-
-impl<T> From<Option<T>> for Transparent<Option<T>> {
-    fn from(inner: Option<T>) -> Self {
-        Self { inner }
+impl<T> Transparent<T> {
+    /// Wrap in a transparent.
+    pub fn from(inner: T) -> Self {
+        Self { inner: Some(inner) }
     }
 }
 
@@ -77,23 +76,32 @@ impl<T> Hash for Transparent<T> {
 
 impl<T: fmt::Display> fmt::Display for Transparent<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.inner)
+        match &self.inner {
+            Some(v) => write!(f, "{v}"),
+            None => write!(f, "<undef>"),
+        }
     }
 }
 
-impl Transparent<Span> {
+impl Transparent<proc_macro2::Span> {
     /// Map `join` to the inner `span`s
     #[must_use]
     pub fn join(self, other: Self) -> Option<Self> {
+        let Some(v1) = self.inner else {
+            return Some(self);
+        };
+        let Some(v2) = other.inner else {
+            return Some(self);
+        };
         Some(Self {
-            inner: self.inner.join(other.inner)?,
+            inner: Some(v1.join(v2)?),
         })
     }
 }
 
-impl<T: err::TrySpan> err::TrySpan for Transparent<T> {
+impl<T: crate::TrySpan> crate::TrySpan for Transparent<T> {
     /// `Sp` always has a span, so `TrySpan` is guaranteed to succeed.
-    fn try_span(&self) -> Option<Span> {
+    fn try_span(&self) -> Option<crate::Span> {
         self.inner.try_span()
     }
 }

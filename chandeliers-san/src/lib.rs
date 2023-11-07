@@ -78,5 +78,4 @@ pub mod clockcheck;
 pub mod codegen;
 pub mod positivity;
 pub mod sp;
-pub mod transparent;
 pub mod typecheck;

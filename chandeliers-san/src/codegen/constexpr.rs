@@ -104,9 +104,11 @@ impl ConstExprTokens for expr::Expr {
 impl ConstExprTokens for expr::Lit {
     fn const_expr_tokens(&self, span: Span) -> TokenStream {
         let lit = match self {
-            Self::Int(i) => syn::Lit::Int(syn::LitInt::new(&format!("{i}i64"), span)),
-            Self::Float(f) => syn::Lit::Float(syn::LitFloat::new(&format!("{f}f64"), span)),
-            Self::Bool(b) => syn::Lit::Bool(syn::LitBool::new(*b, span)),
+            Self::Int(i) => syn::Lit::Int(syn::LitInt::new(&format!("{i}i64"), span.unwrap())),
+            Self::Float(f) => {
+                syn::Lit::Float(syn::LitFloat::new(&format!("{f}f64"), span.unwrap()))
+            }
+            Self::Bool(b) => syn::Lit::Bool(syn::LitBool::new(*b, span.unwrap())),
         };
         quote!( #lit )
     }

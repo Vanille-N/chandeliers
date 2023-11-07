@@ -258,7 +258,7 @@ pub mod var {
     use std::fmt;
 
     use crate::sp::Sp;
-    use crate::transparent::Transparent;
+    use chandeliers_err::Transparent;
 
     crate::sp::derive_with_span!(Local);
     /// A local variable.
@@ -647,7 +647,7 @@ pub mod decl {
 
     use crate::ast::{expr, options, stmt, ty, var, Tuple};
     use crate::sp::Sp;
-    use crate::transparent::Transparent;
+    use chandeliers_err::Transparent;
 
     /// A typed variable.
     #[derive(Debug, Clone)]
