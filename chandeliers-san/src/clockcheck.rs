@@ -1,10 +1,51 @@
 //! Verify the consistency of clocks within and between nodes.
+//!
+//! The main challenge here is the handling of tuples and functions, because
+//! we need to have relative clocks and clock substitutions.
+//! A lot of the difficulty in that comes from the fact that we want this
+//! to be allowed:
+//! `node foo() returns (b; i when b)`
+//! This means that the output of `foo` must be a tuple where the second
+//! element is clocked by the first, and as soon as we assign it to
+//! a variable binding `(x, y) = foo()` we need to instanciate the type
+//! as `y when x`.
+//!
+//! To this end this module operates on the following core types
+//! - `AbsoluteClk` is a named clock, which is what we have for variables
+//!   and function arguments,
+//! - `RelativeClk` allows specifying dependencies within one tuple,
+//! - `MappingClk` can additionally specify relations between an input
+//!   tuple and an output tuple.
+//!
+//! Here are some examples to develop the intuition of how these are encoded:
+//! In `var x; y when x` we have
+//! - `x`: `AbsoluteClk::Implicit`
+//! - `y`: `AbsoluteClk::Explicit("x")`
+//!
+//! In `(x, y when x, z when y)` we have
+//! - `x`: `RelativeClk::Implicit`
+//! - `y`: `RelativeClk::Nth(0)` (0 is the index of `x`)
+//! - `z`: `RelativeClk::Nth(1)` (1 is the index of `y`)
+//!
+//! In `node foo(x; u when x) returns (y; z when x; w when y)` we have
+//! - `x`: `RelativeClk::Implicit`
+//! - `u`: `RelativeClk::Nth(0)` (0 is the index of `x`)
+//! - `y`: `MappingClk::Implicit`
+//! - `z`: `MappingClk::NthIn(0)` (0 is the index of `x`)
+//! - `w`: `MappingClk::NthOut(0)` (0 is the index of `y`)
+//!
+//! In all of the above there is one additional layer to the clock that states
+//! whether the dependency is positive (`when`) or negative (`whenot`).
+//!
+//! Once these types are in place and because each of them sufficiently
+//! restricts the representable constraitts, most of the rest is straightforward
+//! bookkeeping to translate from one representation to another.
 
 #![allow(dead_code)] // FIXME
 
 use std::collections::HashMap;
 
-use chandeliers_err::{self as err, Result};
+use chandeliers_err::{self as err, IntoError, Result};
 
 use crate::ast::ty::Clock;
 use crate::ast::{decl, expr, ty, var};
@@ -38,7 +79,8 @@ impl<T> WithDefSite<T> {
     }
 }
 
-#[derive(Debug, Clone)]
+crate::sp::derive_with_span!(Clocked<T> where <T>);
+#[derive(Debug, Clone, PartialEq, Eq)]
 struct Clocked<Clk> {
     clk: Clk,
     sign: bool,
@@ -71,14 +113,15 @@ impl<Clk> Clocked<Clk> {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 enum AbsoluteClk {
     Implicit,
     Adaptative,
     Explicit(Sp<String>),
 }
 
-#[derive(Debug, Clone)]
+crate::sp::derive_with_span!(RelativeClk<Ref> where <Ref>);
+#[derive(Debug, Clone, PartialEq, Eq)]
 enum RelativeClk<Ref> {
     Implicit(Ref),
     Nth(usize),
@@ -101,10 +144,11 @@ impl<Ref> MappingClk<Ref> {
     }
 }
 
-#[derive(Debug, Clone)]
+crate::sp::derive_with_span!(ClkTup);
+#[derive(Debug, Clone, PartialEq, Eq)]
 struct ClkTup {
     implicit: AbsoluteClk,
-    clocks: Vec<(Option<Sp<String>>, Clocked<RelativeClk<AbsoluteClk>>)>,
+    clocks: Vec<(Option<Sp<String>>, Sp<Clocked<RelativeClk<AbsoluteClk>>>)>,
 }
 
 crate::sp::derive_with_span!(ClkMap);
@@ -112,8 +156,8 @@ crate::sp::derive_with_span!(ClkMap);
 #[derive(Debug, Default, Clone)]
 struct ClkMap {
     clock_of: HashMap<Sp<String>, MappingClk<()>>,
-    inputs: Vec<Clocked<RelativeClk<()>>>,
-    outputs: Vec<Clocked<MappingClk<()>>>,
+    inputs: Vec<Sp<Clocked<RelativeClk<()>>>>,
+    outputs: Vec<Sp<Clocked<MappingClk<()>>>>,
 }
 
 impl AbsoluteClk {
@@ -151,25 +195,22 @@ impl Clocked<RelativeClk<AbsoluteClk>> {
 }
 
 impl ClkMap {
-    fn new_input(&mut self, name: Option<Sp<&String>>, clk: Sp<&ty::Clock>) {
+    fn new_input(&mut self, name: Sp<&String>, clk: Sp<&ty::Clock>) {
         let uid = self.inputs.len();
         let provides_clock = MappingClk::NthIn(uid);
         let clocked_by = self
             .fetch_clock_for(clk)
-            .map(|clk| clk.as_relative().unwrap());
-        if let Some(name) = name {
-            self.clock_of.insert(name.cloned(), provides_clock);
-        }
+            .map(|clk| clk.as_relative().unwrap())
+            .with_span(clk.span);
+        self.clock_of.insert(name.cloned(), provides_clock);
         self.inputs.push(clocked_by);
     }
 
-    fn new_output(&mut self, name: Option<Sp<&String>>, clk: Sp<&ty::Clock>) {
-        let uid = self.inputs.len();
+    fn new_output(&mut self, name: Sp<&String>, clk: Sp<&ty::Clock>) {
+        let uid = self.outputs.len();
         let provides_clock = MappingClk::NthOut(uid);
-        let clocked_by = self.fetch_clock_for(clk);
-        if let Some(name) = name {
-            self.clock_of.insert(name.cloned(), provides_clock);
-        }
+        let clocked_by = self.fetch_clock_for(clk).with_span(clk.span);
+        self.clock_of.insert(name.cloned(), provides_clock);
         self.outputs.push(clocked_by);
     }
 
@@ -177,65 +218,316 @@ impl ClkMap {
         match &clk.t {
             ty::Clock::Implicit | ty::Clock::Adaptative => Clocked::on(MappingClk::Implicit(())),
             ty::Clock::Explicit { id, activation } => Clocked {
-                clk: *self.clock_of.get(&id).unwrap(),
+                clk: *self
+                    .clock_of
+                    .get(&id)
+                    .unwrap_or_else(|| err::abort!("Malformed clock tuple: no such variable {id}")),
                 sign: *activation,
             },
         }
     }
 
-    fn translate(&self, tup_src: ClkTup) -> Result<ClkTup> {
+    fn translate(&self, tup_src: Sp<ClkTup>) -> Result<ClkTup> {
         let mut named: HashMap<Sp<String>, RelativeClk<()>> = HashMap::new();
-        let implicit: AbsoluteClk = tup_src.implicit;
-        assert!(self.inputs.len() == tup_src.clocks.len(), "Wrong length");
-        for (idx, (found, expected)) in tup_src.clocks.iter().zip(&self.inputs).enumerate() {
-            if found.1.matches_positive_absolute(&implicit) {
+        let implicit: AbsoluteClk = tup_src.t.implicit;
+        err::consistency!(
+            self.inputs.len() == tup_src.t.clocks.len(),
+            "Wrong sized tuple for function arguments, should have been caught during typechecking"
+        );
+        for (idx, (found, expected)) in tup_src.t.clocks.iter().zip(&self.inputs).enumerate() {
+            if found.1.t.matches_positive_absolute(&implicit) {
                 // We expect the implicit clock
-                if matches!(expected.clk, RelativeClk::Implicit(_)) {
-                    assert!(expected.sign, "Can only be positive on the implicit clock");
+                if matches!(expected.t.clk, RelativeClk::Implicit(_)) {
+                    err::consistency!(
+                        expected.t.sign,
+                        "Can only be positive w.r.t. the implicit clock"
+                    );
                     if let Some(name) = &found.0 {
                         named.insert(name.clone(), RelativeClk::Nth(idx));
                     }
                 } else {
-                    panic!("Expected the absolute clock here");
+                    return Err(err::Basic {
+                        msg: format!("Tuple element {} is going at the wrong speed", idx),
+                        span: found.1.span,
+                    }
+                    .into_err());
                 }
             } else {
                 // Here we should find a clock that has been added previously
                 // to the tuple.
-                if let Some(src_clk) = found.1.clk.strictly_relative() {
-                    assert!(found.1.sign == expected.sign);
-                    match found.1.clk {
+                if let Some(src_clk) = found.1.t.clk.strictly_relative() {
+                    assert!(found.1.t.sign == expected.t.sign);
+                    match found.1.t.clk {
                         RelativeClk::Nth(found_clk) => assert_eq!(found_clk, src_clk),
                         _ => panic!(),
                     };
                 } else {
-                    panic!("Wrong speed: {found:?}")
+                    return Err(err::Basic {
+                        msg: format!("Tuple element {} is going at the wrong speed", idx),
+                        span: found.1.span,
+                    }
+                    .into_err());
                 }
             }
         }
-        let tup_tgt: Vec<(Option<Sp<String>>, Clocked<RelativeClk<AbsoluteClk>>)> = self
-            .outputs
-            .iter()
-            .map(|t| {
-                (
-                    None,
-                    t.as_ref().map(|c| match c {
-                        MappingClk::Implicit(()) => RelativeClk::Implicit(implicit.clone()),
-                        MappingClk::NthOut(i) => RelativeClk::Nth(*i),
-                        MappingClk::NthIn(i) => {
-                            // If the input is named we can use it as clock,
-                            // otherwise it fails
-                            RelativeClk::Implicit(AbsoluteClk::Explicit(
-                                tup_src.clocks[*i].0.clone().unwrap(),
-                            ))
+        let mut tup_tgt: Vec<(Option<Sp<String>>, Sp<Clocked<RelativeClk<AbsoluteClk>>>)> =
+            Vec::new();
+        for clk in &self.outputs {
+            let replace = match &clk.t.clk {
+                MappingClk::Implicit(()) => RelativeClk::Implicit(implicit.clone()),
+                MappingClk::NthOut(i) => RelativeClk::Nth(*i),
+                MappingClk::NthIn(i) => {
+                    // If the input is named we can use it as clock,
+                    // otherwise it fails
+                    RelativeClk::Implicit(AbsoluteClk::Explicit(match &tup_src.t.clocks[*i].0 {
+                        Some(name) => name.clone(),
+                        None => return Err(err::Basic {
+                            msg: "Clock name is lost in the mapping, please bind it to a variable"
+                                .to_owned(),
+                            span: clk.span,
                         }
-                    }),
-                )
-            })
-            .collect();
+                        .into_err()),
+                    }))
+                }
+            };
+            tup_tgt.push((
+                None,
+                Clocked {
+                    clk: replace,
+                    sign: clk.t.sign,
+                }
+                .with_span(clk.span),
+            ));
+        }
         Ok(ClkTup {
             implicit,
             clocks: tup_tgt,
         })
+    }
+}
+
+#[cfg(test)]
+mod translation_tests {
+    use super::*;
+
+    macro_rules! forge {
+        ( & $T:tt : $($x:tt)* ) => { forge!($T:$($x)*).as_ref() };
+        ( str : $s:expr ) => { String::from($s).with_span(Span::forge()) };
+        ( relclk : = . ) => { Clocked { clk: RelativeClk::Implicit(()), sign: true }.with_span(Span::forge()) };
+        ( relclk : = ? ) => { Clocked { clk: RelativeClk::Implicit(AbsoluteClk::Implicit), sign: true }.with_span(Span::forge()) };
+        ( relclk : = $c:expr ) => { Clocked { clk: RelativeClk::Implicit(AbsoluteClk::Explicit(forge!(str:$c))), sign: true }.with_span(Span::forge()) };
+        ( relclk : + $c:expr ) => { Clocked { clk: RelativeClk::Nth($c), sign: true }.with_span(Span::forge()) };
+        ( relclk : - $c:expr ) => { Clocked { clk: RelativeClk::Nth($c), sign: false }.with_span(Span::forge()) };
+        ( mapclk : = ) => { Clocked { clk: MappingClk::Implicit(()), sign: true }.with_span(Span::forge()) };
+        ( mapclk : <+ $c:expr ) => { Clocked { clk: MappingClk::NthIn($c), sign: true }.with_span(Span::forge()) };
+        ( mapclk : <- $c:expr ) => { Clocked { clk: MappingClk::NthIn($c), sign: false }.with_span(Span::forge()) };
+        ( mapclk : +> $c:expr ) => { Clocked { clk: MappingClk::NthOut($c), sign: true }.with_span(Span::forge()) };
+        ( mapclk : -> $c:expr ) => { Clocked { clk: MappingClk::NthOut($c), sign: false }.with_span(Span::forge()) };
+        ( tyclk : = ) => { ty::Clock::Implicit.with_span(Span::forge()) };
+        ( tyclk : + $s:expr ) => { ty::Clock::Explicit { id: forge!(str:$s), activation: true }.with_span(Span::forge()) };
+        ( tyclk : - $s:expr ) => { ty::Clock::Explicit { id: forge!(str:$s), activation: false }.with_span(Span::forge()) };
+        ( abs : ? ) => { AbsoluteClk::Implicit };
+        ( abs : $name:expr ) => { AbsoluteClk::Explicit(forge!(str:$name)) };
+    }
+
+    #[test]
+    fn simple_io() {
+        // Inserting `(t0, t1 when t0, t2 whenot t1, t3)`
+        // And then we follow with the output tuple `(t4, t5 when t1, t6 when t4)`
+        let map = {
+            let mut map = ClkMap::default();
+            map.new_input(forge!(&str:"t0"), forge!(&tyclk:=));
+            map.new_input(forge!(&str:"t1"), forge!(&tyclk:+"t0"));
+            map.new_input(forge!(&str:"t2"), forge!(&tyclk:-"t1"));
+            map.new_input(forge!(&str:"t3"), forge!(&tyclk:=));
+            map.new_output(forge!(&str:"t4"), forge!(&tyclk:=));
+            map.new_output(forge!(&str:"t5"), forge!(&tyclk:+"t1"));
+            map.new_output(forge!(&str:"t6"), forge!(&tyclk:+"t4"));
+            map
+        };
+        assert_eq!(
+            map.inputs,
+            [
+                forge!(relclk:=.),
+                forge!(relclk:+0),
+                forge!(relclk:-1),
+                forge!(relclk:=.)
+            ]
+        );
+        assert_eq!(
+            map.outputs,
+            [forge!(mapclk:=), forge!(mapclk:<+1), forge!(mapclk:+>0)]
+        );
+    }
+
+    #[test]
+    #[should_panic]
+    fn undeclared_input() {
+        // Trying to insert a clock that does not correspond to an already
+        // declared variable.
+        let _map = {
+            let mut map = ClkMap::default();
+            map.new_input(forge!(&str:"t0"), forge!(&tyclk:+"t0"));
+        };
+    }
+
+    #[test]
+    fn empty_mapping() {
+        // () -> ()
+        let map = {
+            let map = ClkMap::default();
+            map
+        };
+        // Preserves the implicit clock
+        let itup1 = ClkTup {
+            implicit: forge!(abs:?),
+            clocks: vec![],
+        };
+        let otup1 = map.translate(itup1.with_span(Span::forge())).unwrap();
+        assert_eq!(
+            otup1,
+            ClkTup {
+                implicit: forge!(abs:?),
+                clocks: vec![],
+            }
+        );
+        // Preserves an explicit clock
+        let itup2 = ClkTup {
+            implicit: forge!(abs:"c"),
+            clocks: vec![],
+        };
+        let otup2 = map.translate(itup2.with_span(Span::forge())).unwrap();
+        assert_eq!(
+            otup2,
+            ClkTup {
+                implicit: forge!(abs:"c"),
+                clocks: vec![],
+            }
+        );
+    }
+
+    #[test]
+    fn singleton_mapping() {
+        // (x) -> (y)
+        let map = {
+            let mut map = ClkMap::default();
+            map.new_input(forge!(&str:"x"), forge!(&tyclk:=));
+            map.new_output(forge!(&str:"y"), forge!(&tyclk:=));
+            map
+        };
+        // Recognizes a tuple element going at the right speed
+        let itup1 = ClkTup {
+            implicit: forge!(abs:"c"),
+            clocks: vec![(Some(forge!(str:"x0")), forge!(relclk:="c"))],
+        };
+        let otup1 = map.translate(itup1.with_span(Span::forge())).unwrap();
+        assert_eq!(
+            otup1,
+            ClkTup {
+                implicit: forge!(abs:"c"),
+                clocks: vec![(None, forge!(relclk:="c"))],
+            }
+        );
+        // Preserves the implicit clock
+        let itup2 = ClkTup {
+            implicit: forge!(abs:?),
+            clocks: vec![(Some(forge!(str:"x0")), forge!(relclk:=?))],
+        };
+        let otup2 = map.translate(itup2.with_span(Span::forge())).unwrap();
+        assert_eq!(
+            otup2,
+            ClkTup {
+                implicit: forge!(abs:?),
+                clocks: vec![(None, forge!(relclk:=?))],
+            }
+        );
+        // Rejects a mismatch between the tuple's speed and the first element's speed
+        let itup3 = ClkTup {
+            implicit: forge!(abs:?),
+            clocks: vec![(Some(forge!(str:"x0")), forge!(relclk:="x"))],
+        };
+        assert!(map.translate(itup3.with_span(Span::forge())).is_err());
+    }
+
+    #[test]
+    fn depends_on_input() {
+        // (x) -> (y when x)
+        let map = {
+            let mut map = ClkMap::default();
+            map.new_input(forge!(&str:"x"), forge!(&tyclk:=));
+            map.new_output(forge!(&str:"y"), forge!(&tyclk:+"x"));
+            map
+        };
+        // Transports whatever name `x` has.
+        let itup1 = ClkTup {
+            implicit: forge!(abs:?),
+            clocks: vec![(Some(forge!(str:"x0")), forge!(relclk:=?))],
+        };
+        let otup1 = map.translate(itup1.with_span(Span::forge())).unwrap();
+        assert_eq!(
+            otup1,
+            ClkTup {
+                implicit: forge!(abs:?),
+                clocks: vec![(None, forge!(relclk:="x0"))],
+            }
+        );
+        // Including if `x` itself is clocked.
+        let itup2 = ClkTup {
+            implicit: forge!(abs:"z"),
+            clocks: vec![(Some(forge!(str:"x0")), forge!(relclk:="z"))],
+        };
+        let otup2 = map.translate(itup2.with_span(Span::forge())).unwrap();
+        assert_eq!(
+            otup2,
+            ClkTup {
+                implicit: forge!(abs:"z"),
+                clocks: vec![(None, forge!(relclk:="x0"))],
+            }
+        );
+        // Fails if the input is not named.
+        let itup3 = ClkTup {
+            implicit: forge!(abs:?),
+            clocks: vec![(None, forge!(relclk:=?))],
+        };
+        assert!(map.translate(itup3.with_span(Span::forge())).is_err());
+    }
+
+    #[test]
+    fn transports_autoref() {
+        // (x1, x2 when x1) -> (y1, y2 whenot y1)
+        let map = {
+            let mut map = ClkMap::default();
+            map.new_input(forge!(&str:"x1"), forge!(&tyclk:=));
+            map.new_input(forge!(&str:"x2"), forge!(&tyclk:+"x1"));
+            map.new_output(forge!(&str:"y1"), forge!(&tyclk:=));
+            map.new_output(forge!(&str:"y2"), forge!(&tyclk:-"y1"));
+            map
+        };
+        // Normal application.
+        let itup1 = ClkTup {
+            implicit: forge!(abs:"c"),
+            clocks: vec![
+                (Some(forge!(str:"a1")), forge!(relclk:="c")),
+                (Some(forge!(str:"a2")), forge!(relclk:+0)),
+            ],
+        };
+        let otup1 = map.translate(itup1.with_span(Span::forge())).unwrap();
+        assert_eq!(
+            otup1,
+            ClkTup {
+                implicit: forge!(abs:"c"),
+                clocks: vec![(None, forge!(relclk:="c")), (None, forge!(relclk:-0)),],
+            }
+        );
+        // Second element has the wrong clock
+        let itup2 = ClkTup {
+            implicit: forge!(abs:"z"),
+            clocks: vec![
+                (Some(forge!(str:"a1")), forge!(relclk:="z")),
+                (Some(forge!(str:"a2")), forge!(relclk:="z")),
+            ],
+        };
+        assert!(map.translate(itup2.with_span(Span::forge())).is_err());
     }
 }
 
@@ -383,10 +675,10 @@ impl ClockCheckDecl for decl::ExtNode {
     fn clockcheck(&self, _: Span, (): ()) -> Result<ClkMap> {
         let mut map = ClkMap::default();
         for i in self.inputs.t.iter() {
-            map.new_input(Some(i.t.name.t.repr.as_ref()), i.t.ty.t.ty.t.clk.as_ref());
+            map.new_input(i.t.name.t.repr.as_ref(), i.t.ty.t.ty.t.clk.as_ref());
         }
         for o in self.outputs.t.iter() {
-            map.new_output(Some(o.t.name.t.repr.as_ref()), o.t.ty.t.ty.t.clk.as_ref());
+            map.new_output(o.t.name.t.repr.as_ref(), o.t.ty.t.ty.t.clk.as_ref());
         }
         Ok(map)
     }

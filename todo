@@ -5,3 +5,4 @@ Lustre: https://homepage.cs.uiowa.edu/~tinelli/classes/181/Spring10/Notes/03-lus
 
 Feature: clippy_allow
 Feature: warning if #[export] without #[doc]
+Feature: #[test]
