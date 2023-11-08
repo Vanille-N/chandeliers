@@ -26,7 +26,7 @@
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use chandeliers_err::{self as err, Error, Transparent};
+use chandeliers_err::{self as err, Acc, Error, Transparent};
 use chandeliers_san::{self as sanitizer, sp::Sp};
 use chandeliers_syn as syntax;
 
@@ -71,10 +71,20 @@ pub fn decl(i: proc_macro::TokenStream) -> proc_macro::TokenStream {
     use quote::ToTokens;
     use syn::parse_macro_input;
     let prog = parse_macro_input!(i as Sp<syntax::Prog>);
-    let prog = match prog_pipeline(prog) {
-        Ok(prog) => prog,
-        Err(e) => return emit(e).into(),
+    let mut acc = Acc::new();
+    let prog = prog_pipeline(&mut acc, prog);
+    let fatal = acc.is_fatal();
+    let (es, ws) = acc.fetch();
+    let Ok(prog) = prog else {
+        err::consistency!(fatal, "No program generated, but no fatal error emitted");
+        for e in es {
+            emit(e);
+        }
+        return proc_macro2::TokenStream::new().into();
     };
+    for w in ws {
+        emit(w);
+    }
     let mut toks = proc_macro2::TokenStream::new();
     prog.to_tokens(&mut toks);
     toks.into()
@@ -82,18 +92,20 @@ pub fn decl(i: proc_macro::TokenStream) -> proc_macro::TokenStream {
 
 /// Run the entire process on the program: translation + causality check + typechecking +
 /// positivity + clockchecking.
-fn prog_pipeline(prog: Sp<syntax::Prog>) -> Result<Sp<sanitizer::ast::decl::Prog>, err::Error> {
+fn prog_pipeline(
+    acc: &mut Acc,
+    prog: Sp<syntax::Prog>,
+) -> err::Result<Sp<sanitizer::ast::decl::Prog>> {
     use sanitizer::causality::Causality;
     use sanitizer::clockcheck::ClockCheck;
     use sanitizer::positivity::MakePositive;
     use syntax::translate::SpanTranslate;
     let run_uid = new_run_uid();
-    let prog = prog.translate(Transparent::from(run_uid), ())?;
-    let mut prog = prog.causality()?;
-    prog.typecheck()?; // FIXME: trait for this
-    prog.clockcheck()?;
-    prog.make_positive()?;
-    // FIXME: clockchecking coming soon.
+    let prog = prog.translate(acc, Transparent::from(run_uid), ())?;
+    let mut prog = prog.causality(acc)?;
+    prog.typecheck(acc)?; // FIXME: trait for this
+    prog.clockcheck(acc)?;
+    prog.make_positive(acc)?;
     Ok(prog)
 }
 

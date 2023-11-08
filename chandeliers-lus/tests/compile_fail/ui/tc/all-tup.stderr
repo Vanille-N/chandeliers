@@ -1,0 +1,50 @@
+error: Type mismatch between the left and right sides: Base types should be identical: expected bool, got int
+ --> tests/compile_fail/ui/tc/all-tup.rs:3:9
+  |
+3 |     let (a, b, c) = (x, y, z); tel
+  |         ^^^^^^^^^^^^^^^^^^^^^
+  |
+note: This element has type bool
+ --> tests/compile_fail/ui/tc/all-tup.rs:3:10
+  |
+3 |     let (a, b, c) = (x, y, z); tel
+  |          ^
+note: While this element has type int
+ --> tests/compile_fail/ui/tc/all-tup.rs:3:22
+  |
+3 |     let (a, b, c) = (x, y, z); tel
+  |                      ^
+
+error: Type mismatch between the left and right sides: Base types should be identical: expected bool, got int
+ --> tests/compile_fail/ui/tc/all-tup.rs:3:9
+  |
+3 |     let (a, b, c) = (x, y, z); tel
+  |         ^^^^^^^^^^^^^^^^^^^^^
+  |
+note: This element has type bool
+ --> tests/compile_fail/ui/tc/all-tup.rs:3:13
+  |
+3 |     let (a, b, c) = (x, y, z); tel
+  |             ^
+note: While this element has type int
+ --> tests/compile_fail/ui/tc/all-tup.rs:3:25
+  |
+3 |     let (a, b, c) = (x, y, z); tel
+  |                         ^
+
+error: Type mismatch between the left and right sides: Base types should be identical: expected bool, got int
+ --> tests/compile_fail/ui/tc/all-tup.rs:3:9
+  |
+3 |     let (a, b, c) = (x, y, z); tel
+  |         ^^^^^^^^^^^^^^^^^^^^^
+  |
+note: This element has type bool
+ --> tests/compile_fail/ui/tc/all-tup.rs:3:16
+  |
+3 |     let (a, b, c) = (x, y, z); tel
+  |                ^
+note: While this element has type int
+ --> tests/compile_fail/ui/tc/all-tup.rs:3:28
+  |
+3 |     let (a, b, c) = (x, y, z); tel
+  |                            ^

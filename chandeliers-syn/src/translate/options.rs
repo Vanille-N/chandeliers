@@ -16,7 +16,7 @@
 //! only those applicable to each declaration, and emits appropriate and
 //! homogeneous error messages.
 
-use chandeliers_err::{self as err, IntoError, Result};
+use chandeliers_err::{self as err, Acc, Result};
 use chandeliers_san::ast::options::{Const, ExtConst, ExtNode, Node, TraceFile};
 use chandeliers_san::sp::{Sp, Span, WithSpan};
 
@@ -100,9 +100,9 @@ impl<T> SetOpt<T> {
     }
 
     /// Assert that this option was not set.
-    fn skip(self, current: &'static str) -> err::Result<()> {
+    fn skip(self, acc: &mut Acc, current: &'static str) -> err::Result<()> {
         if self.value.is_some() {
-            Err(err::Basic {
+            acc.error(err::Basic {
                 msg: format!(
                     "The attribute {} is not valid here (does not apply to {current})",
                     self.message
@@ -110,8 +110,7 @@ impl<T> SetOpt<T> {
                 span: self.span.unwrap_or_else(|| {
                     err::abort!("Malformed `SetOpt`: it has a `value` but no `span`")
                 }),
-            }
-            .into_err())
+            })
         } else {
             Ok(())
         }
@@ -158,7 +157,7 @@ impl Default for Decl {
 /// All fields will have either `take` or `skip` applied to them, ensuring
 /// that all options are handled.
 macro_rules! project {
-    ( $this:ident : $From:ident => $To:ident {
+    ( ?$acc:expr => $this:ident : $From:ident => $To:ident {
         take { $( $take:ident, )* }
         skip { $( $skip:ident, )* }
       }
@@ -168,7 +167,7 @@ macro_rules! project {
             $( $skip, )*
         } = $this;
 
-        $( $skip.skip(stringify!($To))?; )*
+        $( $skip.skip($acc, stringify!($To))?; )*
         Ok($To {
             $( $take: chandeliers_san::ast::options::UseOpt::new($take.take()), )*
         })
@@ -177,9 +176,9 @@ macro_rules! project {
 
 impl Decl {
     /// Project to the options that are valid on a `const`.
-    pub fn for_const(self) -> Result<Const> {
+    pub fn for_const(self, acc: &mut Acc) -> Result<Const> {
         project! {
-            self: Decl => Const {
+            ?acc => self: Decl => Const {
                 take { export, rustc_allow, doc, public, }
                 skip { trace, main, impl_trait, }
             }
@@ -187,9 +186,9 @@ impl Decl {
     }
 
     /// Project to the options that are valid on a `node`.
-    pub fn for_node(self) -> Result<Node> {
+    pub fn for_node(self, _acc: &mut Acc) -> Result<Node> {
         project! {
-            self: Decl => Node {
+            ?_acc => self: Decl => Node {
                 take { trace, export, main, rustc_allow, doc, public, impl_trait, }
                 skip {}
             }
@@ -197,9 +196,9 @@ impl Decl {
     }
 
     /// Project to the options that are valid on an `extern const`.
-    pub fn for_ext_const(self) -> Result<ExtConst> {
+    pub fn for_ext_const(self, acc: &mut Acc) -> Result<ExtConst> {
         project! {
-            self: Decl => ExtConst {
+            ?acc => self: Decl => ExtConst {
                 take { rustc_allow, }
                 skip { trace, export, main, doc, public, impl_trait, }
             }
@@ -207,9 +206,9 @@ impl Decl {
     }
 
     /// Project to the options that are valid on an `extern node`.
-    pub fn for_ext_node(self) -> Result<ExtNode> {
+    pub fn for_ext_node(self, acc: &mut Acc) -> Result<ExtNode> {
         project! {
-            self: Decl => ExtNode {
+            ?acc => self: Decl => ExtNode {
                 take { trace, main, rustc_allow, }
                 skip { export, doc, public, impl_trait, }
             }
@@ -217,7 +216,7 @@ impl Decl {
     }
 
     /// Update the current options with a new attribute.
-    pub fn with(mut self, attr: Sp<crate::ast::Attribute>) -> Result<Self> {
+    pub fn with(mut self, acc: &mut Acc, attr: Sp<crate::ast::Attribute>) -> Result<Self> {
         use syn::Lit;
         let action = attr.t.attr.t.action.t.inner.to_string();
 
@@ -229,11 +228,11 @@ impl Decl {
                 $( syn:( $($syntax:tt)* ) )?
                 $( note:( $($suggestion:tt)* ) )?
             ) => {
-                return Err(vec![
+                acc.error(vec![
                     (format!("Malformed attribute {}: {}", action, format!($($msg)*)), Some(attr.span.into())),
                     $( (format!("Maybe try this syntax: {}", format!($($syntax)*)), None), )?
                     $( (format!($($suggestion)*), None), )?
-                ])
+                ])?
             };
         }
 

@@ -10,6 +10,8 @@
 use std::fmt;
 use std::hash::Hash;
 
+use chandeliers_err::{Acc, Result};
+
 use crate::causality::depends::Depends;
 
 pub mod options;
@@ -45,13 +47,13 @@ impl<T> Tuple<T> {
     /// Map a faillible funciton by reference to a tuple.
     /// # Errors
     /// Fails if the function fails on any of the elements.
-    pub fn try_map<F, U, E>(&self, f: F) -> Result<Tuple<U>, E>
+    pub fn try_map<F, U>(&self, acc: &mut Acc, f: F) -> Result<Tuple<U>>
     where
-        F: Fn(&T) -> Result<U, E>,
+        F: Fn(&mut Acc, &T) -> Result<U>,
     {
         let mut elems = Vec::new();
         for e in &self.elems {
-            elems.push(f(e)?);
+            elems.push(f(&mut *acc, e)?);
         }
         Ok(Tuple { elems })
     }

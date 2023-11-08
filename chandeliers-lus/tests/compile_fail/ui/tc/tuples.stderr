@@ -14,3 +14,20 @@ note: While this element has type float
    |
 2  |     node gen() returns (a : int; b : float; c : bool);
    |                                      ^^^^^
+
+error: Type mismatch between the left and right sides: Base types should be identical: expected int, got bool
+  --> tests/compile_fail/ui/tc/tuples.rs:12:9
+   |
+12 |         (a, b, c) = gen();
+   |         ^^^^^^^^^^^^^^^^^
+   |
+note: This element has type int
+  --> tests/compile_fail/ui/tc/tuples.rs:12:16
+   |
+12 |         (a, b, c) = gen();
+   |                ^
+note: While this element has type bool
+  --> tests/compile_fail/ui/tc/tuples.rs:2:49
+   |
+2  |     node gen() returns (a : int; b : float; c : bool);
+   |                                                 ^^^^

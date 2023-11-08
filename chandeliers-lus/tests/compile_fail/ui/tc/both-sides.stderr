@@ -1,0 +1,33 @@
+error: Binary operator `+` expects arguments of type int or float, found bool
+ --> tests/compile_fail/ui/tc/both-sides.rs:2:22
+  |
+2 |     const X : int = (true + true) + (false + false);
+  |                      ^^^^^^^^^^^
+  |
+note: The left-hand-side is found to be of type bool
+ --> tests/compile_fail/ui/tc/both-sides.rs:2:22
+  |
+2 |     const X : int = (true + true) + (false + false);
+  |                      ^^^^
+note: The right-hand-side is found to be of type bool
+ --> tests/compile_fail/ui/tc/both-sides.rs:2:29
+  |
+2 |     const X : int = (true + true) + (false + false);
+  |                             ^^^^
+
+error: Binary operator `+` expects arguments of type int or float, found bool
+ --> tests/compile_fail/ui/tc/both-sides.rs:2:38
+  |
+2 |     const X : int = (true + true) + (false + false);
+  |                                      ^^^^^^^^^^^^^
+  |
+note: The left-hand-side is found to be of type bool
+ --> tests/compile_fail/ui/tc/both-sides.rs:2:38
+  |
+2 |     const X : int = (true + true) + (false + false);
+  |                                      ^^^^^
+note: The right-hand-side is found to be of type bool
+ --> tests/compile_fail/ui/tc/both-sides.rs:2:46
+  |
+2 |     const X : int = (true + true) + (false + false);
+  |                                              ^^^^^

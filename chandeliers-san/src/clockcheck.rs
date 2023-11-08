@@ -45,7 +45,7 @@
 
 use std::collections::HashMap;
 
-use chandeliers_err::{self as err, IntoError, Result};
+use chandeliers_err::{self as err, Acc, Result};
 
 use crate::ast::ty::Clock;
 use crate::ast::{decl, expr, ty, var};
@@ -227,7 +227,7 @@ impl ClkMap {
         }
     }
 
-    fn translate(&self, tup_src: Sp<ClkTup>) -> Result<ClkTup> {
+    fn translate(&self, acc: &mut Acc, tup_src: Sp<ClkTup>) -> Result<ClkTup> {
         let mut named: HashMap<Sp<String>, RelativeClk<()>> = HashMap::new();
         let implicit: AbsoluteClk = tup_src.t.implicit;
         err::consistency!(
@@ -246,11 +246,10 @@ impl ClkMap {
                         named.insert(name.clone(), RelativeClk::Nth(idx));
                     }
                 } else {
-                    return Err(err::Basic {
+                    acc.error(err::Basic {
                         msg: format!("Tuple element {} is going at the wrong speed", idx),
                         span: found.1.span,
-                    }
-                    .into_err());
+                    })?;
                 }
             } else {
                 // Here we should find a clock that has been added previously
@@ -262,11 +261,10 @@ impl ClkMap {
                         _ => panic!(),
                     };
                 } else {
-                    return Err(err::Basic {
+                    acc.error(err::Basic {
                         msg: format!("Tuple element {} is going at the wrong speed", idx),
                         span: found.1.span,
-                    }
-                    .into_err());
+                    })?;
                 }
             }
         }
@@ -281,12 +279,11 @@ impl ClkMap {
                     // otherwise it fails
                     RelativeClk::Implicit(AbsoluteClk::Explicit(match &tup_src.t.clocks[*i].0 {
                         Some(name) => name.clone(),
-                        None => return Err(err::Basic {
+                        None => acc.error(err::Basic {
                             msg: "Clock name is lost in the mapping, please bind it to a variable"
                                 .to_owned(),
                             span: clk.span,
-                        }
-                        .into_err()),
+                        })?,
                     }))
                 }
             };
@@ -374,6 +371,7 @@ mod translation_tests {
     #[test]
     fn empty_mapping() {
         // () -> ()
+        let mut acc = Acc::new();
         let map = {
             let map = ClkMap::default();
             map
@@ -383,7 +381,9 @@ mod translation_tests {
             implicit: forge!(abs:?),
             clocks: vec![],
         };
-        let otup1 = map.translate(itup1.with_span(Span::forge())).unwrap();
+        let otup1 = map
+            .translate(&mut acc, itup1.with_span(Span::forge()))
+            .unwrap();
         assert_eq!(
             otup1,
             ClkTup {
@@ -396,7 +396,9 @@ mod translation_tests {
             implicit: forge!(abs:"c"),
             clocks: vec![],
         };
-        let otup2 = map.translate(itup2.with_span(Span::forge())).unwrap();
+        let otup2 = map
+            .translate(&mut acc, itup2.with_span(Span::forge()))
+            .unwrap();
         assert_eq!(
             otup2,
             ClkTup {
@@ -408,6 +410,7 @@ mod translation_tests {
 
     #[test]
     fn singleton_mapping() {
+        let mut acc = Acc::new();
         // (x) -> (y)
         let map = {
             let mut map = ClkMap::default();
@@ -420,7 +423,9 @@ mod translation_tests {
             implicit: forge!(abs:"c"),
             clocks: vec![(Some(forge!(str:"x0")), forge!(relclk:="c"))],
         };
-        let otup1 = map.translate(itup1.with_span(Span::forge())).unwrap();
+        let otup1 = map
+            .translate(&mut acc, itup1.with_span(Span::forge()))
+            .unwrap();
         assert_eq!(
             otup1,
             ClkTup {
@@ -433,7 +438,9 @@ mod translation_tests {
             implicit: forge!(abs:?),
             clocks: vec![(Some(forge!(str:"x0")), forge!(relclk:=?))],
         };
-        let otup2 = map.translate(itup2.with_span(Span::forge())).unwrap();
+        let otup2 = map
+            .translate(&mut acc, itup2.with_span(Span::forge()))
+            .unwrap();
         assert_eq!(
             otup2,
             ClkTup {
@@ -446,11 +453,14 @@ mod translation_tests {
             implicit: forge!(abs:?),
             clocks: vec![(Some(forge!(str:"x0")), forge!(relclk:="x"))],
         };
-        assert!(map.translate(itup3.with_span(Span::forge())).is_err());
+        assert!(map
+            .translate(&mut acc, itup3.with_span(Span::forge()))
+            .is_err());
     }
 
     #[test]
     fn depends_on_input() {
+        let mut acc = Acc::new();
         // (x) -> (y when x)
         let map = {
             let mut map = ClkMap::default();
@@ -463,7 +473,9 @@ mod translation_tests {
             implicit: forge!(abs:?),
             clocks: vec![(Some(forge!(str:"x0")), forge!(relclk:=?))],
         };
-        let otup1 = map.translate(itup1.with_span(Span::forge())).unwrap();
+        let otup1 = map
+            .translate(&mut acc, itup1.with_span(Span::forge()))
+            .unwrap();
         assert_eq!(
             otup1,
             ClkTup {
@@ -476,7 +488,9 @@ mod translation_tests {
             implicit: forge!(abs:"z"),
             clocks: vec![(Some(forge!(str:"x0")), forge!(relclk:="z"))],
         };
-        let otup2 = map.translate(itup2.with_span(Span::forge())).unwrap();
+        let otup2 = map
+            .translate(&mut acc, itup2.with_span(Span::forge()))
+            .unwrap();
         assert_eq!(
             otup2,
             ClkTup {
@@ -489,11 +503,14 @@ mod translation_tests {
             implicit: forge!(abs:?),
             clocks: vec![(None, forge!(relclk:=?))],
         };
-        assert!(map.translate(itup3.with_span(Span::forge())).is_err());
+        assert!(map
+            .translate(&mut acc, itup3.with_span(Span::forge()))
+            .is_err());
     }
 
     #[test]
     fn transports_autoref() {
+        let mut acc = Acc::new();
         // (x1, x2 when x1) -> (y1, y2 whenot y1)
         let map = {
             let mut map = ClkMap::default();
@@ -511,7 +528,9 @@ mod translation_tests {
                 (Some(forge!(str:"a2")), forge!(relclk:+0)),
             ],
         };
-        let otup1 = map.translate(itup1.with_span(Span::forge())).unwrap();
+        let otup1 = map
+            .translate(&mut acc, itup1.with_span(Span::forge()))
+            .unwrap();
         assert_eq!(
             otup1,
             ClkTup {
@@ -527,7 +546,9 @@ mod translation_tests {
                 (Some(forge!(str:"a2")), forge!(relclk:="z")),
             ],
         };
-        assert!(map.translate(itup2.with_span(Span::forge())).is_err());
+        assert!(map
+            .translate(&mut acc, itup2.with_span(Span::forge()))
+            .is_err());
     }
 }
 
@@ -564,7 +585,12 @@ trait ClockCheckExpr {
     /// Clock context (typically obtained by the `signature` on local variables and toplevel declarations)
     type Ctx<'i>;
     /// Verify internal consistency of the clocks.
-    fn clockcheck(&self, span: Span, ctx: Self::Ctx<'_>) -> Result<WithDefSite<Clock>>;
+    fn clockcheck(
+        &self,
+        acc: &mut Acc,
+        span: Span,
+        ctx: Self::Ctx<'_>,
+    ) -> Result<WithDefSite<Clock>>;
 }
 
 /// Helper trait for `Sp` to implement `ClockCheckExpr`.
@@ -572,7 +598,7 @@ trait ClockCheckSpanExpr {
     /// Projection to the inner `Ctx`.
     type Ctx<'i>;
     /// Projection to the inner `clockcheck`.
-    fn clockcheck(&self, ctx: Self::Ctx<'_>) -> Result<Sp<WithDefSite<Clock>>>;
+    fn clockcheck(&self, acc: &mut Acc, ctx: Self::Ctx<'_>) -> Result<Sp<WithDefSite<Clock>>>;
 }
 
 /// Clock typing interface for statements.
@@ -580,7 +606,7 @@ trait ClockCheckStmt {
     /// Clock context (typically obtained by the `signature` on local variables and toplevel declarations)
     type Ctx<'i>;
     /// Verify internal consistency of the clocks.
-    fn clockcheck(&self, span: Span, ctx: Self::Ctx<'_>) -> Result<()>;
+    fn clockcheck(&self, acc: &mut Acc, span: Span, ctx: Self::Ctx<'_>) -> Result<()>;
 }
 
 /// Helper trait for `Sp` to implement `ClockCheckStmt`.
@@ -588,7 +614,7 @@ trait ClockCheckSpanStmt {
     /// Projection to the inner `Ctx`.
     type Ctx<'i>;
     /// Projection to the inner `clockcheck`.
-    fn clockcheck(&self, ctx: Self::Ctx<'_>) -> Result<Sp<()>>;
+    fn clockcheck(&self, acc: &mut Acc, ctx: Self::Ctx<'_>) -> Result<Sp<()>>;
 }
 
 /// Clock typing interface of declarations.
@@ -598,7 +624,7 @@ trait ClockCheckDecl {
     /// Verify internal consistency of the clocks and produce the signature.
     /// # Errors
     /// Cannot verify that all clocks match.
-    fn clockcheck(&self, span: Span, ctx: Self::Ctx<'_>) -> Result<ClkMap>;
+    fn clockcheck(&self, acc: &mut Acc, span: Span, ctx: Self::Ctx<'_>) -> Result<ClkMap>;
 }
 
 /// Helper trait for `Sp` to implement `ClockCheckDecl`.
@@ -606,7 +632,7 @@ trait ClockCheckSpanDecl {
     /// Projection to the inner `Ctx`.
     type Ctx<'i>;
     /// Projection to the inner `clockcheck`.
-    fn clockcheck(&self, ctx: Self::Ctx<'_>) -> Result<Sp<ClkMap>>;
+    fn clockcheck(&self, acc: &mut Acc, ctx: Self::Ctx<'_>) -> Result<Sp<ClkMap>>;
 }
 
 /// Clock typing interface.
@@ -614,65 +640,70 @@ pub trait ClockCheck {
     /// Verify internal consistency of the clocks.
     /// # Errors
     /// Cannot verify that all clocks match.
-    fn clockcheck(&self) -> Result<()>;
+    fn clockcheck(&self, acc: &mut Acc) -> Result<()>;
 }
 
 impl<T: ClockCheckExpr> ClockCheckSpanExpr for Sp<T> {
     type Ctx<'i> = T::Ctx<'i>;
-    fn clockcheck(&self, ctx: T::Ctx<'_>) -> Result<Sp<WithDefSite<Clock>>> {
+    fn clockcheck(&self, acc: &mut Acc, ctx: T::Ctx<'_>) -> Result<Sp<WithDefSite<Clock>>> {
         self.as_ref()
-            .map(|span, t| t.clockcheck(span, ctx))
+            .map(|span, t| t.clockcheck(acc, span, ctx))
             .transpose()
     }
 }
 impl<T: ClockCheckStmt> ClockCheckSpanStmt for Sp<T> {
     type Ctx<'i> = T::Ctx<'i>;
-    fn clockcheck(&self, ctx: T::Ctx<'_>) -> Result<Sp<()>> {
+    fn clockcheck(&self, acc: &mut Acc, ctx: T::Ctx<'_>) -> Result<Sp<()>> {
         self.as_ref()
-            .map(|span, t| t.clockcheck(span, ctx))
+            .map(|span, t| t.clockcheck(acc, span, ctx))
             .transpose()
     }
 }
 impl<T: ClockCheckDecl> ClockCheckSpanDecl for Sp<T> {
     type Ctx<'i> = T::Ctx<'i>;
-    fn clockcheck<'i>(&self, ctx: Self::Ctx<'_>) -> Result<Sp<ClkMap>> {
+    fn clockcheck<'i>(&self, acc: &mut Acc, ctx: Self::Ctx<'_>) -> Result<Sp<ClkMap>> {
         self.as_ref()
-            .map(|span, t| t.clockcheck(span, ctx))
+            .map(|span, t| t.clockcheck(acc, span, ctx))
             .transpose()
     }
 }
 
 impl ClockCheckExpr for expr::Lit {
     type Ctx<'i> = ();
-    fn clockcheck(&self, span: Span, (): ()) -> Result<WithDefSite<Clock>> {
+    fn clockcheck(&self, _acc: &mut Acc, span: Span, (): ()) -> Result<WithDefSite<Clock>> {
         Ok(WithDefSite::without(Clock::Adaptative.with_span(span)))
     }
 }
 
 impl ClockCheckExpr for var::Global {
     type Ctx<'i> = ();
-    fn clockcheck(&self, span: Span, (): ()) -> Result<WithDefSite<Clock>> {
+    fn clockcheck(&self, _acc: &mut Acc, span: Span, (): ()) -> Result<WithDefSite<Clock>> {
         Ok(WithDefSite::without(Clock::Adaptative.with_span(span)))
     }
 }
 
 impl ClockCheckExpr for var::Local {
     type Ctx<'i> = &'i mut ExprClkCtx;
-    fn clockcheck(&self, _: Span, ctx: Self::Ctx<'_>) -> Result<WithDefSite<Clock>> {
+    fn clockcheck(
+        &self,
+        _acc: &mut Acc,
+        _: Span,
+        ctx: Self::Ctx<'_>,
+    ) -> Result<WithDefSite<Clock>> {
         Ok(ctx.clock_of(self))
     }
 }
 
 impl ClockCheckDecl for decl::Node {
     type Ctx<'i> = &'i mut ClkCtx;
-    fn clockcheck(&self, _span: Span, _ctx: Self::Ctx<'_>) -> Result<ClkMap> {
+    fn clockcheck(&self, _acc: &mut Acc, _span: Span, _ctx: Self::Ctx<'_>) -> Result<ClkMap> {
         Ok(ClkMap::default()) // FIXME
     }
 }
 
 impl ClockCheckDecl for decl::ExtNode {
     type Ctx<'i> = ();
-    fn clockcheck(&self, _: Span, (): ()) -> Result<ClkMap> {
+    fn clockcheck(&self, _acc: &mut Acc, _: Span, (): ()) -> Result<ClkMap> {
         let mut map = ClkMap::default();
         for i in self.inputs.t.iter() {
             map.new_input(i.t.name.t.repr.as_ref(), i.t.ty.t.ty.t.clk.as_ref());
@@ -685,19 +716,19 @@ impl ClockCheckDecl for decl::ExtNode {
 }
 
 impl ClockCheck for Sp<decl::Prog> {
-    fn clockcheck(&self) -> Result<()> {
+    fn clockcheck(&self, acc: &mut Acc) -> Result<()> {
         let mut ctx = ClkCtx::default();
         for decl in &self.t.decls {
             match &decl.t {
                 decl::Decl::Const(_) | decl::Decl::ExtConst(_) => {}
                 decl::Decl::Node(n) => {
-                    let sig = n.clockcheck(&mut ctx)?;
+                    let sig = n.clockcheck(acc, &mut ctx)?;
                     let sp_sig =
                         WithDefSite::without(sig.t.with_span(n.span)).with_def_site(sig.span);
                     ctx.signatures.insert(n.t.name.t.clone(), sp_sig);
                 }
                 decl::Decl::ExtNode(n) => {
-                    let sig = n.clockcheck(())?;
+                    let sig = n.clockcheck(acc, ())?;
                     let sp_sig =
                         WithDefSite::without(sig.t.with_span(n.span)).with_def_site(sig.span);
                     ctx.signatures.insert(n.t.name.t.clone(), sp_sig);

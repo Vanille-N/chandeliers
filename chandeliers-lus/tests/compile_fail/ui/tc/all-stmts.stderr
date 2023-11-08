@@ -1,0 +1,67 @@
+error: Binary operator `=` expects arguments of the same type
+ --> tests/compile_fail/ui/tc/all-stmts.rs:4:16
+  |
+4 |         assert 1 = true;
+  |                ^^^^^^^^
+  |
+note: The left-hand-side is found to be of type int
+ --> tests/compile_fail/ui/tc/all-stmts.rs:4:16
+  |
+4 |         assert 1 = true;
+  |                ^
+note: The right-hand-side is found to be of type bool
+ --> tests/compile_fail/ui/tc/all-stmts.rs:4:20
+  |
+4 |         assert 1 = true;
+  |                    ^^^^
+
+error: Binary operator `+` expects arguments of the same type
+ --> tests/compile_fail/ui/tc/all-stmts.rs:5:17
+  |
+5 |         assert (1 + true) = (2 + true);
+  |                 ^^^^^^^^
+  |
+note: The left-hand-side is found to be of type int
+ --> tests/compile_fail/ui/tc/all-stmts.rs:5:17
+  |
+5 |         assert (1 + true) = (2 + true);
+  |                 ^
+note: The right-hand-side is found to be of type bool
+ --> tests/compile_fail/ui/tc/all-stmts.rs:5:21
+  |
+5 |         assert (1 + true) = (2 + true);
+  |                     ^^^^
+
+error: Binary operator `+` expects arguments of the same type
+ --> tests/compile_fail/ui/tc/all-stmts.rs:5:30
+  |
+5 |         assert (1 + true) = (2 + true);
+  |                              ^^^^^^^^
+  |
+note: The left-hand-side is found to be of type int
+ --> tests/compile_fail/ui/tc/all-stmts.rs:5:30
+  |
+5 |         assert (1 + true) = (2 + true);
+  |                              ^
+note: The right-hand-side is found to be of type bool
+ --> tests/compile_fail/ui/tc/all-stmts.rs:5:34
+  |
+5 |         assert (1 + true) = (2 + true);
+  |                                  ^^^^
+
+error: Binary operator `=` expects arguments of type int or bool, not float because equality on float is not reliable
+ --> tests/compile_fail/ui/tc/all-stmts.rs:6:16
+  |
+6 |         assert 0.1 = 0.2;
+  |                ^^^^^^^^^
+  |
+note: The left-hand-side is found to be of type float
+ --> tests/compile_fail/ui/tc/all-stmts.rs:6:16
+  |
+6 |         assert 0.1 = 0.2;
+  |                ^^^
+note: The right-hand-side is found to be of type float
+ --> tests/compile_fail/ui/tc/all-stmts.rs:6:22
+  |
+6 |         assert 0.1 = 0.2;
+  |                      ^^^
