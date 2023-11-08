@@ -19,10 +19,6 @@ impl IntoError for Error {
     }
 }
 
-/// Our errors are collected in the `Acc` error accumulator,
-/// so all results contain `()` only !
-pub type Result<T> = std::result::Result<T, ()>;
-
 /// Objects that can be converted to spans.
 pub trait TrySpan {
     /// Try to get a span from the object (by default we don't get any,

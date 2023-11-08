@@ -6,7 +6,7 @@
 //! the structures that need to have their dependencies analyzed,
 //! which is done by the `Causality` trait.
 
-use chandeliers_err::{Acc, Result};
+use chandeliers_err::Acc;
 
 use crate::ast;
 use crate::sp::Sp;
@@ -23,33 +23,33 @@ pub trait Causality: Sized {
     /// Rearrange the internal contents in a causally consistent ordering.
     /// # Errors
     /// Fails if there is a cycle (including of length 1).
-    fn causality(self, acc: &mut Acc) -> Result<Self>;
+    fn causality(self, acc: &mut Acc) -> Option<Self>;
 }
 
 impl Causality for ast::decl::Prog {
     /// Sort the declarations of the program to remove cycles.
-    fn causality(self, acc: &mut Acc) -> Result<Self> {
+    fn causality(self, acc: &mut Acc) -> Option<Self> {
         let Self { decls } = self;
         let mut g = Graph::default();
         for decl in decls {
             g.insert(decl.causality(acc)?);
         }
         let decls = g.scheduling(acc)?;
-        Ok(Self { decls })
+        Some(Self { decls })
     }
 }
 
 impl<T: Causality> Causality for Sp<T> {
     /// Trivial projection.
-    fn causality(self, acc: &mut Acc) -> Result<Self> {
+    fn causality(self, acc: &mut Acc) -> Option<Self> {
         self.map(|_, t| t.causality(acc)).transpose()
     }
 }
 
 impl Causality for ast::decl::Decl {
     /// Trivial projection.
-    fn causality(self, acc: &mut Acc) -> Result<Self> {
-        Ok(match self {
+    fn causality(self, acc: &mut Acc) -> Option<Self> {
+        Some(match self {
             Self::Node(n) => Self::Node(n.causality(acc)?),
             _ => self,
         })
@@ -61,7 +61,7 @@ impl Causality for ast::decl::Node {
     /// - verify that no inputs are redefined
     /// - verify that all locals and outputs are well-defined
     /// - ensure that there is no dependency cycle.
-    fn causality(self, acc: &mut Acc) -> Result<Self> {
+    fn causality(self, acc: &mut Acc) -> Option<Self> {
         let Self {
             name,
             options,
@@ -90,7 +90,7 @@ impl Causality for ast::decl::Node {
             g.must_provide(acc, &unit)?;
         }
         let stmts = g.scheduling(acc)?;
-        Ok(Self {
+        Some(Self {
             name,
             options,
             inputs,

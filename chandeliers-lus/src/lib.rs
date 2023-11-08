@@ -75,7 +75,7 @@ pub fn decl(i: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let prog = prog_pipeline(&mut acc, prog);
     let fatal = acc.is_fatal();
     let (es, ws) = acc.fetch();
-    let Ok(prog) = prog else {
+    let Some(prog) = prog else {
         err::consistency!(fatal, "No program generated, but no fatal error emitted");
         for e in es {
             emit(e);
@@ -92,10 +92,7 @@ pub fn decl(i: proc_macro::TokenStream) -> proc_macro::TokenStream {
 
 /// Run the entire process on the program: translation + causality check + typechecking +
 /// positivity + clockchecking.
-fn prog_pipeline(
-    acc: &mut Acc,
-    prog: Sp<syntax::Prog>,
-) -> err::Result<Sp<sanitizer::ast::decl::Prog>> {
+fn prog_pipeline(acc: &mut Acc, prog: Sp<syntax::Prog>) -> Option<Sp<sanitizer::ast::decl::Prog>> {
     use sanitizer::causality::Causality;
     use sanitizer::clockcheck::ClockCheck;
     use sanitizer::positivity::MakePositive;
@@ -106,7 +103,7 @@ fn prog_pipeline(
     prog.typecheck(acc)?; // FIXME: trait for this
     prog.clockcheck(acc)?;
     prog.make_positive(acc)?;
-    Ok(prog)
+    Some(prog)
 }
 
 /// Generate a run of trybuild test cases.
@@ -136,6 +133,7 @@ compiling!(pass_given with pass in pass/given/);
 compiling!(pass_options with pass in pass/options/);
 
 compiling!(warn_dead_code with compile_fail in warn/dead_code/);
+compiling!(warn_options with compile_fail in warn/options/);
 
 /// Emit one error message from a sequence of spans and associated hint messages.
 fn emit(elements: Error) -> proc_macro2::TokenStream {

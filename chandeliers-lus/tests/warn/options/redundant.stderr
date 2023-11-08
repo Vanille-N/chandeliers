@@ -1,0 +1,35 @@
+error: #[trace] is already set by a previous attribute
+ --> tests/warn/options/redundant.rs:5:5
+  |
+5 |     #[trace]
+  |     ^^^^^^^^
+  |
+note: Previously declared here
+ --> tests/warn/options/redundant.rs:4:5
+  |
+4 |     #[trace]
+  |     ^^^^^^^^
+
+error: #[trace] is already set by a previous attribute
+ --> tests/warn/options/redundant.rs:6:5
+  |
+6 |     #[trace]
+  |     ^^^^^^^^
+  |
+note: Previously declared here
+ --> tests/warn/options/redundant.rs:5:5
+  |
+5 |     #[trace]
+  |     ^^^^^^^^
+
+error: #[export] is already set by a previous attribute
+  --> tests/warn/options/redundant.rs:11:5
+   |
+11 |     #[export]
+   |     ^^^^^^^^^
+   |
+note: Previously declared here
+  --> tests/warn/options/redundant.rs:10:5
+   |
+10 |     #[pub]
+   |     ^^^^^^

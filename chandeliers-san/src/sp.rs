@@ -111,14 +111,14 @@ impl<T: Clone> Sp<&T> {
     }
 }
 
-impl<T, E> Sp<Result<T, E>> {
+impl<T> Sp<Option<T>> {
     /// Monad combinator to map faillible functions on a `Sp`.
     /// # Errors
     /// If the internal data already contains an error.
-    pub fn transpose(self) -> Result<Sp<T>, E> {
+    pub fn transpose(self) -> Option<Sp<T>> {
         match self.t {
-            Ok(t) => Ok(Sp { t, span: self.span }),
-            Err(e) => Err(e),
+            Some(t) => Some(Sp { t, span: self.span }),
+            None => None,
         }
     }
 }

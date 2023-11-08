@@ -117,9 +117,9 @@ impl Acc {
     /// # Errors
     /// Infaillible. Returns a `Result` so that you can do
     /// `acc.error(...)?;`
-    pub fn error<T, E: IntoError>(&mut self, e: E) -> Result<T> {
+    pub fn error<T, E: IntoError>(&mut self, e: E) -> Option<T> {
         self.err.push(e.into_err());
-        Err(())
+        None
     }
 
     /// Push a warning to the accumulator.
@@ -150,21 +150,21 @@ impl<'a> AccScope<'a> {
     /// Record the success of a new computation.
     pub fn compute<F>(&mut self, f: F)
     where
-        F: FnOnce(&mut Acc) -> Result<()>,
+        F: FnOnce(&mut Acc) -> Option<()>,
     {
         let e = f(&mut *self.acc);
-        if e.is_err() {
+        if e.is_none() {
             self.fatal = true;
         }
     }
 
     /// Consume the scope and emit an error if and only if one of the
     /// recorded computations failed.
-    pub fn close(self) -> Result<()> {
+    pub fn close(self) -> Option<()> {
         if self.fatal {
-            Err(())
+            None
         } else {
-            Ok(())
+            Some(())
         }
     }
 
@@ -175,6 +175,6 @@ impl<'a> AccScope<'a> {
 
     /// Apply a warning to the inner accumulator.
     pub fn warning<E: IntoError>(&mut self, e: E) {
-        self.compute(|acc| Ok(acc.warning(e)))
+        self.compute(|acc| Some(acc.warning(e)))
     }
 }

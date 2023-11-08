@@ -45,7 +45,7 @@
 
 use std::collections::HashMap;
 
-use chandeliers_err::{self as err, Acc, Result};
+use chandeliers_err::{self as err, Acc};
 
 use crate::ast::ty::Clock;
 use crate::ast::{decl, expr, ty, var};
@@ -227,7 +227,7 @@ impl ClkMap {
         }
     }
 
-    fn translate(&self, acc: &mut Acc, tup_src: Sp<ClkTup>) -> Result<ClkTup> {
+    fn translate(&self, acc: &mut Acc, tup_src: Sp<ClkTup>) -> Option<ClkTup> {
         let mut named: HashMap<Sp<String>, RelativeClk<()>> = HashMap::new();
         let implicit: AbsoluteClk = tup_src.t.implicit;
         err::consistency!(
@@ -296,7 +296,7 @@ impl ClkMap {
                 .with_span(clk.span),
             ));
         }
-        Ok(ClkTup {
+        Some(ClkTup {
             implicit,
             clocks: tup_tgt,
         })
@@ -455,7 +455,7 @@ mod translation_tests {
         };
         assert!(map
             .translate(&mut acc, itup3.with_span(Span::forge()))
-            .is_err());
+            .is_none());
     }
 
     #[test]
@@ -505,7 +505,7 @@ mod translation_tests {
         };
         assert!(map
             .translate(&mut acc, itup3.with_span(Span::forge()))
-            .is_err());
+            .is_none());
     }
 
     #[test]
@@ -548,7 +548,7 @@ mod translation_tests {
         };
         assert!(map
             .translate(&mut acc, itup2.with_span(Span::forge()))
-            .is_err());
+            .is_none());
     }
 }
 
@@ -590,7 +590,7 @@ trait ClockCheckExpr {
         acc: &mut Acc,
         span: Span,
         ctx: Self::Ctx<'_>,
-    ) -> Result<WithDefSite<Clock>>;
+    ) -> Option<WithDefSite<Clock>>;
 }
 
 /// Helper trait for `Sp` to implement `ClockCheckExpr`.
@@ -598,7 +598,7 @@ trait ClockCheckSpanExpr {
     /// Projection to the inner `Ctx`.
     type Ctx<'i>;
     /// Projection to the inner `clockcheck`.
-    fn clockcheck(&self, acc: &mut Acc, ctx: Self::Ctx<'_>) -> Result<Sp<WithDefSite<Clock>>>;
+    fn clockcheck(&self, acc: &mut Acc, ctx: Self::Ctx<'_>) -> Option<Sp<WithDefSite<Clock>>>;
 }
 
 /// Clock typing interface for statements.
@@ -606,7 +606,7 @@ trait ClockCheckStmt {
     /// Clock context (typically obtained by the `signature` on local variables and toplevel declarations)
     type Ctx<'i>;
     /// Verify internal consistency of the clocks.
-    fn clockcheck(&self, acc: &mut Acc, span: Span, ctx: Self::Ctx<'_>) -> Result<()>;
+    fn clockcheck(&self, acc: &mut Acc, span: Span, ctx: Self::Ctx<'_>) -> Option<()>;
 }
 
 /// Helper trait for `Sp` to implement `ClockCheckStmt`.
@@ -614,7 +614,7 @@ trait ClockCheckSpanStmt {
     /// Projection to the inner `Ctx`.
     type Ctx<'i>;
     /// Projection to the inner `clockcheck`.
-    fn clockcheck(&self, acc: &mut Acc, ctx: Self::Ctx<'_>) -> Result<Sp<()>>;
+    fn clockcheck(&self, acc: &mut Acc, ctx: Self::Ctx<'_>) -> Option<Sp<()>>;
 }
 
 /// Clock typing interface of declarations.
@@ -624,7 +624,7 @@ trait ClockCheckDecl {
     /// Verify internal consistency of the clocks and produce the signature.
     /// # Errors
     /// Cannot verify that all clocks match.
-    fn clockcheck(&self, acc: &mut Acc, span: Span, ctx: Self::Ctx<'_>) -> Result<ClkMap>;
+    fn clockcheck(&self, acc: &mut Acc, span: Span, ctx: Self::Ctx<'_>) -> Option<ClkMap>;
 }
 
 /// Helper trait for `Sp` to implement `ClockCheckDecl`.
@@ -632,7 +632,7 @@ trait ClockCheckSpanDecl {
     /// Projection to the inner `Ctx`.
     type Ctx<'i>;
     /// Projection to the inner `clockcheck`.
-    fn clockcheck(&self, acc: &mut Acc, ctx: Self::Ctx<'_>) -> Result<Sp<ClkMap>>;
+    fn clockcheck(&self, acc: &mut Acc, ctx: Self::Ctx<'_>) -> Option<Sp<ClkMap>>;
 }
 
 /// Clock typing interface.
@@ -640,12 +640,12 @@ pub trait ClockCheck {
     /// Verify internal consistency of the clocks.
     /// # Errors
     /// Cannot verify that all clocks match.
-    fn clockcheck(&self, acc: &mut Acc) -> Result<()>;
+    fn clockcheck(&self, acc: &mut Acc) -> Option<()>;
 }
 
 impl<T: ClockCheckExpr> ClockCheckSpanExpr for Sp<T> {
     type Ctx<'i> = T::Ctx<'i>;
-    fn clockcheck(&self, acc: &mut Acc, ctx: T::Ctx<'_>) -> Result<Sp<WithDefSite<Clock>>> {
+    fn clockcheck(&self, acc: &mut Acc, ctx: T::Ctx<'_>) -> Option<Sp<WithDefSite<Clock>>> {
         self.as_ref()
             .map(|span, t| t.clockcheck(acc, span, ctx))
             .transpose()
@@ -653,7 +653,7 @@ impl<T: ClockCheckExpr> ClockCheckSpanExpr for Sp<T> {
 }
 impl<T: ClockCheckStmt> ClockCheckSpanStmt for Sp<T> {
     type Ctx<'i> = T::Ctx<'i>;
-    fn clockcheck(&self, acc: &mut Acc, ctx: T::Ctx<'_>) -> Result<Sp<()>> {
+    fn clockcheck(&self, acc: &mut Acc, ctx: T::Ctx<'_>) -> Option<Sp<()>> {
         self.as_ref()
             .map(|span, t| t.clockcheck(acc, span, ctx))
             .transpose()
@@ -661,7 +661,7 @@ impl<T: ClockCheckStmt> ClockCheckSpanStmt for Sp<T> {
 }
 impl<T: ClockCheckDecl> ClockCheckSpanDecl for Sp<T> {
     type Ctx<'i> = T::Ctx<'i>;
-    fn clockcheck<'i>(&self, acc: &mut Acc, ctx: Self::Ctx<'_>) -> Result<Sp<ClkMap>> {
+    fn clockcheck<'i>(&self, acc: &mut Acc, ctx: Self::Ctx<'_>) -> Option<Sp<ClkMap>> {
         self.as_ref()
             .map(|span, t| t.clockcheck(acc, span, ctx))
             .transpose()
@@ -670,15 +670,15 @@ impl<T: ClockCheckDecl> ClockCheckSpanDecl for Sp<T> {
 
 impl ClockCheckExpr for expr::Lit {
     type Ctx<'i> = ();
-    fn clockcheck(&self, _acc: &mut Acc, span: Span, (): ()) -> Result<WithDefSite<Clock>> {
-        Ok(WithDefSite::without(Clock::Adaptative.with_span(span)))
+    fn clockcheck(&self, _acc: &mut Acc, span: Span, (): ()) -> Option<WithDefSite<Clock>> {
+        Some(WithDefSite::without(Clock::Adaptative.with_span(span)))
     }
 }
 
 impl ClockCheckExpr for var::Global {
     type Ctx<'i> = ();
-    fn clockcheck(&self, _acc: &mut Acc, span: Span, (): ()) -> Result<WithDefSite<Clock>> {
-        Ok(WithDefSite::without(Clock::Adaptative.with_span(span)))
+    fn clockcheck(&self, _acc: &mut Acc, span: Span, (): ()) -> Option<WithDefSite<Clock>> {
+        Some(WithDefSite::without(Clock::Adaptative.with_span(span)))
     }
 }
 
@@ -689,21 +689,21 @@ impl ClockCheckExpr for var::Local {
         _acc: &mut Acc,
         _: Span,
         ctx: Self::Ctx<'_>,
-    ) -> Result<WithDefSite<Clock>> {
-        Ok(ctx.clock_of(self))
+    ) -> Option<WithDefSite<Clock>> {
+        Some(ctx.clock_of(self))
     }
 }
 
 impl ClockCheckDecl for decl::Node {
     type Ctx<'i> = &'i mut ClkCtx;
-    fn clockcheck(&self, _acc: &mut Acc, _span: Span, _ctx: Self::Ctx<'_>) -> Result<ClkMap> {
-        Ok(ClkMap::default()) // FIXME
+    fn clockcheck(&self, _acc: &mut Acc, _span: Span, _ctx: Self::Ctx<'_>) -> Option<ClkMap> {
+        Some(ClkMap::default()) // FIXME
     }
 }
 
 impl ClockCheckDecl for decl::ExtNode {
     type Ctx<'i> = ();
-    fn clockcheck(&self, _acc: &mut Acc, _: Span, (): ()) -> Result<ClkMap> {
+    fn clockcheck(&self, _acc: &mut Acc, _: Span, (): ()) -> Option<ClkMap> {
         let mut map = ClkMap::default();
         for i in self.inputs.t.iter() {
             map.new_input(i.t.name.t.repr.as_ref(), i.t.ty.t.ty.t.clk.as_ref());
@@ -711,12 +711,12 @@ impl ClockCheckDecl for decl::ExtNode {
         for o in self.outputs.t.iter() {
             map.new_output(o.t.name.t.repr.as_ref(), o.t.ty.t.ty.t.clk.as_ref());
         }
-        Ok(map)
+        Some(map)
     }
 }
 
 impl ClockCheck for Sp<decl::Prog> {
-    fn clockcheck(&self, acc: &mut Acc) -> Result<()> {
+    fn clockcheck(&self, acc: &mut Acc) -> Option<()> {
         let mut ctx = ClkCtx::default();
         for decl in &self.t.decls {
             match &decl.t {
@@ -735,6 +735,6 @@ impl ClockCheck for Sp<decl::Prog> {
                 }
             }
         }
-        Ok(())
+        Some(())
     }
 }

@@ -166,7 +166,7 @@
 
 use std::collections::HashSet;
 
-use chandeliers_err::{self as err, Acc, Result, Transparent};
+use chandeliers_err::{self as err, Acc, Transparent};
 use chandeliers_san::ast as tgt;
 use chandeliers_san::sp::{Sp, Span, WithSpan};
 
@@ -196,7 +196,7 @@ pub trait Translate {
         run_uid: Transparent<usize>,
         span: Span,
         ctx: Self::Ctx<'_>,
-    ) -> Result<Self::Output>;
+    ) -> Option<Self::Output>;
 }
 
 /// Helper trait to translate from the parsing AST to the analysis AST.
@@ -225,7 +225,7 @@ pub trait SpanTranslate {
         acc: &mut Acc,
         run_uid: Transparent<usize>,
         ctx: Self::Ctx<'_>,
-    ) -> Result<Sp<Self::Output>>;
+    ) -> Option<Sp<Self::Output>>;
     /// Same as `translate`, but do now wrap in a span.
     /// This helps for very nested structures that don't want a `Sp<_>` at every level.
     ///
@@ -236,7 +236,7 @@ pub trait SpanTranslate {
         acc: &mut Acc,
         run_uid: Transparent<usize>,
         ctx: Self::Ctx<'_>,
-    ) -> Result<Self::Output>;
+    ) -> Option<Self::Output>;
 }
 
 /// `Sp<_>` is transparently translatable, but it makes its span available to the inner translation
@@ -252,9 +252,9 @@ where
         acc: &mut Acc,
         run_uid: Transparent<usize>,
         ctx: Self::Ctx<'_>,
-    ) -> Result<Sp<Self::Output>> {
+    ) -> Option<Sp<Self::Output>> {
         let res = self.t.translate(acc, run_uid, self.span.into(), ctx)?;
-        Ok(Sp {
+        Some(Sp {
             t: res,
             span: self.span,
         })
@@ -264,7 +264,7 @@ where
         acc: &mut Acc,
         run_uid: Transparent<usize>,
         ctx: Self::Ctx<'_>,
-    ) -> Result<Self::Output> {
+    ) -> Option<Self::Output> {
         self.t.translate(acc, run_uid, self.span.into(), ctx)
     }
 }
@@ -291,7 +291,7 @@ where
         run_uid: Transparent<usize>,
         span: Span,
         ctx: Self::Ctx<'_>,
-    ) -> Result<Self::Output> {
+    ) -> Option<Self::Output> {
         (*self).translate(acc, run_uid, span, ctx)
     }
 }
@@ -305,12 +305,12 @@ impl Translate for src::Prog {
         run_uid: Transparent<usize>,
         _span: Span,
         (): (),
-    ) -> Result<tgt::decl::Prog> {
+    ) -> Option<tgt::decl::Prog> {
         let mut decls = Vec::new();
         for decl in self.decls {
             decls.push(decl.translate(acc, run_uid, options::Decl::default())?);
         }
-        Ok(tgt::decl::Prog { decls })
+        Some(tgt::decl::Prog { decls })
     }
 }
 
@@ -323,7 +323,7 @@ impl Translate for src::AttrDecl {
         run_uid: Transparent<usize>,
         _span: Span,
         options: options::Decl,
-    ) -> Result<tgt::decl::Decl> {
+    ) -> Option<tgt::decl::Decl> {
         match self {
             Self::Tagged(attr, n) => {
                 let options = options.with(acc, attr)?;
@@ -343,8 +343,8 @@ impl Translate for src::Decl {
         run_uid: Transparent<usize>,
         _span: Span,
         options: options::Decl,
-    ) -> Result<tgt::decl::Decl> {
-        Ok(match self {
+    ) -> Option<tgt::decl::Decl> {
+        Some(match self {
             Self::Const(c) => {
                 let options = options.for_const(acc)?;
                 tgt::decl::Decl::Const(c.translate(acc, run_uid, options)?)
@@ -367,8 +367,8 @@ impl Translate for src::Extern {
         run_uid: Transparent<usize>,
         _span: Span,
         options: options::Decl,
-    ) -> Result<tgt::decl::Decl> {
-        Ok(match self {
+    ) -> Option<tgt::decl::Decl> {
+        Some(match self {
             Self::Const(c) => {
                 let options = options.for_ext_const(acc)?;
                 tgt::decl::Decl::ExtConst(c.translate(acc, run_uid, options)?)
@@ -390,13 +390,13 @@ impl Translate for src::ExtConst {
         run_uid: Transparent<usize>,
         _span: Span,
         options: tgt::options::ExtConst,
-    ) -> Result<Self::Output> {
+    ) -> Option<Self::Output> {
         let name = self.name.map(|span, name| tgt::var::Global {
             repr: name.to_string().with_span(span),
             run_uid,
         });
         let ty = self.ty.translate(acc, run_uid, &mut Vec::new())?;
-        Ok(tgt::decl::ExtConst {
+        Some(tgt::decl::ExtConst {
             name,
             ty: ty.t.inner,
             options,
@@ -413,14 +413,14 @@ impl Translate for src::ExtNode {
         run_uid: Transparent<usize>,
         _span: Span,
         options: tgt::options::ExtNode,
-    ) -> Result<tgt::decl::ExtNode> {
+    ) -> Option<tgt::decl::ExtNode> {
         let name = self.name.map(|span, name| tgt::decl::NodeName {
             repr: name.to_string().with_span(span),
             run_uid,
         });
         let inputs = self.inputs.translate(acc, run_uid, &mut Vec::new())?;
         let outputs = self.outputs.translate(acc, run_uid, &mut Vec::new())?;
-        Ok(tgt::decl::ExtNode {
+        Some(tgt::decl::ExtNode {
             name,
             inputs,
             outputs,
@@ -507,7 +507,7 @@ impl Translate for src::Node {
         run_uid: Transparent<usize>,
         _span: Span,
         options: tgt::options::Node,
-    ) -> Result<Self::Output> {
+    ) -> Option<Self::Output> {
         let name = self.name.map(|span, name| tgt::decl::NodeName {
             repr: name.to_string().with_span(span),
             run_uid,
@@ -527,7 +527,7 @@ impl Translate for src::Node {
             def.translate(acc, run_uid, ectx.view())?;
         }
         let ExprCtx { blocks, stmts, .. } = ectx;
-        Ok(tgt::decl::Node {
+        Some(tgt::decl::Node {
             name,
             options,
             inputs,
@@ -549,7 +549,7 @@ impl Translate for src::Const {
         run_uid: Transparent<usize>,
         span: Span,
         options: tgt::options::Const,
-    ) -> Result<tgt::decl::Const> {
+    ) -> Option<tgt::decl::Const> {
         let name = self.name.map(|span, name| tgt::var::Global {
             repr: name.to_string().with_span(span),
             run_uid,
@@ -563,7 +563,7 @@ impl Translate for src::Const {
                 what: "Function calls are",
             })?;
         }
-        Ok(tgt::decl::Const {
+        Some(tgt::decl::Const {
             name,
             options,
             ty,
@@ -581,12 +581,12 @@ impl Translate for src::ArgsTys {
         run_uid: Transparent<usize>,
         _span: Span,
         ctx: Self::Ctx<'_>,
-    ) -> Result<tgt::Tuple<Sp<tgt::decl::TyVar>>> {
+    ) -> Option<tgt::Tuple<Sp<tgt::decl::TyVar>>> {
         let mut vs = tgt::Tuple::default();
         for item in self.items {
             item.translate(acc, run_uid, (&mut vs, ctx))?;
         }
-        Ok(vs)
+        Some(vs)
     }
 }
 
@@ -599,10 +599,10 @@ impl Translate for src::ArgsTy {
         run_uid: Transparent<usize>,
         _span: Span,
         ctx: Self::Ctx<'_>,
-    ) -> Result<()> {
+    ) -> Option<()> {
         let ty = self.ty.translate(acc, run_uid, ctx.1)?;
         self.args.translate(acc, run_uid, (ctx.0, ty))?;
-        Ok(())
+        Some(())
     }
 }
 
@@ -618,7 +618,7 @@ impl Translate for src::Decls {
         run_uid: Transparent<usize>,
         _span: Span,
         (vars, ty): Self::Ctx<'_>,
-    ) -> Result<()> {
+    ) -> Option<()> {
         for id in self.ids {
             vars.push(id.map(|span, id| {
                 tgt::decl::TyVar {
@@ -641,7 +641,7 @@ impl Translate for src::Decls {
                 }
             }));
         }
-        Ok(())
+        Some(())
     }
 }
 
@@ -654,11 +654,11 @@ impl Translate for src::ty::Type {
         run_uid: Transparent<usize>,
         _span: Span,
         ctx: Self::Ctx<'_>,
-    ) -> Result<Self::Output> {
+    ) -> Option<Self::Output> {
         // FIXME: translate the clock
         let inner = self.base.translate(acc, run_uid, ())?;
         let clk = self.clock.translate(acc, run_uid, ctx)?;
-        Ok(tgt::ty::Clocked { inner, clk })
+        Some(tgt::ty::Clocked { inner, clk })
     }
 }
 
@@ -671,8 +671,8 @@ impl Translate for src::ty::Base {
         _run_uid: Transparent<usize>,
         _span: Span,
         (): (),
-    ) -> Result<Self::Output> {
-        Ok(match self {
+    ) -> Option<Self::Output> {
+        Some(match self {
             Self::Int(_) => tgt::ty::Base::Int,
             Self::Float(_) => tgt::ty::Base::Float,
             Self::Bool(_) => tgt::ty::Base::Bool,
@@ -689,11 +689,11 @@ impl Translate for src::ty::Clock {
         run_uid: Transparent<usize>,
         _span: Span,
         ctx: Self::Ctx<'_>,
-    ) -> Result<Self::Output> {
+    ) -> Option<Self::Output> {
         match self {
             Self::When(w) => w.flat_translate(acc, run_uid, ctx),
             Self::Whenot(w) => w.flat_translate(acc, run_uid, ctx),
-            Self::None => Ok(tgt::ty::Clock::Implicit),
+            Self::None => Some(tgt::ty::Clock::Implicit),
         }
     }
 }
@@ -707,7 +707,7 @@ impl Translate for src::ty::When {
         run_uid: Transparent<usize>,
         _span: Span,
         ctx: Self::Ctx<'_>,
-    ) -> Result<Self::Output> {
+    ) -> Option<Self::Output> {
         ctx.push(
             tgt::var::Local {
                 repr: self.clock.as_ref().map(|_, c| format!("{c}")),
@@ -715,7 +715,7 @@ impl Translate for src::ty::When {
             }
             .with_span(self.clock.span),
         );
-        Ok(tgt::ty::Clock::Explicit {
+        Some(tgt::ty::Clock::Explicit {
             activation: true,
             id: self.clock.map(|_, c| format!("{c}")),
         })
@@ -731,7 +731,7 @@ impl Translate for src::ty::Whenot {
         run_uid: Transparent<usize>,
         _span: Span,
         ctx: Self::Ctx<'_>,
-    ) -> Result<Self::Output> {
+    ) -> Option<Self::Output> {
         ctx.push(
             tgt::var::Local {
                 repr: self.clock.as_ref().map(|_, c| format!("{c}")),
@@ -739,7 +739,7 @@ impl Translate for src::ty::Whenot {
             }
             .with_span(self.clock.span),
         );
-        Ok(tgt::ty::Clock::Explicit {
+        Some(tgt::ty::Clock::Explicit {
             activation: false,
             id: self.clock.map(|_, c| format!("{c}")),
         })
@@ -755,10 +755,10 @@ impl Translate for src::OptionalVarsDecl {
         run_uid: Transparent<usize>,
         _span: Span,
         ctx: Self::Ctx<'_>,
-    ) -> Result<Self::Output> {
+    ) -> Option<Self::Output> {
         match self {
             Self::Decls(d) => d.flat_translate(acc, run_uid, ctx),
-            Self::None => Ok(tgt::Tuple::default()),
+            Self::None => Some(tgt::Tuple::default()),
         }
     }
 }
@@ -772,7 +772,7 @@ impl Translate for src::VarsDecl {
         run_uid: Transparent<usize>,
         _span: Span,
         ctx: Self::Ctx<'_>,
-    ) -> Result<Self::Output> {
+    ) -> Option<Self::Output> {
         self.decls.flat_translate(acc, run_uid, ctx)
     }
 }
@@ -786,7 +786,7 @@ impl Translate for src::Statement {
         run_uid: Transparent<usize>,
         _span: Span,
         ctx: Self::Ctx<'_>,
-    ) -> Result<()> {
+    ) -> Option<()> {
         match self {
             Self::Assert(ass) => ass.flat_translate(acc, run_uid, ctx),
             Self::Def(def) => def.flat_translate(acc, run_uid, ctx),
@@ -803,11 +803,11 @@ impl Translate for src::Assertion {
         run_uid: Transparent<usize>,
         span: Span,
         ctx: Self::Ctx<'_>,
-    ) -> Result<()> {
+    ) -> Option<()> {
         let e = self.expr.translate(acc, run_uid, fork!(ctx))?;
         ctx.stmts
             .push(tgt::stmt::Statement::Assert(e).with_span(span));
-        Ok(())
+        Some(())
     }
 }
 
@@ -820,12 +820,12 @@ impl Translate for src::Def {
         run_uid: Transparent<usize>,
         span: Span,
         ctx: Self::Ctx<'_>,
-    ) -> Result<()> {
+    ) -> Option<()> {
         let target = self.target.translate(acc, run_uid, ())?;
         let source = self.source.translate(acc, run_uid, fork!(ctx))?;
         ctx.stmts
             .push(tgt::stmt::Statement::Let { target, source }.with_span(span));
-        Ok(())
+        Some(())
     }
 }
 
@@ -838,9 +838,9 @@ impl Translate for src::TargetExpr {
         run_uid: Transparent<usize>,
         span: Span,
         (): (),
-    ) -> Result<Self::Output> {
+    ) -> Option<Self::Output> {
         match self {
-            Self::Var(i) => Ok(tgt::stmt::VarTuple::Single(
+            Self::Var(i) => Some(tgt::stmt::VarTuple::Single(
                 tgt::var::Local {
                     repr: i.map(|_, t| t.to_string()),
                     run_uid,
@@ -861,20 +861,21 @@ impl Translate for src::TargetExprTuple {
         run_uid: Transparent<usize>,
         span: Span,
         (): (),
-    ) -> Result<Self::Output> {
+    ) -> Option<Self::Output> {
         let mut vs = tgt::Tuple::default();
         let trail = self.fields.trailing_punct();
         for t in self.fields {
             vs.push(t.translate(acc, run_uid, ())?);
         }
         if vs.len() == 1 && !trail {
-            Ok(vs
-                .into_iter()
-                .next()
-                .unwrap_or_else(|| chandeliers_err::malformed!())
-                .t)
+            Some(
+                vs.into_iter()
+                    .next()
+                    .unwrap_or_else(|| chandeliers_err::malformed!())
+                    .t,
+            )
         } else {
-            Ok(tgt::stmt::VarTuple::Multiple(vs.with_span(span)))
+            Some(tgt::stmt::VarTuple::Multiple(vs.with_span(span)))
         }
     }
 }
@@ -888,7 +889,7 @@ impl Translate for src::Expr {
         run_uid: Transparent<usize>,
         _span: Span,
         ctx: Self::Ctx<'_>,
-    ) -> Result<tgt::expr::Expr> {
+    ) -> Option<tgt::expr::Expr> {
         self.inner.flat_translate(acc, run_uid, ctx)
     }
 }
@@ -902,11 +903,11 @@ impl Translate for src::expr::If {
         run_uid: Transparent<usize>,
         _span: Span,
         ctx: Self::Ctx<'_>,
-    ) -> Result<tgt::expr::Expr> {
+    ) -> Option<tgt::expr::Expr> {
         let cond = self.cond.translate(acc, run_uid, fork!(ctx))?.boxed();
         let yes = self.yes.translate(acc, run_uid, fork!(ctx))?.boxed();
         let no = self.no.translate(acc, run_uid, ctx)?.boxed();
-        Ok(tgt::expr::Expr::Ifx { cond, yes, no })
+        Some(tgt::expr::Expr::Ifx { cond, yes, no })
     }
 }
 
@@ -928,7 +929,7 @@ impl Translate for src::expr::If {
 /// differentiating between `Accum` and `Item` even though they will eventually
 /// both be instanciated with `Expr`, to guarantee the absence of errors.
 mod assoc {
-    use super::{Result, Sp, WithSpan};
+    use super::{Sp, WithSpan};
     use chandeliers_err as err;
     use std::fmt::Display;
     use syn::punctuated::{Pair, Punctuated};
@@ -954,9 +955,9 @@ mod assoc {
         pub fn left_associative<Elem, Punct, Accum, Item>(
             &mut self,
             elems: Punctuated<Sp<Elem>, Punct>,
-        ) -> Result<Accum>
+        ) -> Option<Accum>
         where
-            Convert: FnMut(Sp<Elem>, usize) -> Result<Sp<Item>>,
+            Convert: FnMut(Sp<Elem>, usize) -> Option<Sp<Item>>,
             Compose: FnMut(Sp<Accum>, Punct, usize, Sp<Item>) -> Accum,
             Accum: WithSpan<Output = Sp<Accum>>,
             Item: Into<Accum>,
@@ -982,7 +983,7 @@ mod assoc {
                     oper = punct;
                 }
                 Pair::End(elem) => {
-                    return Ok((self.convert)(elem, depth)?.t.into());
+                    return Some((self.convert)(elem, depth)?.t.into());
                 }
             }
             // Looping case.
@@ -1005,7 +1006,7 @@ mod assoc {
                     // End: combine now then return the accumulator.
                     Pair::End(elem) => {
                         let expr = (self.convert)(elem, depth)?;
-                        return Ok((self.compose)(accum, oper, depth, expr));
+                        return Some((self.compose)(accum, oper, depth, expr));
                     }
                 }
             }
@@ -1018,10 +1019,10 @@ mod assoc {
         pub fn right_associative<Elem, Punct, Accum, Item>(
             &mut self,
             elems: Punctuated<Sp<Elem>, Punct>,
-        ) -> Result<Accum>
+        ) -> Option<Accum>
         where
             Accum: WithSpan<Output = Sp<Accum>>,
-            Convert: FnMut(Sp<Elem>, usize) -> Result<Sp<Item>>,
+            Convert: FnMut(Sp<Elem>, usize) -> Option<Sp<Item>>,
             Compose: FnMut(Sp<Item>, Punct, usize, Sp<Accum>) -> Accum,
             Item: Into<Accum>,
         {
@@ -1062,7 +1063,7 @@ mod assoc {
                 };
                 accum = (self.compose)(expr, punct, depth, accum).with_span(span);
             }
-            Ok(accum.t)
+            Some(accum.t)
         }
     }
 }
@@ -1076,7 +1077,7 @@ impl Translate for src::expr::Or {
         run_uid: Transparent<usize>,
         _span: Span,
         ctx: Self::Ctx<'_>,
-    ) -> Result<tgt::expr::Expr> {
+    ) -> Option<tgt::expr::Expr> {
         assoc::Descr {
             label: "OrExpr",
             convert: |elem: Sp<src::expr::And>, _depth| elem.translate(acc, run_uid, fork!(ctx)),
@@ -1101,7 +1102,7 @@ impl Translate for src::expr::And {
         run_uid: Transparent<usize>,
         _span: Span,
         ctx: Self::Ctx<'_>,
-    ) -> Result<tgt::expr::Expr> {
+    ) -> Option<tgt::expr::Expr> {
         assoc::Descr {
             label: "AndExpr",
             convert: |elem: Sp<src::expr::Cmp>, _depth| elem.translate(acc, run_uid, fork!(ctx)),
@@ -1126,9 +1127,9 @@ impl Translate for src::expr::Not {
         run_uid: Transparent<usize>,
         _span: Span,
         ctx: Self::Ctx<'_>,
-    ) -> Result<tgt::expr::Expr> {
+    ) -> Option<tgt::expr::Expr> {
         let inner = self.inner.translate(acc, run_uid, ctx)?.boxed();
-        Ok(tgt::expr::Expr::Un {
+        Some(tgt::expr::Expr::Un {
             op: tgt::op::Un::Not,
             inner,
         })
@@ -1144,7 +1145,7 @@ impl Translate for src::expr::Cmp {
         run_uid: Transparent<usize>,
         span: Span,
         ctx: Self::Ctx<'_>,
-    ) -> Result<tgt::expr::Expr> {
+    ) -> Option<tgt::expr::Expr> {
         use syn::punctuated::Pair;
         chandeliers_err::consistency!(
             !self.items.trailing_punct(),
@@ -1195,7 +1196,7 @@ impl Translate for src::expr::Cmp {
             err::malformed!()
         };
         let rhs = rhs.translate(acc, run_uid, ctx)?.boxed();
-        Ok(tgt::expr::Expr::Cmp { op, lhs, rhs })
+        Some(tgt::expr::Expr::Cmp { op, lhs, rhs })
     }
 }
 
@@ -1208,8 +1209,8 @@ impl Translate for src::op::Cmp {
         _run_uid: Transparent<usize>,
         _span: Span,
         (): (),
-    ) -> Result<Self::Output> {
-        Ok(match self {
+    ) -> Option<Self::Output> {
+        Some(match self {
             Self::Le(_) => tgt::op::Cmp::Le,
             Self::Lt(_) => tgt::op::Cmp::Lt,
             Self::Ge(_) => tgt::op::Cmp::Ge,
@@ -1229,7 +1230,7 @@ impl Translate for src::expr::Fby {
         run_uid: Transparent<usize>,
         _span: Span,
         ctx: Self::Ctx<'_>,
-    ) -> Result<tgt::expr::Expr> {
+    ) -> Option<tgt::expr::Expr> {
         assoc::Descr {
             label: "FbyExpr",
             convert: |elem: Sp<src::expr::Then>, depth| {
@@ -1261,7 +1262,7 @@ impl Translate for src::expr::Pre {
         run_uid: Transparent<usize>,
         _span: Span,
         ctx: Self::Ctx<'_>,
-    ) -> Result<tgt::expr::Expr> {
+    ) -> Option<tgt::expr::Expr> {
         self.inner.flat_translate(acc, run_uid, ctx.incr())
     }
 }
@@ -1275,7 +1276,7 @@ impl Translate for src::expr::Then {
         run_uid: Transparent<usize>,
         _span: Span,
         ctx: Self::Ctx<'_>,
-    ) -> Result<tgt::expr::Expr> {
+    ) -> Option<tgt::expr::Expr> {
         // This looks similar to `FbyExpr`, but notice how we aren't using `depth`
         // in the same way.
         assoc::Descr {
@@ -1309,7 +1310,7 @@ impl Translate for src::expr::Add {
         run_uid: Transparent<usize>,
         _span: Span,
         ctx: Self::Ctx<'_>,
-    ) -> Result<tgt::expr::Expr> {
+    ) -> Option<tgt::expr::Expr> {
         // Back to normal left assaciative stuff that doesn't care about the depth,
         // but this time we have to handle the fact that there are multiple possible operators.
         assoc::Descr {
@@ -1360,7 +1361,7 @@ impl Translate for src::expr::Mul {
         run_uid: Transparent<usize>,
         _span: Span,
         ctx: Self::Ctx<'_>,
-    ) -> Result<tgt::expr::Expr> {
+    ) -> Option<tgt::expr::Expr> {
         assoc::Descr {
             label: "MulExpr",
             convert: |elem: Sp<src::expr::Clock>, _depth| elem.translate(acc, run_uid, fork!(ctx)),
@@ -1398,7 +1399,7 @@ impl Translate for src::expr::Clock {
         run_uid: Transparent<usize>,
         _span: Span,
         ctx: Self::Ctx<'_>,
-    ) -> Result<tgt::expr::Expr> {
+    ) -> Option<tgt::expr::Expr> {
         assoc::Descr {
             label: "ClockExpr",
             convert: |elem: Sp<src::expr::Positive>, _depth| {
@@ -1428,9 +1429,9 @@ impl Translate for src::expr::Neg {
         run_uid: Transparent<usize>,
         _span: Span,
         ctx: Self::Ctx<'_>,
-    ) -> Result<tgt::expr::Expr> {
+    ) -> Option<tgt::expr::Expr> {
         let inner = self.inner.translate(acc, run_uid, ctx)?.boxed();
-        Ok(tgt::expr::Expr::Un {
+        Some(tgt::expr::Expr::Un {
             op: tgt::op::Un::Neg,
             inner,
         })
@@ -1446,16 +1447,16 @@ impl Translate for src::expr::Paren {
         run_uid: Transparent<usize>,
         span: Span,
         ctx: Self::Ctx<'_>,
-    ) -> Result<tgt::expr::Expr> {
+    ) -> Option<tgt::expr::Expr> {
         let mut es = tgt::Tuple::default();
         let trail = self.inner.trailing_punct();
         for e in self.inner {
             es.push(e.translate(acc, run_uid, fork!(ctx))?);
         }
         if es.len() == 1 && !trail {
-            Ok(es.into_iter().next().unwrap_or_else(|| err::malformed!()).t)
+            Some(es.into_iter().next().unwrap_or_else(|| err::malformed!()).t)
         } else {
-            Ok(tgt::expr::Expr::Tuple(es.with_span(span)))
+            Some(tgt::expr::Expr::Tuple(es.with_span(span)))
         }
     }
 }
@@ -1469,7 +1470,7 @@ impl Translate for src::expr::Call {
         run_uid: Transparent<usize>,
         span: Span,
         ctx: Self::Ctx<'_>,
-    ) -> Result<tgt::expr::Expr> {
+    ) -> Option<tgt::expr::Expr> {
         let args = self.args.translate(acc, run_uid, fork!(ctx))?;
         let repr = self.fun.map(|_, t| t.to_string());
         let id = tgt::var::Node {
@@ -1479,7 +1480,7 @@ impl Translate for src::expr::Call {
         .with_span(span);
         ctx.blocks
             .push(tgt::decl::NodeName { repr, run_uid }.with_span(span));
-        Ok(tgt::expr::Expr::Substep {
+        Some(tgt::expr::Expr::Substep {
             clk: ctx.depth,
             id: id.clone(),
             args: args.boxed(),
@@ -1496,7 +1497,7 @@ impl Translate for src::expr::Atomic {
         run_uid: Transparent<usize>,
         _span: Span,
         ctx: Self::Ctx<'_>,
-    ) -> Result<tgt::expr::Expr> {
+    ) -> Option<tgt::expr::Expr> {
         match self {
             Self::Lit(l) => l.flat_translate(acc, run_uid, ctx),
             Self::Var(v) => v.flat_translate(acc, run_uid, ctx),
@@ -1514,7 +1515,7 @@ impl Translate for src::expr::Positive {
         run_uid: Transparent<usize>,
         _span: Span,
         ctx: Self::Ctx<'_>,
-    ) -> Result<tgt::expr::Expr> {
+    ) -> Option<tgt::expr::Expr> {
         match self {
             Self::If(i) => i.flat_translate(acc, run_uid, ctx),
             Self::Merge(m) => m.flat_translate(acc, run_uid, ctx),
@@ -1536,11 +1537,11 @@ impl Translate for src::expr::Merge {
         run_uid: Transparent<usize>,
         _span: Span,
         ctx: Self::Ctx<'_>,
-    ) -> Result<tgt::expr::Expr> {
+    ) -> Option<tgt::expr::Expr> {
         let switch = self.clk.translate(acc, run_uid, fork!(ctx))?.boxed();
         let on = self.on.translate(acc, run_uid, fork!(ctx))?.boxed();
         let off = self.off.translate(acc, run_uid, fork!(ctx))?.boxed();
-        Ok(tgt::expr::Expr::Merge { switch, on, off })
+        Some(tgt::expr::Expr::Merge { switch, on, off })
     }
 }
 
@@ -1553,10 +1554,10 @@ impl Translate for src::expr::Var {
         run_uid: Transparent<usize>,
         span: Span,
         ctx: Self::Ctx<'_>,
-    ) -> Result<tgt::expr::Expr> {
+    ) -> Option<tgt::expr::Expr> {
         let repr = self.name.map(|_, t| t.to_string());
         if ctx.shadow_glob.contains(&repr.t) {
-            Ok(tgt::expr::Expr::Reference(
+            Some(tgt::expr::Expr::Reference(
                 tgt::var::Reference::Var(
                     tgt::var::Past {
                         var: tgt::var::Local { repr, run_uid }.with_span(span),
@@ -1567,7 +1568,7 @@ impl Translate for src::expr::Var {
                 .with_span(span),
             ))
         } else {
-            Ok(tgt::expr::Expr::Reference(
+            Some(tgt::expr::Expr::Reference(
                 tgt::var::Reference::Global(tgt::var::Global { repr, run_uid }.with_span(span))
                     .with_span(span),
             ))
@@ -1584,7 +1585,7 @@ impl Translate for src::expr::Lit {
         _run_uid: Transparent<usize>,
         span: Span,
         _ctx: Self::Ctx<'_>,
-    ) -> Result<tgt::expr::Expr> {
+    ) -> Option<tgt::expr::Expr> {
         use syn::Lit;
         let lit = match self.lit.t {
             Lit::Bool(b) => tgt::expr::Lit::Bool(b.value()),
@@ -1598,6 +1599,6 @@ impl Translate for src::expr::Lit {
             ),
             _ => acc.error(err::UnhandledLitType { site: span })?,
         };
-        Ok(tgt::expr::Expr::Lit(lit.with_span(span)))
+        Some(tgt::expr::Expr::Lit(lit.with_span(span)))
     }
 }

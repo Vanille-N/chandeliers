@@ -16,7 +16,7 @@
 //! only those applicable to each declaration, and emits appropriate and
 //! homogeneous error messages.
 
-use chandeliers_err::{self as err, Acc, Result};
+use chandeliers_err::{self as err, Acc};
 use chandeliers_san::ast::options::{Const, ExtConst, ExtNode, Node, TraceFile};
 use chandeliers_san::sp::{Sp, Span, WithSpan};
 
@@ -100,7 +100,7 @@ impl<T> SetOpt<T> {
     }
 
     /// Assert that this option was not set.
-    fn skip(self, acc: &mut Acc, current: &'static str) -> err::Result<()> {
+    fn skip(self, acc: &mut Acc, current: &'static str) -> Option<()> {
         if self.value.is_some() {
             acc.error(err::Basic {
                 msg: format!(
@@ -112,7 +112,7 @@ impl<T> SetOpt<T> {
                 }),
             })
         } else {
-            Ok(())
+            Some(())
         }
     }
 }
@@ -166,9 +166,8 @@ macro_rules! project {
             $( $take, )*
             $( $skip, )*
         } = $this;
-
         $( $skip.skip($acc, stringify!($To))?; )*
-        Ok($To {
+        Some($To {
             $( $take: chandeliers_san::ast::options::UseOpt::new($take.take()), )*
         })
     }
@@ -176,7 +175,7 @@ macro_rules! project {
 
 impl Decl {
     /// Project to the options that are valid on a `const`.
-    pub fn for_const(self, acc: &mut Acc) -> Result<Const> {
+    pub fn for_const(self, acc: &mut Acc) -> Option<Const> {
         project! {
             ?acc => self: Decl => Const {
                 take { export, rustc_allow, doc, public, }
@@ -186,7 +185,7 @@ impl Decl {
     }
 
     /// Project to the options that are valid on a `node`.
-    pub fn for_node(self, _acc: &mut Acc) -> Result<Node> {
+    pub fn for_node(self, _acc: &mut Acc) -> Option<Node> {
         project! {
             ?_acc => self: Decl => Node {
                 take { trace, export, main, rustc_allow, doc, public, impl_trait, }
@@ -196,7 +195,7 @@ impl Decl {
     }
 
     /// Project to the options that are valid on an `extern const`.
-    pub fn for_ext_const(self, acc: &mut Acc) -> Result<ExtConst> {
+    pub fn for_ext_const(self, acc: &mut Acc) -> Option<ExtConst> {
         project! {
             ?acc => self: Decl => ExtConst {
                 take { rustc_allow, }
@@ -206,7 +205,7 @@ impl Decl {
     }
 
     /// Project to the options that are valid on an `extern node`.
-    pub fn for_ext_node(self, acc: &mut Acc) -> Result<ExtNode> {
+    pub fn for_ext_node(self, acc: &mut Acc) -> Option<ExtNode> {
         project! {
             ?acc => self: Decl => ExtNode {
                 take { trace, main, rustc_allow, }
@@ -216,7 +215,7 @@ impl Decl {
     }
 
     /// Update the current options with a new attribute.
-    pub fn with(mut self, acc: &mut Acc, attr: Sp<crate::ast::Attribute>) -> Result<Self> {
+    pub fn with(mut self, acc: &mut Acc, attr: Sp<crate::ast::Attribute>) -> Option<Self> {
         use syn::Lit;
         let action = attr.t.attr.t.action.t.inner.to_string();
 
@@ -236,25 +235,60 @@ impl Decl {
             };
         }
 
+        /// Warning (not fatal) if we overwrite a previous attribute.
+        macro_rules! duplicate {
+            ($opt:ident) => {
+                if self.$opt.value.is_some() {
+                    acc.warning(vec![
+                        (
+                            format!(
+                                "{} is already set by a previous attribute",
+                                self.$opt.message
+                            ),
+                            Some(attr.span.into()),
+                        ),
+                        (
+                            format!("Previously declared here"),
+                            Some(self.$opt.span.unwrap()),
+                        ),
+                    ])
+                }
+            };
+        }
+
+        macro_rules! register {
+            ( $field:ident <- $fn:ident $val:expr ) => {
+                self.$field.$fn($val, attr.span.into())
+            };
+        }
+
         let params = &attr.t.attr.t.params.map(|_, t| t.flatten());
         let targets = attr.t.attr.t.targets.map(|_, t| t.flatten());
         let args = (&params.t[..], &targets.t[..]);
         match action.as_str() {
             "trace" => match args {
-                ([], []) => self.trace.some(TraceFile::StdOut, attr.span.into()),
+                ([], []) => {
+                    duplicate!(trace);
+                    register!(trace <- some TraceFile::StdOut);
+                }
                 ([ident], []) if ident.as_str() == "stdout" => {
-                    self.trace.some(TraceFile::StdOut, attr.span.into());
+                    duplicate!(trace);
+                    register!(trace <- some TraceFile::StdOut);
                 }
                 ([ident], []) if ident.as_str() == "stderr" => {
-                    self.trace.some(TraceFile::StdErr, attr.span.into());
+                    duplicate!(trace);
+                    register!(trace <- some TraceFile::StdErr);
                 }
                 _ => malformed!(
-                    msg:("expects no arguments")
+                    msg:("expects either no arguments or one of `stderr`/`stdout`")
                     syn:("`#[trace]`")
                 ),
             },
             "export" => match args {
-                ([], []) => self.export.set(true, attr.span.into()),
+                ([], []) => {
+                    duplicate!(export);
+                    register!(export <- set true);
+                }
                 _ => malformed!(
                     msg:("expects no arguments")
                     syn:("`#[export]`")
@@ -262,8 +296,10 @@ impl Decl {
             },
             "pub" => match args {
                 ([], []) => {
-                    self.public.set(true, attr.span.into());
-                    self.export.set(true, attr.span.into());
+                    duplicate!(public);
+                    duplicate!(export);
+                    register!(public <- set true);
+                    register!(export <- set true);
                 }
                 _ => malformed!(
                     msg:("expects no arguments")
@@ -272,7 +308,8 @@ impl Decl {
             },
             "trait" => match args {
                 ([], []) => {
-                    self.impl_trait.set(true, attr.span.into());
+                    duplicate!(impl_trait);
+                    register!(impl_trait <- set true);
                 }
                 _ => malformed!(
                     msg:("expects no arguments")
@@ -281,12 +318,17 @@ impl Decl {
             },
 
             "main" => match args {
-                ([], []) => self.main.some(100, attr.span.into()),
-                ([], [Lit::Int(i)]) => self.main.some(
-                    i.base10_parse()
-                        .unwrap_or_else(|e| err::abort!("{i} cannot be parsed in base 10: {e}")),
-                    attr.span.into(),
-                ),
+                ([], []) => {
+                    duplicate!(main);
+                    register!(main <- some 100);
+                }
+                ([], [Lit::Int(i)]) => {
+                    duplicate!(main);
+                    let i = i
+                        .base10_parse()
+                        .unwrap_or_else(|e| err::abort!("{i} cannot be parsed in base 10: {e}"));
+                    register!(main <- some i);
+                }
                 _ => malformed!(
                     msg:("expects at most one integer argument")
                     syn:("`#[main]` or `#[main(42)]`")
@@ -294,10 +336,8 @@ impl Decl {
             },
             "rustc_allow" => match args {
                 ([inner], []) => {
-                    self.rustc_allow.push(
-                        syn::Ident::new(inner, params.span.unwrap()),
-                        attr.span.into(),
-                    );
+                    let id = syn::Ident::new(inner, params.span.unwrap());
+                    register!(rustc_allow <- push id);
                 }
                 _ => malformed!(
                     msg:("expects exactly one identifier")
@@ -306,8 +346,8 @@ impl Decl {
             },
             "doc" => match args {
                 ([], [Lit::Str(doc)]) => {
-                    self.doc
-                        .push(doc.value().with_span(params.span), attr.span.into());
+                    let msg = doc.value().with_span(params.span);
+                    register!(doc <- push msg);
                 }
                 _ => malformed!(
                     msg:("expects exactly one string")
@@ -319,6 +359,6 @@ impl Decl {
                 note:("See the available options and their definition at {}", err::repo!()) //FIXME
             ),
         }
-        Ok(self)
+        Some(self)
     }
 }

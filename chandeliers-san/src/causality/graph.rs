@@ -42,7 +42,7 @@ use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::hash::Hash;
 
-use chandeliers_err::{self as err, Acc, Result, TrySpan};
+use chandeliers_err::{self as err, Acc, TrySpan};
 
 use crate::causality::depends::Depends;
 use crate::sp::Span;
@@ -319,10 +319,10 @@ where
     /// if the `Unit` in question has not already been encountered,
     /// so this method should be called after all insertions are
     /// complete.
-    pub fn must_provide(&mut self, acc: &mut Acc, o: &Unit) -> Result<()> {
+    pub fn must_provide(&mut self, acc: &mut Acc, o: &Unit) -> Option<()> {
         let uid = self.get_or_insert_atomic(o, false);
         if self.provided_for_ext.contains(&uid) {
-            Ok(())
+            Some(())
         } else {
             acc.error(err::GraphUnitUndeclared { unit: &o })
         }
@@ -359,7 +359,7 @@ where
     ///
     /// # Errors
     /// Fails if a cycle is encountered.
-    pub fn scheduling(self, acc: &mut Acc) -> Result<Vec<Obj>> {
+    pub fn scheduling(self, acc: &mut Acc) -> Option<Vec<Obj>> {
         let nb = self.atomics.0.len();
         let (provider, constraints) = {
             // First step is to create some reverse mappings that will
@@ -458,7 +458,7 @@ where
             // e.g. assertions. Let's put them last.
             schedule.push(o);
         }
-        Ok(schedule)
+        Some(schedule)
     }
 }
 
@@ -513,7 +513,7 @@ mod test {
             g.insert(pair);
         }
         let sched = g.scheduling(&mut acc);
-        sched.map_err(move |()| vec_proj1(acc.fetch().0.into_iter().next().unwrap()))
+        sched.ok_or_else(|| vec_proj1(acc.fetch().0.into_iter().next().unwrap()))
     }
 
     #[test]
