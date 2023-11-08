@@ -1,6 +1,6 @@
 [package]
 name = "chandeliers-syn"
-version = "0.4.3"
+version = "0.4.4"
 edition = "2021"
 authors = [ "Neven <vanille@crans.org>" ]
 description = "Syntax of the Lustre language, to be parsed by procedural macros"
@@ -13,5 +13,5 @@ repository = "https://github.com/Vanille-N/chandeliers"
 [dependencies]
 syn = { version = "2.0", features = ["full"] }
 syn_derive = "0.1.7"
-chandeliers-err = { path = "../chandeliers-err", version = "0.4.3" }
-chandeliers-san = { path = "../chandeliers-san", version = "0.4.3" }
+chandeliers-err = { path = "../chandeliers-err", version = "0.4.4" }
+chandeliers-san = { path = "../chandeliers-san", version = "0.4.4" }
