@@ -512,6 +512,15 @@ mod by_trait {
     }
 }
 
+mod format {
+    chandeliers_lus::decl! {
+        #[trace]
+        #[clippy_allow[many_single_char_names]]
+        node foo(a, b, c : int) returns (x, y, z : int);
+        let (x, y, z) = (a, b, c); tel;
+    }
+}
+
 mod fizzbuzz {
     chandeliers_lus::decl! {
        #[trace("Fizz")]

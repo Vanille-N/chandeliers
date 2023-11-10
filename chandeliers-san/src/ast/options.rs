@@ -206,6 +206,15 @@ pub struct Sites<Head, Tail> {
     tail: Tail,
 }
 
+/// Allow attributes.
+#[derive(Clone, Debug)]
+pub enum Allow {
+    /// `#[allow(x)]`
+    Rustc(syn::Ident),
+    /// `#[allow(clippy::x)]`
+    Clippy(syn::Ident),
+}
+
 /// Empty usage site.
 /// This is trivially `AssertUsed` but never `Usage`, which
 /// ensures that we find a matching usage declaration for every call site.
@@ -353,7 +362,7 @@ macro_rules! selection_aux_decl {
         // #[rustc_allow] is of type `Vec<syn::Ident>` and is useful only during codegen.
         => { selection_aux_decl!($struct ( $($done)*
                 #[doc = "`#[rustc_allow[dead_code]]`: forward the attribute to Rustc as an `#[allow(dead_code)]`"]
-                pub rustc_allow: UseOpt<Vec<syn::Ident>, Sites<Codegen, Over>>,
+                pub rustc_allow: UseOpt<Vec<Allow>, Sites<Codegen, Over>>,
             ) ++ ( $($rest)* ) ); };
     ( $struct:ident ( $($done:tt)* ) ++ ( doc , $($rest:tt)* ) )
         // #[doc] is of type `Vec<Sp<String>>` and is useful only during codegen.

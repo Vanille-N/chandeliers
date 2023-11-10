@@ -17,7 +17,9 @@
 //! homogeneous error messages.
 
 use chandeliers_err::{self as err, Acc};
-use chandeliers_san::ast::options::{Const, ExtConst, ExtNode, Node, TraceFile};
+use chandeliers_san::ast::options::{
+    Allow, Const, ExtConst, ExtNode, Node, TraceFile, TraceFormat,
+};
 use chandeliers_san::sp::{Sp, Span, WithSpan};
 
 /// The main helper to set options.
@@ -129,7 +131,7 @@ pub struct Decl {
     /// `#[main(10)]`: generate a `fn main` that runs for `n` (integer) steps.
     main: SetOpt<Option<usize>>,
     /// `#[rustc_allow[dead_code]]`: forward the attribute as a `#[allow(_)]`.
-    rustc_allow: SetOpt<Vec<syn::Ident>>,
+    rustc_allow: SetOpt<Vec<Allow>>,
     /// `#[doc("Message")]`: insert documentation for this node.
     doc: SetOpt<Vec<Sp<String>>>,
     /// `#[trait]`: implement `Step` for this node rather than just an inherent impl.
@@ -347,7 +349,17 @@ impl Decl {
                 }
                 _ => malformed!(
                     msg:("expects exactly one identifier")
-                    syn:("`#[rustc_allow(dead_code)]`")
+                    syn:("`#[rustc_allow[dead_code]]`")
+                ),
+            },
+            "clippy_allow" => match args {
+                ([inner], []) => {
+                    let id = Allow::Clippy(syn::Ident::new(inner, params.span.unwrap()));
+                    register!(rustc_allow <- push id);
+                }
+                _ => malformed!(
+                    msg:("expects exactly one identifier")
+                    syn:("`#[clippy_allow[len_zero]]`")
                 ),
             },
             "doc" => match args {

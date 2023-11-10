@@ -1,12 +1,21 @@
 //! Generate code depending on options passed through declaration attributes.
 
 use proc_macro2::TokenStream;
-use quote::{quote, quote_spanned};
+use quote::{quote, quote_spanned, ToTokens};
 
 use crate::ast;
 use crate::ast::options::usage::Codegen as This;
-use crate::ast::options::{Const, ExtNode, Node, TraceFile};
+use crate::ast::options::{Allow, Const, ExtNode, Node, TraceFile, TraceFormat};
 use crate::sp::Sp;
+
+impl ToTokens for Allow {
+    fn to_tokens(&self, toks: &mut TokenStream) {
+        toks.extend(match self {
+            Self::Rustc(id) => quote!( #[allow(#id)] ),
+            Self::Clippy(id) => quote!( #[allow(clippy::#id)] ),
+        });
+    }
+}
 
 /// Define the behavior of an option.
 ///
@@ -134,7 +143,7 @@ generic_option! {
     trait FnMain for { Node, ExtNode }
     impl {
         from main return &Option<usize>;
-        fn fn_main(&self, name: &Sp<ast::decl::NodeName>, rustc_allow: &Vec<syn::Ident>) -> TokenStream {
+        fn fn_main(&self, name: &Sp<ast::decl::NodeName>, rustc_allow: &Vec<Allow>) -> TokenStream {
             if let Some(nb_iter) = self.fetch() {
                 let ext_name = name.as_sanitized_ident();
 
@@ -144,7 +153,7 @@ generic_option! {
                 quote_spanned! {name.span.unwrap()=>
                     #[doc = #doc]
                     #[allow(unused_imports)] // Step, Embed, Trusted imported just in case.
-                    #( #[allow( #rustc_allow )] )*
+                    #( #rustc_allow )*
                     pub fn main() {
                         use ::chandeliers_sem::traits::{Step, Embed, Trusted};
                         let mut sys = #ext_name::default();
