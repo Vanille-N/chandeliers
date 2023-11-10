@@ -11,7 +11,7 @@ mod constexpr;
 pub mod options;
 
 use constexpr::ConstExprSpanTokens;
-use options::{Docs, FnMain, PubQualifier, Traces};
+use options::{Docs, FnMain, FnTest, PubQualifier, Traces};
 
 /// Generate a program simply by generating all declarations.
 impl ToTokens for decl::Prog {
@@ -185,6 +185,10 @@ impl ToTokens for decl::Node {
             self.options
                 .fn_main(&self.name, self.options.rustc_allow.fetch::<This>()),
         );
+        toks.extend(
+            self.options
+                .fn_test(&self.name, self.options.rustc_allow.fetch::<This>()),
+        );
         self.options.assert_used();
     }
 }
@@ -246,6 +250,12 @@ impl decl::Node {
         let rustc_allow_1 = options.rustc_allow.fetch::<This>().iter();
         let rustc_allow_2 = options.rustc_allow.fetch::<This>().iter();
 
+        let cfg_test = if self.options.test.fetch::<This>().is_some() {
+            quote!( #[cfg(test)] )
+        } else {
+            quote!()
+        };
+
         let doc_name = format!(" `{name}` ");
         let declaration = quote_spanned! {name.span.unwrap()=>
             #[doc(hidden)] // Inner declaration only.
@@ -271,9 +281,10 @@ impl decl::Node {
             #[allow(non_snake_case)] // Lustre naming conventions.
             #[allow(unused_imports)] // Using sem::traits::* just in case.
             #[allow(clippy::no_effect)] // We are inserting "comments" as strings.
-            // Completely nonsensical suggestion by Clippy.
+            // Completely nonsensical suggestions by Clippy.
             #[allow(clippy::unreadable_literal, clippy::zero_prefixed_literal)]
             #( #rustc_allow_2 )* // User-provided.
+            #cfg_test
             impl #uid_name {
                 fn step(
                     &mut self,

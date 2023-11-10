@@ -739,21 +739,22 @@ impl TypeCheckDecl for ast::decl::Node {
     ) -> Option<()> {
         let mut ctx = TyCtx::from_ext(extvar);
         // FIXME: prettify
-        if self.options.main.fetch::<This>().is_some() {
+        let is_main = self.options.main.fetch::<This>().is_some();
+        let is_test = self.options.test.fetch::<This>().is_some();
+        if is_main || is_test {
             if !self.inputs.t.is_empty() {
                 acc.error(err::Basic {
-                    msg: "Node declared as main should not have any inputs".to_owned(),
+                    msg: "Node declared as executable (applies to `#[main]` and `#[test]`) should not have any inputs".to_owned(),
                     span: self.inputs.span,
                 })?;
             }
             if !self.outputs.t.is_empty() {
                 acc.error(err::Basic {
-                    msg: "Node declared as main should not have any outputs".to_owned(),
+                    msg: "Node declared as executable (applies to `#[main]` and `#[test]`) should not have any outputs".to_owned(),
                     span: self.inputs.span,
                 })?;
             }
         }
-        let _unimplemented = self.options.test.fetch::<This>();
 
         // These are all the extra variables that we provide in addition
         // to `extvar`.

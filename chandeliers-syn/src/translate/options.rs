@@ -130,6 +130,8 @@ pub struct Decl {
     public: SetOpt<bool>,
     /// `#[main(10)]`: generate a `fn main` that runs for `n` (integer) steps.
     main: SetOpt<Option<usize>>,
+    /// `#[test(10)]`: generate a Rust unit test that runs for `n` (integer) steps.
+    test: SetOpt<Option<usize>>,
     /// `#[rustc_allow[dead_code]]`: forward the attribute as a `#[allow(_)]`.
     rustc_allow: SetOpt<Vec<Allow>>,
     /// `#[doc("Message")]`: insert documentation for this node.
@@ -145,6 +147,7 @@ impl Default for Decl {
             export: SetOpt::create("#[export]", false),
             public: SetOpt::create("#[pub]", false),
             main: SetOpt::create("#[main(nb_iter)]", None),
+            test: SetOpt::create("#[test(nb_iter)]", None),
             rustc_allow: SetOpt::create("#[rustc_allow(attr)]", vec![]),
             doc: SetOpt::create("#[doc(\"Message\")]", vec![]),
             impl_trait: SetOpt::create("`#[trait]`", false),
@@ -181,7 +184,7 @@ impl Decl {
         project! {
             ?acc => self: Decl => Const {
                 take { export, rustc_allow, doc, public, }
-                skip { trace, main, impl_trait, }
+                skip { trace, main, impl_trait, test, }
             }
         }
     }
@@ -190,7 +193,7 @@ impl Decl {
     pub fn for_node(self, _acc: &mut Acc) -> Option<Node> {
         project! {
             ?_acc => self: Decl => Node {
-                take { trace, export, main, rustc_allow, doc, public, impl_trait, }
+                take { trace, export, main, rustc_allow, doc, public, impl_trait, test, }
                 skip {}
             }
         }
@@ -201,7 +204,7 @@ impl Decl {
         project! {
             ?acc => self: Decl => ExtConst {
                 take { rustc_allow, }
-                skip { trace, export, main, doc, public, impl_trait, }
+                skip { trace, export, main, doc, public, impl_trait, test, }
             }
         }
     }
@@ -211,7 +214,7 @@ impl Decl {
         project! {
             ?acc => self: Decl => ExtNode {
                 take { trace, main, rustc_allow, }
-                skip { export, doc, public, impl_trait, }
+                skip { export, doc, public, impl_trait, test, }
             }
         }
     }
@@ -258,6 +261,29 @@ impl Decl {
             };
         }
 
+        /// Warning (not fatal) if we try to set an attribute that is incompatible
+        /// with another. This is not fatal because we resolve it to have the
+        /// earlier one take precedence.
+        macro_rules! conflicting {
+            ($this:ident, $other:ident) => {
+                if self.$other.value.is_some() {
+                    acc.warning(vec![
+                        (
+                            format!(
+                                "{} is incompatible with {}",
+                                self.$this.message, self.$other.message,
+                            ),
+                            Some(attr.span.into()),
+                        ),
+                        (
+                            format!("A conflicting attribute was set here"),
+                            Some(self.$other.span.unwrap()),
+                        ),
+                    ])
+                }
+            };
+        }
+
         macro_rules! register {
             ( $field:ident <- $fn:ident $val:expr ) => {
                 self.$field.$fn($val, attr.span.into())
@@ -294,6 +320,7 @@ impl Decl {
             }
             "export" => match args {
                 ([], []) => {
+                    conflicting!(export, test);
                     duplicate!(export);
                     register!(export <- set true);
                 }
@@ -304,6 +331,7 @@ impl Decl {
             },
             "pub" => match args {
                 ([], []) => {
+                    conflicting!(public, test);
                     duplicate!(public);
                     duplicate!(export);
                     register!(public <- set true);
@@ -324,13 +352,14 @@ impl Decl {
                     syn:("`#[trait]`")
                 ),
             },
-
             "main" => match args {
                 ([], []) => {
+                    conflicting!(main, test);
                     duplicate!(main);
                     register!(main <- some 100);
                 }
                 ([], [Lit::Int(i)]) => {
+                    conflicting!(main, test);
                     duplicate!(main);
                     let i = i
                         .base10_parse()
@@ -342,9 +371,30 @@ impl Decl {
                     syn:("`#[main]` or `#[main(42)]`")
                 ),
             },
+            "test" => match args {
+                ([], []) => {
+                    conflicting!(test, main);
+                    conflicting!(test, public);
+                    conflicting!(test, export);
+                    duplicate!(test);
+                    register!(test <- some 100);
+                }
+                ([], [Lit::Int(i)]) => {
+                    conflicting!(test, main);
+                    duplicate!(test);
+                    let i = i
+                        .base10_parse()
+                        .unwrap_or_else(|e| err::abort!("{i} cannot be parsed in base 10: {e}"));
+                    register!(test <- some i);
+                }
+                _ => malformed!(
+                    msg:("expects at most one integer argument")
+                    syn:("`#[test]` or `#[test(42)]`")
+                ),
+            },
             "rustc_allow" => match args {
                 ([inner], []) => {
-                    let id = syn::Ident::new(inner, params.span.unwrap());
+                    let id = Allow::Rustc(syn::Ident::new(inner, params.span.unwrap()));
                     register!(rustc_allow <- push id);
                 }
                 _ => malformed!(

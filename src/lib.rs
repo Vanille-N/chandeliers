@@ -557,6 +557,7 @@ mod fizzbuzz {
 
 chandeliers_lus::decl! {
     #[trace("<- {_clk}", "-> {_clk}")]
+    #[test]
     node addition_correct() returns ();
     let
         assert 1 + 1 = 2;

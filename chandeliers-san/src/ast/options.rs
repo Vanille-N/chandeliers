@@ -358,6 +358,14 @@ macro_rules! selection_aux_decl {
                 #[doc = "`#[main(42)]`: generate a main function that executes this node a fixed number of times."]
                 pub main: UseOpt<Option<usize>, Sites<Typecheck, Sites<Codegen, Over>>>,
             ) ++ ( $($rest)* ) ); };
+    ( $struct:ident ( $($done:tt)* ) ++ ( test , $($rest:tt)* ) )
+        // `#[test]` is of type `Option<usize>` and is useful only during both
+        // typechecking (verify that the inputs and outputs are `()`) and codegen
+        // (write the actual function).
+        => { selection_aux_decl!($struct ( $($done)*
+                #[doc = "`#[test(42)]`: generate a Rust test function that executes this node a fixed number of times."]
+                pub test: UseOpt<Option<usize>, Sites<Typecheck, Sites<Codegen, Over>>>,
+            ) ++ ( $($rest)* ) ); };
     ( $struct:ident ( $($done:tt)* ) ++ ( rustc_allow , $($rest:tt)* ) )
         // #[rustc_allow] is of type `Vec<syn::Ident>` and is useful only during codegen.
         => { selection_aux_decl!($struct ( $($done)*
@@ -414,7 +422,7 @@ macro_rules! selection {
     };
 }
 
-selection! { pub struct Node { trace, export, public, main, rustc_allow, doc, impl_trait } }
+selection! { pub struct Node { trace, export, public, main, rustc_allow, doc, impl_trait, test } }
 selection! { pub struct ExtNode { trace, main, rustc_allow } }
 selection! { pub struct Const { export, public, rustc_allow, doc } }
 selection! { pub struct ExtConst { rustc_allow } }

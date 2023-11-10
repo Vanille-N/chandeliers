@@ -176,6 +176,45 @@ generic_option! {
 }
 
 generic_option! {
+    #[doc = "`#[test(42)]`: build a test function that executes this node a set number of times."]
+    trait FnTest for { Node }
+    impl {
+        from test return &Option<usize>;
+        fn fn_test(&self, name: &Sp<ast::decl::NodeName>, rustc_allow: &Vec<Allow>) -> TokenStream {
+            if let Some(nb_iter) = self.fetch() {
+                let priv_name = name.as_sanitized_ident();
+                let pub_name = name.as_raw_ident();
+
+                let doc = format!(
+                    "Test function automatically generated from {name} (runs for {nb_iter} steps)"
+                );
+                quote_spanned! {name.span.unwrap()=>
+                    #[doc = #doc]
+                    #[allow(unused_imports)] // Step, Embed, Trusted imported just in case.
+                    #( #rustc_allow )*
+                    #[test]
+                    pub fn #pub_name() {
+                        use ::chandeliers_sem::traits::{Step, Embed, Trusted};
+                        let mut sys = #priv_name::default();
+                        if #nb_iter == 0 {
+                            loop {
+                                sys.step(().embed()).trusted();
+                            }
+                        } else {
+                            for _ in 1..=#nb_iter {
+                                sys.step(().embed()).trusted();
+                            }
+                        }
+                    }
+                }
+            } else {
+                quote!()
+            }
+        }
+    }
+}
+
+generic_option! {
     #[doc = "`#[pub]`: make this declaration public. Implies `#[export]`."]
     trait PubQualifier for { Const, Node }
     impl {

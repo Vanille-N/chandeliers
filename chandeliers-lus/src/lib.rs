@@ -78,12 +78,12 @@ pub fn decl(i: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let Some(prog) = prog else {
         err::consistency!(fatal, "No program generated, but no fatal error emitted");
         for e in es {
-            emit(e);
+            emit(e, proc_macro::Level::Error);
         }
         return proc_macro2::TokenStream::new().into();
     };
     for w in ws {
-        emit(w);
+        emit(w, proc_macro::Level::Warning);
     }
     let mut toks = proc_macro2::TokenStream::new();
     prog.to_tokens(&mut toks);
@@ -136,7 +136,7 @@ compiling!(warn_dead_code with compile_fail in warn/dead_code/);
 compiling!(warn_options with compile_fail in warn/options/);
 
 /// Emit one error message from a sequence of spans and associated hint messages.
-fn emit(elements: Error) -> proc_macro2::TokenStream {
+fn emit(elements: Error, level: proc_macro::Level) -> proc_macro2::TokenStream {
     let mut elements = elements.into_iter();
     let Some((msg, span)) = elements.next() else {
         err::abort!("This error message is empty")
@@ -146,7 +146,7 @@ fn emit(elements: Error) -> proc_macro2::TokenStream {
     };
     let mut d = proc_macro::Diagnostic::spanned(
         span.unwrap(/* proc_macro2::Span */).unwrap(/* proc_macro::Span */),
-        proc_macro::Level::Error,
+        level,
         msg,
     );
     for (msg, span) in elements {
