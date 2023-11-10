@@ -1,0 +1,11 @@
+error: Variable b2 is not available yet at this point of the typechecking.
+ --> tests/compile_fail/ui/clk/undeclared.rs:2:37
+  |
+2 |     node foo(b : bool; i : int when b2) returns ();
+  |                                     ^^
+  |
+  = note: During this incremental typechecking, you cannot access global
+          variables and you may only use local variables that have been
+          declared strictly beforehand, in the order of inputs then outputs
+          then locals.
+  = note: These are the variables that are already useable: b
