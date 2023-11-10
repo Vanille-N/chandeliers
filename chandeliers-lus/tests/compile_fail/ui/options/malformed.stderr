@@ -4,4 +4,4 @@ error: Malformed attribute mai: no such attribute
 2 |     #[mai]
   |     ^^^^^^
   |
-  = note: See the available options and their definition at https://github.com/Vanille-N/chandeliers
+  = note: See the available options and their definition at https://github.com/Vanille-N/chandeliers#compilation-options

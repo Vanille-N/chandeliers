@@ -36,7 +36,7 @@ pub use err::Span;
 ///
 /// This type is ubiquitous across this entire crate and you can expect
 /// an overwhelming majority of the fields of all structs to contain one or
-/// several `S
+/// several `Span`.
 ///
 /// `Sp` is mostly used through `map`, `new`, and it also implements
 /// many traits by projecting into its `.t` field.

@@ -285,6 +285,19 @@ pub enum TraceFile {
     StdErr,
 }
 
+/// How to print the debug trace.
+#[derive(Clone, Debug)]
+pub enum TraceFormat {
+    /// Use the default trace format that looks like
+    /// "node_name <- (i1=0, i2=42, i3=true)" for the input, and
+    /// "node_name -> (o1=false, o2=0.5)" for the output.
+    Default,
+    /// Do not display any trace
+    Empty,
+    /// Custom format string provided by the user.
+    Str(String),
+}
+
 /// Black magic to generate option sets.
 /// Will wrap types in `UseOpt` and attach to them the documentation
 /// for the defined item.
@@ -308,7 +321,7 @@ macro_rules! selection_aux_decl {
         // #[trace] is of type `Option<TraceFile>` and is useful only during codegen.
         => { selection_aux_decl!($struct ( $($done)*
                 #[doc = "`#[trace]`: print debug information."]
-                pub trace: UseOpt<Option<TraceFile>, Sites<Codegen, Over>>,
+                pub trace: UseOpt<Option<(TraceFile, (TraceFormat, TraceFormat))>, Sites<Codegen, Over>>,
             ) ++ ( $($rest)* ) ); };
     ( $struct:ident ( $($done:tt)* ) ++ ( export , $($rest:tt)* ) )
         // #[export] is of type `bool` and is useful only during codegen.
@@ -329,7 +342,7 @@ macro_rules! selection_aux_decl {
                 pub impl_trait: UseOpt<bool, Sites<Codegen, Over>>,
         ) ++ ( $($rest)* ) ); };
     ( $struct:ident ( $($done:tt)* ) ++ ( main , $($rest:tt)* ) )
-        // #[main] is of type `Option<usize>` and is useful only during both
+        // `#[main]` is of type `Option<usize>` and is useful only during both
         // typechecking (verify that the inputs and outputs are `()`) and codegen
         // (write the actual function).
         => { selection_aux_decl!($struct ( $($done)*

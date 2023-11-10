@@ -68,32 +68,58 @@ generic_option! {
     #[doc = "`#[trace]`: print debug information."]
     trait Traces for { Node, ExtNode }
     impl {
-        from trace return &Option<TraceFile>;
+        from trace return &Option<(TraceFile, (TraceFormat, TraceFormat))>;
         fn traces(
             &self,
             prefix: &str,
             name: &Sp<ast::decl::NodeName>,
             inputs: Sp<&ast::Tuple<Sp<ast::decl::TyVar>>>,
+            locals: Sp<&ast::Tuple<Sp<ast::decl::TyVar>>>,
             outputs: Sp<&ast::Tuple<Sp<ast::decl::TyVar>>>,
         ) -> (TokenStream, TokenStream) {
-            let name = format!("{name}");
-            let input_var_fmt = inputs.fmt_strings();
-            let output_var_fmt = outputs.fmt_strings();
-            let inputs = inputs.flattened_trailing_comma();
-            let outputs = outputs.flattened_trailing_comma();
-            let input_fmt = format!("{{}}{{}} <- {input_var_fmt}");
-            let output_fmt = format!("{{}}{{}} -> {output_var_fmt}",);
-            if let Some(file) = self.fetch() {
+            if let Some((file, (ifmt, ofmt))) = self.fetch() {
+                let name = format!("{name}");
+                let input_var_fmt = inputs.fmt_strings();
+                let output_var_fmt = outputs.fmt_strings();
+                let inputs_self_assigned = inputs.self_assigned();
+                let locals_self_assigned = locals.self_assigned();
+                let outputs_self_assigned = outputs.self_assigned();
+                let input_fmt = match ifmt {
+                    TraceFormat::Default => format!("{{_ext}}{{_this}} <- {input_var_fmt}\n"),
+                    TraceFormat::Empty => "".to_owned(),
+                    TraceFormat::Str(s) => s.clone(),
+                };
+                let output_fmt = match ofmt {
+                    TraceFormat::Default => format!("{{_ext}}{{_this}} -> {output_var_fmt}\n"),
+                    TraceFormat::Empty => "".to_owned(),
+                    TraceFormat::Str(s) => s.clone(),
+                };
                 let printer = match file {
-                    TraceFile::StdOut => quote!(println),
-                    TraceFile::StdErr => quote!(eprintln),
+                    TraceFile::StdOut => quote!(print),
+                    TraceFile::StdErr => quote!(eprint),
                 };
                 (
                     quote! {
-                        #printer!(#input_fmt, #prefix, #name, #inputs);
+                        #[allow(unused_variables)]
+                        {
+                            let _ext = #prefix;
+                            let _this = #name;
+                            let _clk = self.__clock;
+                            #inputs_self_assigned
+                            #printer!(#input_fmt);
+                        }
                     },
                     quote! {
-                        #printer!(#output_fmt, #prefix, #name, #outputs);
+                        #[allow(unused_variables)]
+                        {
+                            let _ext = #prefix;
+                            let _this = #name;
+                            let _clk = self.__clock;
+                            #inputs_self_assigned
+                            #locals_self_assigned
+                            #outputs_self_assigned
+                            #printer!(#output_fmt);
+                        }
                     },
                 )
             } else {

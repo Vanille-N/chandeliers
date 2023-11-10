@@ -242,7 +242,7 @@ impl decl::Node {
 
         let pub_qualifier = options.pub_qualifier(/*trait*/ false);
 
-        let (trace_pre, trace_post) = options.traces("      ", name, inputs, outputs);
+        let (trace_pre, trace_post) = options.traces("      ", name, inputs, locals, outputs);
         let rustc_allow_1 = options.rustc_allow.fetch::<This>().iter();
         let rustc_allow_2 = options.rustc_allow.fetch::<This>().iter();
 
@@ -288,6 +288,8 @@ impl decl::Node {
                     #trace_pre
                     "Begin body of the node";
                     #( #stmts )*
+                    "Print the trace after all computations but before tick";
+                    #trace_post
                     "End body of the node";
                     ::chandeliers_sem::tick!(self);
                     #( ::chandeliers_sem::update!(self, #pos_inputs_use ); )*
@@ -296,7 +298,6 @@ impl decl::Node {
                     "Ghost reads to tell the Rustc dead code analysis about dependent types";
                     #( let _ = #deptys; )*
                     "Finish by returning the outputs";
-                    #trace_post
                     #outputs_vs_2.embed()
                 }
             }
@@ -431,10 +432,14 @@ impl Sp<&Tuple<Sp<decl::TyVar>>> {
     }
 
     /// Simply a comma-separated flat tuple.
-    fn flattened_trailing_comma(&self) -> TokenStream {
-        let tup = self.t.iter().map(|sv| sv.name_of().as_sanitized_ident());
+    fn self_assigned(&self) -> TokenStream {
+        let tup = self.t.iter().map(|sv| {
+            let san = sv.name_of().as_sanitized_ident();
+            let raw = sv.name_of().as_raw_ident();
+            quote!( let #raw = #san; )
+        });
         quote_spanned! {self.span.unwrap()=>
-            #( #tup, )*
+            #( #tup )*
         }
     }
 
@@ -443,7 +448,7 @@ impl Sp<&Tuple<Sp<decl::TyVar>>> {
     fn fmt_strings(&self) -> String {
         let mut accum = Vec::new();
         for v in self.t.iter() {
-            accum.push(format!("{}={{}}", v.name_of()));
+            accum.push(format!("{n}={{{n}}}", n = v.name_of()));
         }
         format!("({})", accum.join(", "))
     }
@@ -485,6 +490,7 @@ impl ToTokens for decl::ExtNode {
         } = self;
         let inputs = inputs.as_ref();
         let outputs = outputs.as_ref();
+        let locals = Tuple::default().with_span(inputs.span);
 
         let ext_name = name.as_raw_ident();
         let uid_name = name.as_sanitized_ident();
@@ -499,16 +505,18 @@ impl ToTokens for decl::ExtNode {
         let output_asst = outputs.as_assignment_target();
         let output_values = outputs.with_span(name.span).as_values();
 
-        let (trace_pre, trace_post) = options.traces("[ext] ", name, inputs, outputs);
+        let (trace_pre, trace_post) =
+            options.traces("[ext] ", name, inputs, locals.as_ref(), outputs);
 
         toks.extend(quote_spanned! {name.span.unwrap()=>
             #[doc(hidden)] // Internal only.
             #[derive(Debug, Default)]
             #[allow(non_camel_case_types)] // Lustre naming conventions.
             #[allow(dead_code)] // Only trigger on impl step.
-            #( #[allow( #rustc_allow_1 )] )* // User-provided.
+            #( #rustc_allow_1 )* // User-provided.
             struct #uid_name {
-                inner: #ext_name
+                inner: #ext_name,
+                __clock: usize,
             }
 
             #[allow(clippy::let_and_return)] // In case there is no trace.
@@ -527,10 +535,9 @@ impl ToTokens for decl::ExtNode {
 
                     let #input_asst = inputs;
                     #trace_pre
-
                     let #output_asst = self.inner.step(#actual_inputs);
-
                     #trace_post
+
                     #output_values.embed()
                 }
             }
@@ -586,6 +593,7 @@ impl var::Global {
 }
 
 crate::sp::transparent_impl!(fn as_sanitized_ident return TokenStream where var::Local);
+crate::sp::transparent_impl!(fn as_raw_ident return TokenStream where var::Local);
 impl var::Local {
     /// Format as a name that cannot have collisions with existing global variables.
     fn as_sanitized_ident(&self, _span: Span) -> TokenStream {
@@ -593,6 +601,13 @@ impl var::Local {
             &format!("{}__lus_local", &self.repr.t),
             self.repr.span.unwrap(),
         );
+        quote!( #id )
+    }
+
+    /// Format the name without sanitization. Still needs to be raw
+    /// because it could be a Rust keyword.
+    fn as_raw_ident(&self, _span: Span) -> TokenStream {
+        let id = Ident::new_raw(&self.repr.t.to_string(), self.repr.span.unwrap());
         quote!( #id )
     }
 }

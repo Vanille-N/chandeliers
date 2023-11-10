@@ -121,7 +121,7 @@ impl<T> SetOpt<T> {
 #[derive(Clone, Debug)]
 pub struct Decl {
     /// `#[trace]`: print debug information.
-    trace: SetOpt<Option<TraceFile>>,
+    trace: SetOpt<Option<(TraceFile, (TraceFormat, TraceFormat))>>,
     /// `#[export]`: make the declaration visible.
     export: SetOpt<bool>,
     /// `#[pub]`: make the declaration public. (implies `#[export]`)
@@ -266,24 +266,30 @@ impl Decl {
         let targets = attr.t.attr.t.targets.map(|_, t| t.flatten());
         let args = (&params.t[..], &targets.t[..]);
         match action.as_str() {
-            "trace" => match args {
-                ([], []) => {
-                    duplicate!(trace);
-                    register!(trace <- some TraceFile::StdOut);
-                }
-                ([ident], []) if ident.as_str() == "stdout" => {
-                    duplicate!(trace);
-                    register!(trace <- some TraceFile::StdOut);
-                }
-                ([ident], []) if ident.as_str() == "stderr" => {
-                    duplicate!(trace);
-                    register!(trace <- some TraceFile::StdErr);
-                }
-                _ => malformed!(
-                    msg:("expects either no arguments or one of `stderr`/`stdout`")
-                    syn:("`#[trace]`")
-                ),
-            },
+            "trace" => {
+                let destination = match &params.t[..] {
+                    [] => TraceFile::StdOut,
+                    [ident] if ident.as_str() == "stdout" => TraceFile::StdOut,
+                    [ident] if ident.as_str() == "stderr" => TraceFile::StdErr,
+                    _ => malformed!(
+                        msg:("expects either no arguments or one of `stderr`/`stdout`")
+                        syn:("`#[trace]`")
+                    ),
+                };
+                let format = match &targets.t[..] {
+                    [] => (TraceFormat::Default, TraceFormat::Default),
+                    [Lit::Str(o)] => (TraceFormat::Empty, TraceFormat::Str(o.value())),
+                    [Lit::Str(i), Lit::Str(o)] => {
+                        (TraceFormat::Str(i.value()), TraceFormat::Str(o.value()))
+                    }
+                    _ => malformed!(
+                        msg:("expects at most two arguments, both strings (input and output formats)")
+                        syn:("`#[trace(\"in\", \"out\")]`")
+                    ),
+                };
+                duplicate!(trace);
+                register!(trace <- some (destination, format));
+            }
             "export" => match args {
                 ([], []) => {
                     duplicate!(export);
@@ -356,7 +362,7 @@ impl Decl {
             },
             _ => malformed!(
                 msg:("no such attribute")
-                note:("See the available options and their definition at {}", err::repo!()) //FIXME
+                note:("See the available options and their definition at {}#compilation-options", err::repo!()) //FIXME
             ),
         }
         Some(self)
