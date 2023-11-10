@@ -58,28 +58,136 @@ TODO
 
 ## Compilation options
 
-Chandeliers follows the Rust-style syntax for specifying compilation options,
-and the following are available:
-- `#[trace]` or `#[trace[stderr]]` (any `node`): print debug information after each step of the execution.
-  The output is not stable and should not be relied on for tests.
-- `#[export]` (non-`extern`): make the declaration visible to the environment
+We adapt and regularize the Rust syntax for attributes to configure compilation
+options. All attributes take the form `#[attribute_name[targets](params)]`
+where `targets` is a comma-separated list of identifiers and `params` is a
+comma-separated list of literals. For example `#[foo[bar, baz](1, "yes", 3)]`.
+Sometimes the targets or parameters or both may be optional or unavailable,
+in which case `#[attr[]()]` is equivalent to `#[attr]`.
+
+The following options are available:
+- `#[trace[file](in_format, out_format)]` (any `node`): print debug information after each step of the execution.
+    Variants: all three of `file`, `in_format` and `out_format` are optional.
+    See: [#formatting](#formatting).
+- `#[export]` and `#[pub]` (non-`extern`): visibility specifiers for the environment
   outside of the macro invocation (we follow the Rust convention of private-by-default).
-- `#[pub]` (non-`extern`, implies `#[export]`): further make the declaration public
-  so that other modules may import it.
+  See: [#visibility](#visibility).
 - `#[trait]` (local `node`, requires `#[export]`): instead of an inherent impl,
   implement the trait `Step`. This may make the signature easier to read, but
   will interfere with dead code analysis.
-- `#[main]` or `#[main(42)]` (any `node`): generate a `main` function that will
+- `#[main(nb_iter)]` (any `node`): generate a `main` function that will
   execute this node. This requires that the node have signature `() returns ()`.
+  Variants: `nb_iter` is optional (defaults to 100).
+- `#[test(nb_iter)]` (any `node`): generate a function annotated with `#[test]`
+  that will execute this node during `cargo test`. This requires that the node
+  have signature `() returns ()` and is incompatible with `#[main]`, `#[export]`,
+  and `#[pub]`.
+  Variants: `nb_iter` is optional (defaults to 100).
 - `#[rustc_allow[attr]]` (any declaration): forward to Rustc as a
   `#[allow(attr)]`. Chandeliers itself inserts many such attributes, but if
   one is missing you can add it manually. This is useful with e.g. `dead_code`
-  which Chandeliers intends to insert as little as possible to hopefully
-  minimize false negatives.
+  which Chandeliers intends to insert as little as possible to minimize false
+  negatives.
 - `#[doc("Message")]` (non-`extern`): insert documentation in the generated code.
+  Can be specified multiple times and all messages will be concatenated in order.
+
+### Formatting
+
+- full: `#[trace[file](in_format, out_format)]`
+- minimal: `#[trace]`
+- other useful examples:
+    - `#[trace[stderr]]`
+    - `#[trace("{_this} -> (out={out})\n")]`
+    - `#[trace("{_this} <- (in={in})\n", "{_this} -> (out={out})\n")]`
+
+`file` is one of `stderr` or `stdout` (defaults to `stdout` if unspecified).
+It determines where the text will be printed.
+
+`in_format` and `out_format` are standard Rust formatting strings with interpolation
+variables `{x}`. For `in_format` the interpolation may use the input variables only.
+For `out_format` the locals and outputs are additionally available.
+Further strings are available:
+- `_this` is interpolated to the name of the node
+- `_ext` is interpolated to `"[ext]"` if the declaration is an `extern` one,
+  and nothing otherwise,
+- `_clk` is interpolated to the node's internal clock.
+
+If only one format is specified, it will be interpreted as the `out_format`
+and the `in_format` will be blank. `#[trace("foo\n")]` is equivalent to
+`#[trace("", "foo\n")]`. Newlines are not inserted, but they are present in the
+default formats.
+
+If neither `in_format` nor `out_format` is specified, a default will be chosen
+for both the input and output that looks like this:
+for a node with signature `node foo(i, j : int) returns (a, b : float)`,
+the default `#[trace]` produces the equivalent of
+`#[trace("{_this} <- (i={i}, j={j})\n", "{_this} -> (a={a}, b={b})\n")]` which
+will be rendered as
+```
+foo <- (i=0, j=1)
+foo -> (a=0.1, b=4.2)
+```
+
+The default formatter is not stable and if you need a consistent output
+you should write the format string yourself.
+
+### Visibility
+
+We do not implement any kind of module system for Lustre, as we prefer to just
+defer to the existing Rust infrastructure.
+
+The attributes that control visibility are `#[export]` and `#[pub]`.
+By default a node is visible only within the macro it is defined in.
+Adding `#[export]` makes it available to the current module, and
+adding `#[pub]` further makes it `pub` in the Rust sense.
+
+Nodes annotated `#[export]` or `#[pub]` should have unique names within their
+module.
+
+```rs
+mod bar {
+    chandeliers_lus::decl! {
+        node foo() returns ();
+        let tel;
+        // `foo` is visible as `foo`
+    }
+    // `foo` is not visible
+}
+// `foo` is not visible
+```
+
+```rs
+mod bar {
+    chandeliers_lus::decl! {
+        #[export]
+        node foo() returns ();
+        let tel;
+        // `foo` is visible as `foo`
+    }
+    // `foo` is visible as `foo`
+}
+// `foo` is not visible
+```
+
+```rs
+mod bar {
+    chandeliers_lus::decl! {
+        #[pub]
+        node foo() returns ();
+        let tel;
+        // `foo` is visible as `foo`
+    }
+    // `foo` is visible as `foo`
+}
+// `foo` is visible as `bar::foo`
+```
+
+If you face name collisions between nodes you should circumvent them by
+means of Rust techniques like enclosing them in modules and renaming them
+by `use bar::foo as bar_foo;`.
 
 
-## Example
+## Examples
 
 You may find self-contained examples of standalone executable programs in
 the `examples` folder.
