@@ -51,6 +51,19 @@ use crate::ast::ty::Clock;
 use crate::ast::{decl, expr, ty, var};
 use crate::sp::{Sp, Span, WithSpan};
 
+macro_rules! at {
+    ($arr:expr, $idx:expr) => {
+        match $arr.get($idx) {
+            Some(x) => x,
+            None => err::abort!(
+                "Created a relative index of invalid size: index {} on tuple of length {}",
+                $idx,
+                $arr.len()
+            ),
+        }
+    };
+}
+
 crate::sp::derive_with_span!(WithDefSite<T> where <T>);
 /// A generic wrapper for objects that have two canonical `Span`s,
 /// one at the definition site and one at the call site.
@@ -144,19 +157,47 @@ impl<Ref> MappingClk<Ref> {
     }
 }
 
+/// Default clock type for tuple elements: it represents a value
+/// that is clocked by either a local variable outside the tuple,
+/// or another element of the tuple.
+/// It cannot refer to the clock of the node or to clocks of other tuples.
+type SelfContainedRelativeClk = Sp<Clocked<RelativeClk<AbsoluteClk>>>;
+
 crate::sp::derive_with_span!(ClkTup);
+/// Self-referential clocked tuple.
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct ClkTup {
+    /// The own clock of the tuple which is the speed at which all
+    /// unclocked elements move.
     implicit: AbsoluteClk,
-    clocks: Vec<(Option<Sp<String>>, Sp<Clocked<RelativeClk<AbsoluteClk>>>)>,
+    /// Each element of the tuple carries
+    /// - optionally a name that is carried over from the declaration and
+    ///   necessary for clock references to this value to escape the tuple,
+    /// - a clock, which if it is `Implicit` is interpreted as the implicit
+    ///   clock _of the tuple_, not the implicit clock of the node.
+    clocks: Vec<(Option<Sp<String>>, SelfContainedRelativeClk)>,
 }
 
 crate::sp::derive_with_span!(ClkMap);
 /// Helper struct to map input clocks to output clocks.
+///
+/// Because of the fixed dependency order where variables can only have
+/// a clock that comes strictly before in the order of
+/// inputs then outputs then locals and in increasing index of each tuple,
+/// the correct way to build a `ClkMap` is to obtain a new one
+/// with `ClkMap::default()` and then for each input to
+/// declare a `map.new_input(name, clock)` and finally once all
+/// inputs have been added to use `map.new_output(name, clock)`.
+///
+/// Once such a map is built it can be used any number of times to transslate
+/// from an input tuple to an output tuple.
 #[derive(Debug, Default, Clone)]
 struct ClkMap {
+    /// Useful only during building: reverse access from names to provided clocks.
     clock_of: HashMap<Sp<String>, MappingClk<()>>,
+    /// Clocks used by the inputs, in order.
     inputs: Vec<Sp<Clocked<RelativeClk<()>>>>,
+    /// Clocks used by the outputs, in order.
     outputs: Vec<Sp<Clocked<MappingClk<()>>>>,
 }
 
@@ -195,17 +236,31 @@ impl Clocked<RelativeClk<AbsoluteClk>> {
 }
 
 impl ClkMap {
+    /// Provide a new named argument in the input tuple.
+    /// This handles both
+    /// - determining what the argument is clocked by, and
+    /// - registering the argument as one that may itself be a clock
+    ///   for others.
+    /// Note that this step of the compilation is *not* in charge
+    /// of checking that the argument is indeed a boolean.
     fn new_input(&mut self, name: Sp<&String>, clk: Sp<&ty::Clock>) {
         let uid = self.inputs.len();
         let provides_clock = MappingClk::NthIn(uid);
         let clocked_by = self
             .fetch_clock_for(clk)
-            .map(|clk| clk.as_relative().unwrap())
+            .map(|clk| clk.as_relative().unwrap_or_else(|| err::abort!("Missing argument not known by the clock map should have been flagged by the typechecker")))
             .with_span(clk.span);
         self.clock_of.insert(name.cloned(), provides_clock);
         self.inputs.push(clocked_by);
     }
 
+    /// Provide a new named argument in the output tuple.
+    /// This handles both
+    /// - determining what the argument is clocked by, and
+    /// - registering the argument as one that may itself be a clock
+    ///   for others.
+    /// Note that this step of the compilation is *not* in charge
+    /// of checking that the argument is indeed a boolean.
     fn new_output(&mut self, name: Sp<&String>, clk: Sp<&ty::Clock>) {
         let uid = self.outputs.len();
         let provides_clock = MappingClk::NthOut(uid);
@@ -214,19 +269,30 @@ impl ClkMap {
         self.outputs.push(clocked_by);
     }
 
+    /// Convert a `ty::Clock` to a `MappingClk` by looking up if there
+    /// is any known argument of the correct name.
+    /// This argument may be found from either the input or the output tuple.
     fn fetch_clock_for(&self, clk: Sp<&ty::Clock>) -> Clocked<MappingClk<()>> {
         match &clk.t {
             ty::Clock::Implicit | ty::Clock::Adaptative => Clocked::on(MappingClk::Implicit(())),
             ty::Clock::Explicit { id, activation } => Clocked {
                 clk: *self
                     .clock_of
-                    .get(&id)
+                    .get(id)
                     .unwrap_or_else(|| err::abort!("Malformed clock tuple: no such variable {id}")),
                 sign: *activation,
             },
         }
     }
 
+    /// Perform the mapping from the input tuple to an output tuple.
+    /// This mapping should
+    /// - transport the implicit clock of the tuple unchanged,
+    /// - verify that the input has the correct clocks,
+    /// - resolve dependencies from the output tuple to the input tuple when
+    ///   we are performing the translation for functions like
+    ///   `node foo(b : bool) returns (i : int when b)`
+    ///   where there is a dependency from the output to the input,
     fn translate(&self, acc: &mut Acc, tup_src: Sp<ClkTup>) -> Option<ClkTup> {
         let mut named: HashMap<Sp<String>, RelativeClk<()>> = HashMap::new();
         let implicit: AbsoluteClk = tup_src.t.implicit;
@@ -237,7 +303,7 @@ impl ClkMap {
         for (idx, (found, expected)) in tup_src.t.clocks.iter().zip(&self.inputs).enumerate() {
             if found.1.t.matches_positive_absolute(&implicit) {
                 // We expect the implicit clock
-                if matches!(expected.t.clk, RelativeClk::Implicit(_)) {
+                if matches!(expected.t.clk, RelativeClk::Implicit(())) {
                     err::consistency!(
                         expected.t.sign,
                         "Can only be positive w.r.t. the implicit clock"
@@ -247,7 +313,7 @@ impl ClkMap {
                     }
                 } else {
                     acc.error(err::Basic {
-                        msg: format!("Tuple element {} is going at the wrong speed", idx),
+                        msg: format!("Tuple element {idx} is going at the wrong speed"),
                         span: found.1.span,
                     })?;
                 }
@@ -256,20 +322,21 @@ impl ClkMap {
                 // to the tuple.
                 if let Some(src_clk) = found.1.t.clk.strictly_relative() {
                     assert!(found.1.t.sign == expected.t.sign);
-                    match found.1.t.clk {
-                        RelativeClk::Nth(found_clk) => assert_eq!(found_clk, src_clk),
-                        _ => panic!(),
+                    let RelativeClk::Nth(found_clk) = found.1.t.clk else {
+                        panic!()
                     };
+                    assert_eq!(found_clk, src_clk);
                 } else {
                     acc.error(err::Basic {
-                        msg: format!("Tuple element {} is going at the wrong speed", idx),
+                        msg: format!("Tuple element {idx} is going at the wrong speed"),
                         span: found.1.span,
                     })?;
                 }
             }
         }
-        let mut tup_tgt: Vec<(Option<Sp<String>>, Sp<Clocked<RelativeClk<AbsoluteClk>>>)> =
-            Vec::new();
+        // Done checking that the input tuple matches, we can now build the
+        // output tuple.
+        let mut tup_tgt: Vec<(Option<Sp<String>>, SelfContainedRelativeClk)> = Vec::new();
         for clk in &self.outputs {
             let replace = match &clk.t.clk {
                 MappingClk::Implicit(()) => RelativeClk::Implicit(implicit.clone()),
@@ -277,7 +344,7 @@ impl ClkMap {
                 MappingClk::NthIn(i) => {
                     // If the input is named we can use it as clock,
                     // otherwise it fails
-                    RelativeClk::Implicit(AbsoluteClk::Explicit(match &tup_src.t.clocks[*i].0 {
+                    RelativeClk::Implicit(AbsoluteClk::Explicit(match &at!(tup_src.t.clocks, *i).0 {
                         Some(name) => name.clone(),
                         None => acc.error(err::Basic {
                             msg: "Clock name is lost in the mapping, please bind it to a variable"

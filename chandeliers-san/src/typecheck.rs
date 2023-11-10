@@ -642,7 +642,7 @@ impl Sp<ty::Tuple> {
                 ty::Tuple::Multiple(_) => {
                     let s = "expected a scalar type, got a tuple type".to_owned();
                     acc.error(err::Basic {
-                        span: self.span.into(),
+                        span: self.span,
                         msg: s,
                     })
                 }
@@ -718,7 +718,7 @@ impl<T: TypeCheckDecl> TypeCheckSpanDecl for Sp<T> {
         extfun: &HashMap<ast::decl::NodeName, (SpTyBaseTuple, SpTyBaseTuple)>,
         extvar: &HashMap<var::Global, WithDefSite<ty::Base>>,
     ) -> Option<()> {
-        self.t.typecheck(acc, self.span.into(), extfun, extvar)
+        self.t.typecheck(acc, self.span, extfun, extvar)
     }
     fn signature(&self) -> Self::Signature {
         self.t.signature()
@@ -743,16 +743,18 @@ impl TypeCheckDecl for ast::decl::Node {
             if !self.inputs.t.is_empty() {
                 acc.error(err::Basic {
                     msg: "Node declared as main should not have any inputs".to_owned(),
-                    span: self.inputs.span.into(),
+                    span: self.inputs.span,
                 })?;
             }
             if !self.outputs.t.is_empty() {
                 acc.error(err::Basic {
                     msg: "Node declared as main should not have any outputs".to_owned(),
-                    span: self.inputs.span.into(),
+                    span: self.inputs.span,
                 })?;
             }
         }
+        let _unimplemented = self.options.test.fetch::<This>();
+
         // These are all the extra variables that we provide in addition
         // to `extvar`.
         let mut scope = acc.scope();
@@ -783,7 +785,7 @@ impl TypeCheckDecl for ast::decl::Node {
             let Some((i, o)) = extfun.get(&blk.t) else {
                 let s = format!("Block {blk} is not defined");
                 return acc.error(err::Basic {
-                    span: blk.span.into(),
+                    span: blk.span,
                     msg: s,
                 });
             };
@@ -838,13 +840,13 @@ impl TypeCheckDecl for ast::decl::ExtNode {
             if !self.inputs.t.is_empty() {
                 acc.error(err::Basic {
                     msg: "Node declared as main should not have any inputs".to_owned(),
-                    span: self.inputs.span.into(),
+                    span: self.inputs.span,
                 })?;
             }
             if !self.outputs.t.is_empty() {
                 acc.error(err::Basic {
                     msg: "Node declared as main should not have any outputs".to_owned(),
-                    span: self.inputs.span.into(),
+                    span: self.inputs.span,
                 })?;
             }
         }
@@ -1000,7 +1002,7 @@ impl Sp<ast::decl::Prog> {
                     {
                         let s = format!("Redefinition of const {name}");
                         scope.error(err::Basic {
-                            span: c.span.into(),
+                            span: c.span,
                             msg: s,
                         });
                     }
@@ -1011,7 +1013,7 @@ impl Sp<ast::decl::Prog> {
                     if functx.insert(name.t, (i, o)).is_some() {
                         let s = format!("Redefinition of node {}", n.t.name);
                         scope.error(err::Basic {
-                            span: n.span.into(),
+                            span: n.span,
                             msg: s,
                         });
                     }
@@ -1031,7 +1033,7 @@ impl Sp<ast::decl::Prog> {
                     {
                         let s = format!("Redefinition of const {name}");
                         scope.error(err::Basic {
-                            span: c.span.into(),
+                            span: c.span,
                             msg: s,
                         });
                     }
@@ -1042,7 +1044,7 @@ impl Sp<ast::decl::Prog> {
                     if functx.insert(name.t, (i, o)).is_some() {
                         let s = format!("Redefinition of node {}", n.t.name);
                         scope.error(err::Basic {
-                            span: n.span.into(),
+                            span: n.span,
                             msg: s,
                         });
                     }

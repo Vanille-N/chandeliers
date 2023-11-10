@@ -27,9 +27,7 @@ pub trait ConstExprSpanTokens {
 
 impl<T: ConstExprTokens> ConstExprSpanTokens for Sp<T> {
     fn const_expr_tokens(&self) -> TokenStream {
-        self.t
-            .const_expr_tokens(self.span.into())
-            .with_span(self.span)
+        self.t.const_expr_tokens(self.span).with_span(self.span)
     }
 }
 

@@ -106,6 +106,7 @@ impl<T> Sp<T> {
 
 impl<T: Clone> Sp<&T> {
     /// Clone the inner
+    #[must_use]
     pub fn cloned(self) -> Sp<T> {
         self.map(|_, t| t.clone())
     }

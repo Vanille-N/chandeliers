@@ -5,7 +5,7 @@ use quote::{quote, quote_spanned, ToTokens};
 
 use crate::ast::options::usage::Codegen as This;
 use crate::ast::{decl, expr, op, past, stmt, ty, var, Tuple};
-use crate::sp::{Sp, Span};
+use crate::sp::{Sp, Span, WithSpan};
 
 mod constexpr;
 pub mod options;
