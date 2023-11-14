@@ -80,7 +80,7 @@ macro_rules! consistency {
 /// Error accumulator to be able to
 /// - emit several fatal errors at once
 /// - emit warnings
-pub struct Acc {
+pub struct EAccum {
     err: Vec<Error>,
     warn: Vec<Error>,
 }
@@ -99,12 +99,12 @@ pub struct Acc {
 /// If instead we wish to execute them all we can do
 ///
 ///
-pub struct AccScope<'a> {
-    acc: &'a mut Acc,
+pub struct EAccumScope<'a> {
+    acc: &'a mut EAccum,
     fatal: bool,
 }
 
-impl Acc {
+impl EAccum {
     /// Create an empty accumulator with no errors and no warnings.
     pub fn new() -> Self {
         Self {
@@ -138,19 +138,19 @@ impl Acc {
     }
 
     /// Create a new scope to record the success of intermediate computation.
-    pub fn scope(&mut self) -> AccScope {
-        AccScope {
+    pub fn scope(&mut self) -> EAccumScope {
+        EAccumScope {
             acc: self,
             fatal: false,
         }
     }
 }
 
-impl<'a> AccScope<'a> {
+impl<'a> EAccumScope<'a> {
     /// Record the success of a new computation.
     pub fn compute<F>(&mut self, f: F)
     where
-        F: FnOnce(&mut Acc) -> Option<()>,
+        F: FnOnce(&mut EAccum) -> Option<()>,
     {
         let e = f(&mut *self.acc);
         if e.is_none() {

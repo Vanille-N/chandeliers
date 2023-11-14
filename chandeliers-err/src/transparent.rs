@@ -32,10 +32,16 @@ use std::hash::{Hash, Hasher};
 ///
 /// It additionally supports creating dummy values and they will also compare
 /// equal to all other and hash identically.
-#[derive(Debug, Clone, Copy)]
+#[derive(Clone, Copy)]
 pub struct Transparent<T> {
     /// Payload.
     inner: Option<T>,
+}
+
+impl<T> fmt::Debug for Transparent<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "_")
+    }
 }
 
 impl<T> Transparent<T> {

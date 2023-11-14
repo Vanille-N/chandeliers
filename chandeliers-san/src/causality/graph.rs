@@ -42,7 +42,7 @@ use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::hash::Hash;
 
-use chandeliers_err::{self as err, Acc, TrySpan};
+use chandeliers_err::{self as err, EAccum, TrySpan};
 
 use crate::causality::depends::Depends;
 use crate::sp::Span;
@@ -319,12 +319,12 @@ where
     /// if the `Unit` in question has not already been encountered,
     /// so this method should be called after all insertions are
     /// complete.
-    pub fn must_provide(&mut self, acc: &mut Acc, o: &Unit) -> Option<()> {
+    pub fn must_provide(&mut self, eaccum: &mut EAccum, o: &Unit) -> Option<()> {
         let uid = self.get_or_insert_atomic(o, false);
         if self.provided_for_ext.contains(&uid) {
             Some(())
         } else {
-            acc.error(err::GraphUnitUndeclared { unit: &o })
+            eaccum.error(err::GraphUnitUndeclared { unit: &o })
         }
     }
 
@@ -359,7 +359,7 @@ where
     ///
     /// # Errors
     /// Fails if a cycle is encountered.
-    pub fn scheduling(self, acc: &mut Acc) -> Option<Vec<Obj>> {
+    pub fn scheduling(self, eaccum: &mut EAccum) -> Option<Vec<Obj>> {
         let nb = self.atomics.0.len();
         let (provider, constraints) = {
             // First step is to create some reverse mappings that will
@@ -381,7 +381,7 @@ where
                     // This involves both `provided_by_ext` and `provider`
                     // currently being computed.
                     if let Some(prior) = self.provided_by_ext.get(&p.contents) {
-                        acc.error(err::GraphUnitDeclTwice {
+                        eaccum.error(err::GraphUnitDeclTwice {
                             unit: &at!(self.atomics.0, p.contents).contents,
                             prior: "the context",
                             new_site: &at!(self.elements, id),
@@ -389,7 +389,7 @@ where
                         })?;
                     }
                     if let Some(prov) = at!(provider, p.contents) {
-                        acc.error(err::GraphUnitDeclTwice {
+                        eaccum.error(err::GraphUnitDeclTwice {
                             unit: &at!(self.atomics.0, p.contents).contents,
                             prior: "a prior item",
                             new_site: &at!(self.elements, id),
@@ -403,7 +403,7 @@ where
                     // is fine with connected components of size 1.
                     for r in at!(self.require, id) {
                         if r.contents == p.contents {
-                            acc.error(err::GraphUnitDependsOnItself {
+                            eaccum.error(err::GraphUnitDependsOnItself {
                                 unit: &at!(self.atomics.0, p.contents).contents,
                                 def_site: at!(self.elements, id),
                                 usage: r.def_site,
@@ -440,7 +440,7 @@ where
             if c.len() > 1 {
                 // Oops, here's a loop.
                 let looping = c.iter().map(|l| at!(self.atomics.0, *l).elements());
-                acc.error(err::Cycle { items: looping })?;
+                eaccum.error(err::Cycle { items: looping })?;
             }
             // Correctly of size 1, we can use it next.
             let Some(&id) = c.last() else {
@@ -468,7 +468,7 @@ mod test {
 
     use super::super::depends::Depends;
     use super::Graph;
-    use chandeliers_err::{self as err, Acc};
+    use chandeliers_err::{self as err, EAccum};
 
     #[derive(Debug, PartialEq)]
     struct Triplet(char, char, char);
@@ -507,13 +507,13 @@ mod test {
     }
 
     fn schedule(pairs: Vec<Triplet>) -> Result<Vec<Triplet>, Vec<String>> {
-        let mut acc = Acc::new();
+        let mut eaccum = EAccum::new();
         let mut g = Graph::default();
         for pair in pairs {
             g.insert(pair);
         }
-        let sched = g.scheduling(&mut acc);
-        sched.ok_or_else(|| vec_proj1(acc.fetch().0.into_iter().next().unwrap()))
+        let sched = g.scheduling(&mut eaccum);
+        sched.ok_or_else(|| vec_proj1(eaccum.fetch().0.into_iter().next().unwrap()))
     }
 
     #[test]

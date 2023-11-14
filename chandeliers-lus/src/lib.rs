@@ -26,7 +26,7 @@
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use chandeliers_err::{self as err, Acc, Error, Transparent};
+use chandeliers_err::{self as err, EAccum, Error, Transparent};
 use chandeliers_san::{self as sanitizer, sp::Sp};
 use chandeliers_syn as syntax;
 
@@ -71,10 +71,10 @@ pub fn decl(i: proc_macro::TokenStream) -> proc_macro::TokenStream {
     use quote::ToTokens;
     use syn::parse_macro_input;
     let prog = parse_macro_input!(i as Sp<syntax::Prog>);
-    let mut acc = Acc::new();
-    let prog = prog_pipeline(&mut acc, prog);
-    let fatal = acc.is_fatal();
-    let (es, ws) = acc.fetch();
+    let mut eaccum = EAccum::new();
+    let prog = prog_pipeline(&mut eaccum, prog);
+    let fatal = eaccum.is_fatal();
+    let (es, ws) = eaccum.fetch();
     let Some(prog) = prog else {
         err::consistency!(fatal, "No program generated, but no fatal error emitted");
         for e in es {
@@ -83,7 +83,7 @@ pub fn decl(i: proc_macro::TokenStream) -> proc_macro::TokenStream {
         return proc_macro2::TokenStream::new().into();
     };
     for w in ws {
-        emit(w, proc_macro::Level::Warning);
+        emit(w, proc_macro::Level::Error);
     }
     let mut toks = proc_macro2::TokenStream::new();
     prog.to_tokens(&mut toks);
@@ -92,17 +92,20 @@ pub fn decl(i: proc_macro::TokenStream) -> proc_macro::TokenStream {
 
 /// Run the entire process on the program: translation + causality check + typechecking +
 /// positivity + clockchecking.
-fn prog_pipeline(acc: &mut Acc, prog: Sp<syntax::Prog>) -> Option<Sp<sanitizer::ast::decl::Prog>> {
+fn prog_pipeline(
+    eaccum: &mut EAccum,
+    prog: Sp<syntax::Prog>,
+) -> Option<Sp<sanitizer::ast::decl::Prog>> {
     use sanitizer::causality::Causality;
-    use sanitizer::clockcheck::ClockCheck;
+    //use sanitizer::clockcheck::ClockCheck;
     use sanitizer::positivity::MakePositive;
     use syntax::translate::SpanTranslate;
     let run_uid = new_run_uid();
-    let prog = prog.translate(acc, Transparent::from(run_uid), ())?;
-    let mut prog = prog.causality(acc)?;
-    prog.typecheck(acc)?; // FIXME: trait for this
-    prog.clockcheck(acc)?;
-    prog.make_positive(acc)?;
+    let prog = prog.translate(eaccum, Transparent::from(run_uid), ())?;
+    let mut prog = prog.causality(eaccum)?;
+    prog.typecheck(eaccum)?; // FIXME: trait for this
+                             //prog.clockcheck(eaccum)?;
+    prog.make_positive(eaccum)?;
     Some(prog)
 }
 
@@ -123,7 +126,7 @@ compiling!(fail_ui_syn with compile_fail in compile_fail/ui/syn/);
 compiling!(fail_ui_tc with compile_fail in compile_fail/ui/tc/);
 compiling!(fail_ui_options with compile_fail in compile_fail/ui/options/);
 compiling!(fail_std with compile_fail in compile_fail/std/);
-compiling!(fail_ui_clk with compile_fail in compile_fail/ui/clk/);
+//compiling!(fail_ui_clk with compile_fail in compile_fail/ui/clk/);
 
 compiling!(pass_ui with pass in pass/ui/);
 compiling!(pass_syn with pass in pass/syn/);

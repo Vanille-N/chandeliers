@@ -6,7 +6,7 @@
 //! the structures that need to have their dependencies analyzed,
 //! which is done by the `Causality` trait.
 
-use chandeliers_err::Acc;
+use chandeliers_err::EAccum;
 
 use crate::ast;
 use crate::sp::Sp;
@@ -23,34 +23,34 @@ pub trait Causality: Sized {
     /// Rearrange the internal contents in a causally consistent ordering.
     /// # Errors
     /// Fails if there is a cycle (including of length 1).
-    fn causality(self, acc: &mut Acc) -> Option<Self>;
+    fn causality(self, eaccum: &mut EAccum) -> Option<Self>;
 }
 
 impl Causality for ast::decl::Prog {
     /// Sort the declarations of the program to remove cycles.
-    fn causality(self, acc: &mut Acc) -> Option<Self> {
+    fn causality(self, eaccum: &mut EAccum) -> Option<Self> {
         let Self { decls } = self;
         let mut g = Graph::default();
         for decl in decls {
-            g.insert(decl.causality(acc)?);
+            g.insert(decl.causality(eaccum)?);
         }
-        let decls = g.scheduling(acc)?;
+        let decls = g.scheduling(eaccum)?;
         Some(Self { decls })
     }
 }
 
 impl<T: Causality> Causality for Sp<T> {
     /// Trivial projection.
-    fn causality(self, acc: &mut Acc) -> Option<Self> {
-        self.map(|_, t| t.causality(acc)).transpose()
+    fn causality(self, eaccum: &mut EAccum) -> Option<Self> {
+        self.map(|_, t| t.causality(eaccum)).transpose()
     }
 }
 
 impl Causality for ast::decl::Decl {
     /// Trivial projection.
-    fn causality(self, acc: &mut Acc) -> Option<Self> {
+    fn causality(self, eaccum: &mut EAccum) -> Option<Self> {
         Some(match self {
-            Self::Node(n) => Self::Node(n.causality(acc)?),
+            Self::Node(n) => Self::Node(n.causality(eaccum)?),
             _ => self,
         })
     }
@@ -61,7 +61,7 @@ impl Causality for ast::decl::Node {
     /// - verify that no inputs are redefined
     /// - verify that all locals and outputs are well-defined
     /// - ensure that there is no dependency cycle.
-    fn causality(self, acc: &mut Acc) -> Option<Self> {
+    fn causality(self, eaccum: &mut EAccum) -> Option<Self> {
         let Self {
             name,
             options,
@@ -83,13 +83,13 @@ impl Causality for ast::decl::Node {
         }
         for l in locals.t.iter() {
             let unit = Reference::LocalVarName(l.t.name.as_ref().map(|_, t| t.repr.t.clone()));
-            g.must_provide(acc, &unit)?;
+            g.must_provide(eaccum, &unit)?;
         }
         for o in outputs.t.iter() {
             let unit = Reference::LocalVarName(o.t.name.as_ref().map(|_, t| t.repr.t.clone()));
-            g.must_provide(acc, &unit)?;
+            g.must_provide(eaccum, &unit)?;
         }
-        let stmts = g.scheduling(acc)?;
+        let stmts = g.scheduling(eaccum)?;
         Some(Self {
             name,
             options,

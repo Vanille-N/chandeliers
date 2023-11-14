@@ -16,7 +16,7 @@
 //! only those applicable to each declaration, and emits appropriate and
 //! homogeneous error messages.
 
-use chandeliers_err::{self as err, Acc};
+use chandeliers_err::{self as err, EAccum};
 use chandeliers_san::ast::options::{
     Allow, Const, ExtConst, ExtNode, Node, TraceFile, TraceFormat,
 };
@@ -102,9 +102,9 @@ impl<T> SetOpt<T> {
     }
 
     /// Assert that this option was not set.
-    fn skip(self, acc: &mut Acc, current: &'static str) -> Option<()> {
+    fn skip(self, eaccum: &mut EAccum, current: &'static str) -> Option<()> {
         if self.value.is_some() {
-            acc.error(err::Basic {
+            eaccum.error(err::Basic {
                 msg: format!(
                     "The attribute {} is not valid here (does not apply to {current})",
                     self.message
@@ -162,7 +162,7 @@ impl Default for Decl {
 /// All fields will have either `take` or `skip` applied to them, ensuring
 /// that all options are handled.
 macro_rules! project {
-    ( ?$acc:expr => $this:ident : $From:ident => $To:ident {
+    ( ?$eaccum:expr => $this:ident : $From:ident => $To:ident {
         take { $( $take:ident, )* }
         skip { $( $skip:ident, )* }
       }
@@ -171,7 +171,7 @@ macro_rules! project {
             $( $take, )*
             $( $skip, )*
         } = $this;
-        $( $skip.skip($acc, stringify!($To))?; )*
+        $( $skip.skip($eaccum, stringify!($To))?; )*
         Some($To {
             $( $take: chandeliers_san::ast::options::UseOpt::new($take.take()), )*
         })
@@ -180,9 +180,9 @@ macro_rules! project {
 
 impl Decl {
     /// Project to the options that are valid on a `const`.
-    pub fn for_const(self, acc: &mut Acc) -> Option<Const> {
+    pub fn for_const(self, eaccum: &mut EAccum) -> Option<Const> {
         project! {
-            ?acc => self: Decl => Const {
+            ?eaccum => self: Decl => Const {
                 take { export, rustc_allow, doc, public, }
                 skip { trace, main, impl_trait, test, }
             }
@@ -190,7 +190,7 @@ impl Decl {
     }
 
     /// Project to the options that are valid on a `node`.
-    pub fn for_node(self, _acc: &mut Acc) -> Option<Node> {
+    pub fn for_node(self, _eaccum: &mut EAccum) -> Option<Node> {
         project! {
             ?_acc => self: Decl => Node {
                 take { trace, export, main, rustc_allow, doc, public, impl_trait, test, }
@@ -200,9 +200,9 @@ impl Decl {
     }
 
     /// Project to the options that are valid on an `extern const`.
-    pub fn for_ext_const(self, acc: &mut Acc) -> Option<ExtConst> {
+    pub fn for_ext_const(self, eaccum: &mut EAccum) -> Option<ExtConst> {
         project! {
-            ?acc => self: Decl => ExtConst {
+            ?eaccum => self: Decl => ExtConst {
                 take { rustc_allow, }
                 skip { trace, export, main, doc, public, impl_trait, test, }
             }
@@ -210,9 +210,9 @@ impl Decl {
     }
 
     /// Project to the options that are valid on an `extern node`.
-    pub fn for_ext_node(self, acc: &mut Acc) -> Option<ExtNode> {
+    pub fn for_ext_node(self, eaccum: &mut EAccum) -> Option<ExtNode> {
         project! {
-            ?acc => self: Decl => ExtNode {
+            ?eaccum => self: Decl => ExtNode {
                 take { trace, main, rustc_allow, }
                 skip { export, doc, public, impl_trait, test, }
             }
@@ -220,7 +220,7 @@ impl Decl {
     }
 
     /// Update the current options with a new attribute.
-    pub fn with(mut self, acc: &mut Acc, attr: Sp<crate::ast::Attribute>) -> Option<Self> {
+    pub fn with(mut self, eaccum: &mut EAccum, attr: Sp<crate::ast::Attribute>) -> Option<Self> {
         use syn::Lit;
         let action = attr.t.attr.t.action.t.inner.to_string();
 
@@ -232,7 +232,7 @@ impl Decl {
                 $( syn:( $($syntax:tt)* ) )?
                 $( note:( $($suggestion:tt)* ) )?
             ) => {
-                acc.error(vec![
+                eaccum.error(vec![
                     (format!("Malformed attribute {}: {}", action, format!($($msg)*)), Some(attr.span.into())),
                     $( (format!("Maybe try this syntax: {}", format!($($syntax)*)), None), )?
                     $( (format!($($suggestion)*), None), )?
@@ -244,7 +244,7 @@ impl Decl {
         macro_rules! duplicate {
             ($opt:ident) => {
                 if self.$opt.value.is_some() {
-                    acc.warning(vec![
+                    eaccum.warning(vec![
                         (
                             format!(
                                 "{} is already set by a previous attribute",
@@ -261,13 +261,12 @@ impl Decl {
             };
         }
 
-        /// Warning (not fatal) if we try to set an attribute that is incompatible
-        /// with another. This is not fatal because we resolve it to have the
-        /// earlier one take precedence.
+        /// Warning if we try to set an attribute that is incompatible with another.
+        /// This is not fatal because we resolve it to have the earlier one take precedence.
         macro_rules! conflicting {
             ($this:ident, $other:ident) => {
                 if self.$other.value.is_some() {
-                    acc.warning(vec![
+                    eaccum.warning(vec![
                         (
                             format!(
                                 "{} is incompatible with {}",
@@ -284,6 +283,8 @@ impl Decl {
             };
         }
 
+        /// Set the option with the given value. Typical invocation will look like
+        /// `register!(main <- some 100)` or `register!(export <- set true)`.
         macro_rules! register {
             ( $field:ident <- $fn:ident $val:expr ) => {
                 self.$field.$fn($val, attr.span.into())

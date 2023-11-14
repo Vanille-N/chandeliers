@@ -1,0 +1,12 @@
+error: unused variable: `z__lus_local`
+ --> tests/warn/dead_code/never-read.rs:6:16
+  |
+6 |     let y = x; z = 1; tel;
+  |                ^ help: if this is intentional, prefix it with an underscore: `_z__lus_local`
+  |
+note: the lint level is defined here
+ --> tests/warn/dead_code/never-read.rs:1:9
+  |
+1 | #![deny(warnings)]
+  |         ^^^^^^^^
+  = note: `#[deny(unused_variables)]` implied by `#[deny(warnings)]`

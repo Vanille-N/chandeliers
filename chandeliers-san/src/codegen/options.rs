@@ -95,12 +95,12 @@ generic_option! {
                 let outputs_self_assigned = outputs.self_assigned();
                 let input_fmt = match ifmt {
                     TraceFormat::Default => format!("{{_ext}}{{_this}} <- {input_var_fmt}\n"),
-                    TraceFormat::Empty => "".to_owned(),
+                    TraceFormat::Empty => String::new(),
                     TraceFormat::Str(s) => s.clone(),
                 };
                 let output_fmt = match ofmt {
                     TraceFormat::Default => format!("{{_ext}}{{_this}} -> {output_var_fmt}\n"),
-                    TraceFormat::Empty => "".to_owned(),
+                    TraceFormat::Empty => String::new(),
                     TraceFormat::Str(s) => s.clone(),
                 };
                 let printer = match file {

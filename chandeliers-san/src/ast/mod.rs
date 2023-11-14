@@ -10,7 +10,7 @@
 use std::fmt;
 use std::hash::Hash;
 
-use chandeliers_err::Acc;
+use chandeliers_err::EAccum;
 
 use crate::causality::depends::Depends;
 
@@ -47,13 +47,13 @@ impl<T> Tuple<T> {
     /// Map a faillible funciton by reference to a tuple.
     /// # Errors
     /// Fails if the function fails on any of the elements.
-    pub fn try_map<F, U>(&self, acc: &mut Acc, f: F) -> Option<Tuple<U>>
+    pub fn try_map<F, U>(&self, eaccum: &mut EAccum, f: F) -> Option<Tuple<U>>
     where
-        F: Fn(&mut Acc, &T) -> Option<U>,
+        F: Fn(&mut EAccum, &T) -> Option<U>,
     {
         let mut elems = Vec::new();
         for e in &self.elems {
-            elems.push(f(&mut *acc, e)?);
+            elems.push(f(&mut *eaccum, e)?);
         }
         Some(Tuple { elems })
     }
@@ -439,8 +439,9 @@ pub mod op {
         }
     }
 
+    crate::sp::derive_with_span!(Clock);
     /// A clock operator applied to an expression.
-    #[derive(Debug, Clone, Copy)]
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub enum Clock {
         /// `when`
         When,
