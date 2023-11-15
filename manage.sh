@@ -11,7 +11,11 @@ CRATES=( \
 
 each() {
     for crate in "${CRATES[@]}"; do
-        ( cd $crate && echo ">>> Submodule '$crate'" && $@ ) || [ -z STRICT ] || exit 100
+        (
+            cd $crate &&
+                echo ">>> Submodule '$crate'" &&
+                $@
+        ) || [ -z STRICT ] || exit 100
     done
 }
 

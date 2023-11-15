@@ -74,7 +74,7 @@
 pub mod ast;
 pub mod candle;
 pub mod causality;
-//pub mod clockcheck;
+pub mod clockcheck;
 pub mod codegen;
 pub mod positivity;
 pub mod sp;
