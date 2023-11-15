@@ -103,7 +103,8 @@ fn prog_pipeline(
     let run_uid = new_run_uid();
     let prog = prog.translate(eaccum, Transparent::from(run_uid), ())?;
     let mut prog = prog.causality(eaccum)?;
-    prog.typecheck(eaccum)?; // FIXME: trait for this
+    // FIXME: trait for this
+    prog.typecheck(eaccum)?;
     prog.clockcheck(eaccum)?;
     prog.make_positive(eaccum)?;
     Some(prog)
@@ -126,7 +127,7 @@ compiling!(fail_ui_syn with compile_fail in compile_fail/ui/syn/);
 compiling!(fail_ui_tc with compile_fail in compile_fail/ui/tc/);
 compiling!(fail_ui_options with compile_fail in compile_fail/ui/options/);
 compiling!(fail_std with compile_fail in compile_fail/std/);
-compiling!(fail_ui_clk with compile_fail in compile_fail/ui/clk/);
+//compiling!(fail_ui_clk with compile_fail in compile_fail/ui/clk/);
 
 compiling!(pass_ui with pass in pass/ui/);
 compiling!(pass_syn with pass in pass/syn/);

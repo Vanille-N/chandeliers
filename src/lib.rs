@@ -563,3 +563,32 @@ chandeliers_lus::decl! {
         assert 1 + 1 = 2;
     tel
 }
+
+chandeliers_lus::decl! {
+    #[trace("{x}\n")]
+    node info(x : int) returns (); let tel;
+
+    #[trace("-------\n")]
+    node step() returns (); let tel;
+
+    #[test]
+    node system() returns ();
+    var n : int;
+        b : bool;
+        n1 : int when b;
+        n2 : int when b;
+        n3 : int when b;
+        n4 : int when b;
+    let
+        n = 0 fby n + 1;
+        b = true -> true -> false -> pre pre pre b;
+        n1 = n when (true -> pre b);
+        n2 = (0 -> pre n) when b;
+        n3 = pre ((0 -> n) when (true -> b));
+        n4 = (0 -> pre n) when (true -> pre b);
+        () = info(n4);
+        () = () -> info(pre n4);
+        () = step();
+        assert n < 20;
+    tel;
+}
