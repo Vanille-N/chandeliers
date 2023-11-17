@@ -498,6 +498,9 @@ pub mod expr {
         Reference(Sp<super::var::Reference>),
         /// Tuples `(1, 2.0, x)`.
         Tuple(Sp<Tuple<Sp<Expr>>>),
+        /// We push `pre` to the variables so this is just a marker
+        /// of where a `pre` used to be.
+        DummyPre(Sp<Box<Expr>>),
         /// Application of a binary operator `a + b`.
         Bin {
             /// Binary operator (e.g. `+`).
@@ -577,6 +580,7 @@ pub mod expr {
                 Self::Lit(l) => write!(f, "{l}"),
                 Self::Reference(r) => write!(f, "{r}"),
                 Self::Tuple(t) => write!(f, "{t}"),
+                Self::DummyPre(t) => write!(f, "{t}"),
                 Self::Bin { op, lhs, rhs } => write!(f, "({lhs} {op} {rhs})"),
                 Self::Un { op, inner } => write!(f, "({op} {inner})"),
                 Self::Cmp { op, lhs, rhs } => write!(f, "({lhs} {op} {rhs})"),

@@ -271,6 +271,7 @@ impl Depends for expr::Expr {
         Self::Lit(_) => ;
         Self::Reference(r) => r;
         Self::Tuple(t) => t;
+        Self::DummyPre(e) => e;
         Self::Bin { lhs, rhs, .. } => lhs, rhs;
         Self::Cmp { lhs, rhs, .. } => lhs, rhs;
         Self::Un { inner, .. } => inner;

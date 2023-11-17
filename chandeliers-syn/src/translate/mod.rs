@@ -1265,7 +1265,9 @@ impl Translate for src::expr::Pre {
         _span: Span,
         ctx: Self::Ctx<'_>,
     ) -> Option<tgt::expr::Expr> {
-        self.inner.flat_translate(eaccum, run_uid, ctx.incr())
+        Some(tgt::expr::Expr::DummyPre(
+            self.inner.translate(eaccum, run_uid, ctx.incr())?.boxed(),
+        ))
     }
 }
 

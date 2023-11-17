@@ -279,6 +279,7 @@ impl TypeCheckExpr for ast::expr::Expr {
                     })
                     .t
             }
+            Self::DummyPre(e) => Some(e.typecheck(eaccum, ctx)?.t),
             Self::Bin { op, lhs, rhs } => {
                 let left = lhs
                     .typecheck(eaccum, ctx)
@@ -378,6 +379,10 @@ impl TypeCheckExpr for ast::expr::Expr {
                 rhs?;
                 Some(())
             }
+            Self::DummyPre(_) => eaccum.error(err::NotConst {
+                what: "The temporal operator `pre` is",
+                site: span,
+            }),
             Self::Later { .. } => eaccum.error(err::NotConst {
                 what: "The later operator (-> / fby) is",
                 site: span,

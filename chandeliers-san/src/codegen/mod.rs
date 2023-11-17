@@ -826,6 +826,7 @@ impl ToTokens for expr::Expr {
             Self::Reference(refer) => {
                 quote!( #refer )
             }
+            Self::DummyPre(e) => quote!( #e ),
             Self::Tuple(t) => {
                 let elems = t.t.iter();
                 quote!( ( #( #elems ),* ).embed() )
