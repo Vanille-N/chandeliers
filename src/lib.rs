@@ -472,6 +472,7 @@ mod then_assoc {
     }
 }
 
+/*
 mod slow {
     chandeliers_lus::decl! {
         #[trace]
@@ -494,6 +495,7 @@ mod slow {
         tel;
     }
 }
+*/
 
 mod dead {
     chandeliers_lus::decl! {

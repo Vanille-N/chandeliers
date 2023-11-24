@@ -328,7 +328,7 @@ impl Translate for src::AttrDecl {
     ) -> Option<tgt::decl::Decl> {
         match self {
             Self::Tagged(attr, n) => {
-                let options = options.with(eaccum, attr)?;
+                let options = options.with(eaccum, attr.map(|_, x| *x))?;
                 n.flat_translate(eaccum, run_uid, options)
             }
             Self::Node(n) => n.flat_translate(eaccum, run_uid, options),

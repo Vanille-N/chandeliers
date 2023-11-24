@@ -59,6 +59,12 @@ impl<T> Transparent<T> {
     }
 
     /// Create a dummy value.
+    ///
+    /// It is recommended to use the `loc` parameter as a way to track the location
+    /// where it was forged so that if it is accidentally unwrapped the error message
+    /// is more readable, e.g. by using either an identifying string or even better
+    /// the output of the `here!()` macro that gives the location in the source code.
+    #[must_use]
     pub fn forge(loc: &'static str) -> Self {
         Self { inner: Err(loc) }
     }

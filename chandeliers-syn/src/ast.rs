@@ -1217,7 +1217,7 @@ span_end_on_field!(Attribute.brack);
 #[derive(syn_derive::Parse)]
 pub enum Decl {
     #[parse(peek = Token![extern])]
-    Extern(Sp<Extern>),
+    Extern(Sp<Box<Extern>>),
     #[parse(peek = Token![const])]
     Const(Sp<Const>),
     Node(Sp<Node>),
@@ -1232,7 +1232,7 @@ span_end_by_match! {
 #[derive(syn_derive::Parse)]
 pub enum AttrDecl {
     #[parse(peek = Token![#])]
-    Tagged(Sp<Attribute>, Sp<Box<AttrDecl>>),
+    Tagged(Sp<Box<Attribute>>, Sp<Box<AttrDecl>>),
     Node(Sp<Decl>),
 }
 span_end_by_match! {

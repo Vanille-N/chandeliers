@@ -8,6 +8,10 @@ use crate::Span;
 pub type Error = Vec<(String, Option<Span>)>;
 
 /// Generate an [Error].
+#[expect(
+    clippy::module_name_repetitions,
+    reason = "Of course the trait contains the word 'Error'"
+)]
 pub trait IntoError {
     /// Produce the sequence of spans and help messages.
     fn into_err(self) -> Error;

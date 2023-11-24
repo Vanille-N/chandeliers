@@ -71,7 +71,7 @@ pub fn decl(i: proc_macro::TokenStream) -> proc_macro::TokenStream {
     use quote::ToTokens;
     use syn::parse_macro_input;
     let prog = parse_macro_input!(i as Sp<syntax::Prog>);
-    let mut eaccum = EAccum::new();
+    let mut eaccum = EAccum::default();
     let prog = prog_pipeline(&mut eaccum, prog);
     let fatal = eaccum.is_fatal();
     let (es, ws) = eaccum.fetch();

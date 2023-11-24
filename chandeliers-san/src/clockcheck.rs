@@ -10,8 +10,6 @@
 //! Finer handling of clocks is something that I have already attempted, but
 //! this version does not implement that.
 
-#![allow(dead_code)] // FIXME
-
 use std::collections::HashMap;
 use std::fmt;
 
@@ -61,20 +59,25 @@ impl<T> WithDefSite<T> {
         self.def_site = Transparent::from(Some(span));
         self
     }
-
-    /// Transfer a def site from one object to another.
-    fn with_def_site_of<Other>(mut self, other: &WithDefSite<Other>) -> Self {
-        self.def_site = other.def_site;
-        self
-    }
 }
 
 crate::sp::derive_with_span!(AbsoluteClk);
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum AbsoluteClk {
+    /// Variables that move at the same speed as the node. You can call temporal
+    /// operators (`pre`, `fby`) on these.
     Implicit,
+    /// Constants and global variables that because they have no state can be
+    /// reinterpreted as having any clock. Can be implicitly cast to any of the
+    /// other variants of this `enum`.
     Adaptative,
+    /// Positive dependency on a clock (obtained by the `when` operator).
+    /// Carries a value whenever the contained variable (whose name is the `String`)
+    /// is `true`.
     OnExplicit(WithDefSite<String>),
+    /// Negative dependency on a clock (obtained by the `whenot` operator).
+    /// Carries a value whenever the contained variable (whose name is the `String`)
+    /// is `false`.
     OffExplicit(WithDefSite<String>),
 }
 
@@ -291,19 +294,16 @@ impl Sp<&AbsoluteClk> {
             }
             _ => {
                 let mut v = vec![(
-                    format!(
-                        "Mismatch between clocks: {} on the left but {} on the right",
-                        self, other
-                    ),
+                    format!("Mismatch between clocks: {self} on the left but {other} on the right",),
                     Some(whole),
                 )];
-                v.push((format!("This is clocked by {}", self), Some(self.span)));
+                v.push((format!("This is clocked by {self}"), Some(self.span)));
                 if let Some(def_site) = self.t.def_site() {
-                    v.push((format!("due to this"), Some(def_site)));
+                    v.push(("due to this".to_owned(), Some(def_site)));
                 }
-                v.push((format!("This is clocked by {}", other), Some(other.span)));
+                v.push((format!("This is clocked by {other}"), Some(other.span)));
                 if let Some(def_site) = other.t.def_site() {
-                    v.push((format!("due to this"), Some(def_site)));
+                    v.push(("due to this".to_owned(), Some(def_site)));
                 }
                 eaccum.error(v)
             }
@@ -417,7 +417,7 @@ impl ClockCheckExpr for expr::Expr {
             } => {
                 let inner = inner.clockcheck(eaccum, ctx)?;
                 let clock_of_clock = activate.clockcheck(eaccum, ctx)?;
-                let activate = activate.into_clock(eaccum, *op)?;
+                let activate = activate.as_clock(eaccum, *op)?;
                 Some(
                     inner
                         .reclock(
@@ -451,8 +451,8 @@ impl ClockCheckExpr for expr::Expr {
                 Some(cond.t)
             }
             Self::Merge { switch, on, off } => {
-                let expect_on = switch.into_clock(eaccum, op::Clock::When);
-                let expect_off = switch.into_clock(eaccum, op::Clock::Whenot);
+                let expect_on = switch.as_clock(eaccum, op::Clock::When);
+                let expect_off = switch.as_clock(eaccum, op::Clock::Whenot);
                 let switch = switch.clockcheck(eaccum, ctx);
                 let on = on.clockcheck(eaccum, ctx);
                 let off = off.clockcheck(eaccum, ctx);
@@ -470,7 +470,7 @@ impl ClockCheckExpr for expr::Expr {
 }
 
 impl Sp<Box<expr::Expr>> {
-    fn into_clock(&self, eaccum: &mut EAccum, op: op::Clock) -> Option<Sp<AbsoluteClk>> {
+    fn as_clock(&self, eaccum: &mut EAccum, op: op::Clock) -> Option<Sp<AbsoluteClk>> {
         match &*self.t {
             expr::Expr::Reference(r) => match &r.t {
                 var::Reference::Var(v) => {
@@ -492,7 +492,7 @@ impl Sp<Box<expr::Expr>> {
                         )
                     }
                 }
-                _ => eaccum.error(err::Basic {
+                var::Reference::Global(_) => eaccum.error(err::Basic {
                     msg: format!("Expression `{self}` cannot be interpreted as a clock."),
                     span: self.span,
                 }),
@@ -512,8 +512,7 @@ impl Sp<&AbsoluteClk> {
             AbsoluteClk::OnExplicit(_) | AbsoluteClk::OffExplicit(_) => {
                 let mut v = vec![(
                     format!(
-                        "This clock is too slow: found {}, expected the implicit clock '_",
-                        self
+                        "This clock is too slow: found {self}, expected the implicit clock 'self",
                     ),
                     Some(self.span),
                 )];
@@ -530,25 +529,32 @@ impl Sp<&AbsoluteClk> {
 }
 
 impl Sp<AbsoluteClk> {
+    /// Specialize `self` to be at least as precise as `other`.
+    /// This will check and accumulate compatibility, so to check that all clocks in a tuple
+    /// are compatible you can do something to the effect of
+    /// ```skip
+    /// let mut current = AbsoluteClk::Implicit;
+    /// for e in tup {
+    ///     current.refine(e)?;
+    /// }
+    /// ```
+    /// The rest is boilerplate for spans and accumulators.
     fn refine(&mut self, eaccum: &mut EAccum, other: Self, whole: Span) -> Option<()> {
+        #[expect(clippy::enum_glob_use, reason = "Fine in local scope")]
         use AbsoluteClk::*;
         match (&self.t, &other.t) {
-            (Implicit, Implicit | Adaptative) => Some(()),
+            (_, Adaptative) => Some(()),
             (Adaptative, _) => {
                 self.t = other.t;
                 Some(())
             }
-            (OnExplicit(_) | OffExplicit(_), Adaptative) => Some(()),
             (Implicit, OnExplicit(_) | OffExplicit(_)) => {
                 let mut v = vec![(
-                    format!(
-                        "This expression is too slow: expected {} got {}",
-                        self, other
-                    ),
+                    format!("This expression is too slow: expected {self} got {other}",),
                     Some(other.span),
                 )];
                 if let Some(def_site) = other.t.def_site() {
-                    v.push((format!("Found {} here", other), Some(def_site)));
+                    v.push((format!("Found {other} here"), Some(def_site)));
                 }
                 v.push((
                     "Expected because this expression moves at the implicit pace".to_owned(),
@@ -558,14 +564,11 @@ impl Sp<AbsoluteClk> {
             }
             (OnExplicit(_) | OffExplicit(_), Implicit) => {
                 let mut v = vec![(
-                    format!(
-                        "This expression is too slow: expected {} got {}",
-                        other, self,
-                    ),
+                    format!("This expression is too slow: expected {other} got {self}",),
                     Some(self.span),
                 )];
                 if let Some(def_site) = self.t.def_site() {
-                    v.push((format!("Found {} here", self), Some(def_site)));
+                    v.push((format!("Found {self} here"), Some(def_site)));
                 }
                 v.push((
                     "Expected because this expression moves at the implicit pace".to_owned(),
@@ -578,18 +581,17 @@ impl Sp<AbsoluteClk> {
             _ => {
                 let mut v = vec![(
                     format!(
-                        "Two subexpressions have incomparable clocks: {} and {} are incompatible",
-                        other, self,
+                        "Two subexpressions have incomparable clocks: {other} and {self} are incompatible",
                     ),
                     Some(whole),
                 )];
-                v.push((format!("found {} here", self), Some(self.span)));
+                v.push((format!("found {self} here"), Some(self.span)));
                 if let Some(def_site) = self.t.def_site() {
-                    v.push((format!("due to this"), Some(def_site)));
+                    v.push(("due to this".to_owned(), Some(def_site)));
                 }
-                v.push((format!("Meanwhile found {} here", other), Some(other.span)));
+                v.push((format!("Meanwhile found {other} here"), Some(other.span)));
                 if let Some(def_site) = other.t.def_site() {
-                    v.push((format!("due to this"), Some(def_site)));
+                    v.push(("due to this".to_owned(), Some(def_site)));
                 }
                 eaccum.error(v)
             }

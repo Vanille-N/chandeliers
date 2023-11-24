@@ -86,8 +86,11 @@ macro_rules! consistency {
 /// Error accumulator to be able to
 /// - emit several fatal errors at once
 /// - emit warnings
+#[derive(Default)]
 pub struct EAccum {
+    /// Errors encountered during the analysis.
     err: Vec<Error>,
+    /// Non-fatal warnings encountered during the analysis.
     warn: Vec<Error>,
 }
 
@@ -106,19 +109,15 @@ pub struct EAccum {
 ///
 ///
 pub struct EAccumScope<'a> {
+    /// Mutable diagnostics accumulator.
     acc: &'a mut EAccum,
+    /// Whether any fatal error occured that would warrant aborting the compilation.
+    /// (i.e. should be set iff there exists an `error` in `acc`, and unset if `acc`
+    /// is only `warning`)
     fatal: bool,
 }
 
 impl EAccum {
-    /// Create an empty accumulator with no errors and no warnings.
-    pub fn new() -> Self {
-        Self {
-            err: vec![],
-            warn: vec![],
-        }
-    }
-
     /// Push a fatal error to the accumulator.
     /// # Errors
     /// Infaillible. Returns a `Result` so that you can do
@@ -134,11 +133,13 @@ impl EAccum {
     }
 
     /// Determine if there were any errors inserted.
+    #[must_use]
     pub fn is_fatal(&self) -> bool {
         !self.err.is_empty()
     }
 
     /// Extract the errors and warnings to be emitted.
+    #[must_use]
     pub fn fetch(self) -> (Vec<Error>, Vec<Error>) {
         (self.err, self.warn)
     }
@@ -166,6 +167,7 @@ impl<'a> EAccumScope<'a> {
 
     /// Consume the scope and emit an error if and only if one of the
     /// recorded computations failed.
+    #[must_use]
     pub fn close(self) -> Option<()> {
         if self.fatal {
             None
@@ -176,11 +178,14 @@ impl<'a> EAccumScope<'a> {
 
     /// Apply an error to the inner accumulator.
     pub fn error<E: IntoError>(&mut self, e: E) {
-        self.compute(|acc| acc.error(e))
+        self.compute(|acc| acc.error(e));
     }
 
     /// Apply a warning to the inner accumulator.
     pub fn warning<E: IntoError>(&mut self, e: E) {
-        self.compute(|acc| Some(acc.warning(e)))
+        self.compute(|acc| {
+            acc.warning(e);
+            Some(())
+        });
     }
 }
