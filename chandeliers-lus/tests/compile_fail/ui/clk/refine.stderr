@@ -1,0 +1,175 @@
+error: Two subexpressions have incomparable clocks: 'whenot b and 'when b are incompatible
+  --> tests/compile_fail/ui/clk/refine.rs:20:20
+   |
+20 |         () = ignore(x + y);
+   |                    ^^^^^^^
+   |
+note: found 'when b here
+  --> tests/compile_fail/ui/clk/refine.rs:20:21
+   |
+20 |         () = ignore(x + y);
+   |                     ^
+note: due to this
+  --> tests/compile_fail/ui/clk/refine.rs:7:22
+   |
+7  |         x : int when b;
+   |                      ^
+note: Meanwhile found 'whenot b here
+  --> tests/compile_fail/ui/clk/refine.rs:20:25
+   |
+20 |         () = ignore(x + y);
+   |                         ^
+note: due to this
+  --> tests/compile_fail/ui/clk/refine.rs:9:24
+   |
+9  |         y : int whenot b;
+   |                        ^
+
+error: This expression is too slow: expected 'self got 'when b
+  --> tests/compile_fail/ui/clk/refine.rs:21:21
+   |
+21 |         () = ignore(x + z);
+   |                     ^
+   |
+note: Found 'when b here
+  --> tests/compile_fail/ui/clk/refine.rs:7:22
+   |
+7  |         x : int when b;
+   |                      ^
+note: Expected because this expression moves at the implicit pace
+  --> tests/compile_fail/ui/clk/refine.rs:21:25
+   |
+21 |         () = ignore(x + z);
+   |                         ^
+
+error: Two subexpressions have incomparable clocks: 'when b and 'whenot b are incompatible
+  --> tests/compile_fail/ui/clk/refine.rs:22:20
+   |
+22 |         () = ignore(y + x);
+   |                    ^^^^^^^
+   |
+note: found 'whenot b here
+  --> tests/compile_fail/ui/clk/refine.rs:22:21
+   |
+22 |         () = ignore(y + x);
+   |                     ^
+note: due to this
+  --> tests/compile_fail/ui/clk/refine.rs:9:24
+   |
+9  |         y : int whenot b;
+   |                        ^
+note: Meanwhile found 'when b here
+  --> tests/compile_fail/ui/clk/refine.rs:22:25
+   |
+22 |         () = ignore(y + x);
+   |                         ^
+note: due to this
+  --> tests/compile_fail/ui/clk/refine.rs:7:22
+   |
+7  |         x : int when b;
+   |                      ^
+
+error: This expression is too slow: expected 'self got 'whenot b
+  --> tests/compile_fail/ui/clk/refine.rs:23:21
+   |
+23 |         () = ignore(y + z);
+   |                     ^
+   |
+note: Found 'whenot b here
+  --> tests/compile_fail/ui/clk/refine.rs:9:24
+   |
+9  |         y : int whenot b;
+   |                        ^
+note: Expected because this expression moves at the implicit pace
+  --> tests/compile_fail/ui/clk/refine.rs:23:25
+   |
+23 |         () = ignore(y + z);
+   |                         ^
+
+error: This expression is too slow: expected 'self got 'when b
+  --> tests/compile_fail/ui/clk/refine.rs:24:25
+   |
+24 |         () = ignore(z + x);
+   |                         ^
+   |
+note: Found 'when b here
+  --> tests/compile_fail/ui/clk/refine.rs:7:22
+   |
+7  |         x : int when b;
+   |                      ^
+note: Expected because this expression moves at the implicit pace
+  --> tests/compile_fail/ui/clk/refine.rs:24:21
+   |
+24 |         () = ignore(z + x);
+   |                     ^
+
+error: This expression is too slow: expected 'self got 'whenot b
+  --> tests/compile_fail/ui/clk/refine.rs:25:25
+   |
+25 |         () = ignore(z + y);
+   |                         ^
+   |
+note: Found 'whenot b here
+  --> tests/compile_fail/ui/clk/refine.rs:9:24
+   |
+9  |         y : int whenot b;
+   |                        ^
+note: Expected because this expression moves at the implicit pace
+  --> tests/compile_fail/ui/clk/refine.rs:25:21
+   |
+25 |         () = ignore(z + y);
+   |                     ^
+
+error: Two subexpressions have incomparable clocks: 'when d and 'when b are incompatible
+  --> tests/compile_fail/ui/clk/refine.rs:26:20
+   |
+26 |         () = ignore(x + xd);
+   |                    ^^^^^^^^
+   |
+note: found 'when b here
+  --> tests/compile_fail/ui/clk/refine.rs:26:21
+   |
+26 |         () = ignore(x + xd);
+   |                     ^
+note: due to this
+  --> tests/compile_fail/ui/clk/refine.rs:7:22
+   |
+7  |         x : int when b;
+   |                      ^
+note: Meanwhile found 'when d here
+  --> tests/compile_fail/ui/clk/refine.rs:26:25
+   |
+26 |         () = ignore(x + xd);
+   |                         ^^
+note: due to this
+  --> tests/compile_fail/ui/clk/refine.rs:8:23
+   |
+8  |         xd : int when d;
+   |                       ^
+
+error: Two subexpressions have incomparable clocks: 'whenot d and 'whenot b are incompatible
+  --> tests/compile_fail/ui/clk/refine.rs:27:20
+   |
+27 |         () = ignore(y + yd);
+   |                    ^^^^^^^^
+   |
+note: found 'whenot b here
+  --> tests/compile_fail/ui/clk/refine.rs:27:21
+   |
+27 |         () = ignore(y + yd);
+   |                     ^
+note: due to this
+  --> tests/compile_fail/ui/clk/refine.rs:9:24
+   |
+9  |         y : int whenot b;
+   |                        ^
+note: Meanwhile found 'whenot d here
+  --> tests/compile_fail/ui/clk/refine.rs:27:25
+   |
+27 |         () = ignore(y + yd);
+   |                         ^^
+note: due to this
+  --> tests/compile_fail/ui/clk/refine.rs:10:25
+   |
+10 |         yd : int whenot d;
+   |                         ^

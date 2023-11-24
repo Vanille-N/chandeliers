@@ -1,0 +1,26 @@
+error: Mismatch between clocks: 'when b1 on the left but 'when b2 on the right
+  --> tests/compile_fail/ui/clk/bad-binding.rs:10:9
+   |
+10 |         _n = 1 when b2;
+   |         ^^^^^^^^^^^^^^
+   |
+note: This is clocked by 'when b1
+  --> tests/compile_fail/ui/clk/bad-binding.rs:10:9
+   |
+10 |         _n = 1 when b2;
+   |         ^^
+note: due to this
+  --> tests/compile_fail/ui/clk/bad-binding.rs:6:23
+   |
+6  |         _n : int when b1;
+   |                       ^^
+note: This is clocked by 'when b2
+  --> tests/compile_fail/ui/clk/bad-binding.rs:10:14
+   |
+10 |         _n = 1 when b2;
+   |              ^^^^^^^^^
+note: due to this
+  --> tests/compile_fail/ui/clk/bad-binding.rs:10:21
+   |
+10 |         _n = 1 when b2;
+   |                     ^^

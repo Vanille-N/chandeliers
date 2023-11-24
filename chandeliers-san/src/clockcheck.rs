@@ -376,7 +376,7 @@ impl ClockCheckExpr for expr::Expr {
                 let rhs = rhs.clockcheck(eaccum, ctx);
                 let mut lhs = lhs?;
                 let rhs = rhs?;
-                lhs.refine(eaccum, rhs)?;
+                lhs.refine(eaccum, rhs, span)?;
                 Some(lhs.t)
             }
             Self::Cmp { op: _, lhs, rhs } => {
@@ -384,7 +384,7 @@ impl ClockCheckExpr for expr::Expr {
                 let rhs = rhs.clockcheck(eaccum, ctx);
                 let mut lhs = lhs?;
                 let rhs = rhs?;
-                lhs.refine(eaccum, rhs)?;
+                lhs.refine(eaccum, rhs, span)?;
                 Some(lhs.t)
             }
             Self::Un { op: _, inner } => {
@@ -446,8 +446,8 @@ impl ClockCheckExpr for expr::Expr {
                 let mut cond = cond?;
                 let yes = yes?;
                 let no = no?;
-                cond.refine(eaccum, yes)?;
-                cond.refine(eaccum, no)?;
+                cond.refine(eaccum, yes, span)?;
+                cond.refine(eaccum, no, span)?;
                 Some(cond.t)
             }
             Self::Merge { switch, on, off } => {
@@ -470,7 +470,7 @@ impl ClockCheckExpr for expr::Expr {
 }
 
 impl Sp<Box<expr::Expr>> {
-    fn into_clock(&self, _eaccum: &mut EAccum, op: op::Clock) -> Option<Sp<AbsoluteClk>> {
+    fn into_clock(&self, eaccum: &mut EAccum, op: op::Clock) -> Option<Sp<AbsoluteClk>> {
         match &*self.t {
             expr::Expr::Reference(r) => match &r.t {
                 var::Reference::Var(v) => {
@@ -492,9 +492,15 @@ impl Sp<Box<expr::Expr>> {
                         )
                     }
                 }
-                _ => panic!("Expected Var, got {:?}", r.t),
+                _ => eaccum.error(err::Basic {
+                    msg: format!("Expression `{self}` cannot be interpreted as a clock."),
+                    span: self.span,
+                }),
             },
-            _ => panic!("Expected Reference, got {:?}", self.t),
+            _ => eaccum.error(err::Basic {
+                msg: format!("Expression `{self}` cannot be interpreted as a clock."),
+                span: self.span,
+            }),
         }
     }
 }
@@ -503,41 +509,89 @@ impl Sp<&AbsoluteClk> {
     fn is_implicit(self, eaccum: &mut EAccum, help: &'static str) -> Option<()> {
         match &self.t {
             AbsoluteClk::Implicit | AbsoluteClk::Adaptative => Some(()),
-            AbsoluteClk::OnExplicit(_) | AbsoluteClk::OffExplicit(_) => eaccum.error(vec![
-                (
+            AbsoluteClk::OnExplicit(_) | AbsoluteClk::OffExplicit(_) => {
+                let mut v = vec![(
                     format!(
                         "This clock is too slow: found {}, expected the implicit clock '_",
                         self
                     ),
                     Some(self.span),
-                ),
-                (help.to_owned(), None),
-                ("Delete the extra clock definition or put this in a separate node with its own clock".to_owned(), None),
-            ]),
+                )];
+                if let Some(def_site) = self.t.def_site() {
+                    v.push(("due to this".to_owned(), Some(def_site)));
+                }
+                v.push((help.to_owned(), None));
+                // FIXME: better suggestions
+                v.push(("Delete the extra clock definition or put this in a separate node with its own clock".to_owned(), None));
+                eaccum.error(v)
+            }
         }
     }
 }
 
 impl Sp<AbsoluteClk> {
-    fn refine(&mut self, _eaccum: &mut EAccum, other: Self) -> Option<()> {
+    fn refine(&mut self, eaccum: &mut EAccum, other: Self, whole: Span) -> Option<()> {
         use AbsoluteClk::*;
-        match (&self.t, other.t) {
+        match (&self.t, &other.t) {
             (Implicit, Implicit | Adaptative) => Some(()),
-            (Adaptative, any) => {
-                self.t = any;
+            (Adaptative, _) => {
+                self.t = other.t;
                 Some(())
             }
             (OnExplicit(_) | OffExplicit(_), Adaptative) => Some(()),
-            (Implicit, OnExplicit(_) | OffExplicit(_)) => panic!(),
-            (OnExplicit(_) | OffExplicit(_), Implicit) => panic!(),
-            (OnExplicit(_), OffExplicit(_)) | (OffExplicit(_), OnExplicit(_)) => panic!(),
-            (OnExplicit(l), OnExplicit(r)) => {
-                assert_eq!(l, &r);
-                Some(())
+            (Implicit, OnExplicit(_) | OffExplicit(_)) => {
+                let mut v = vec![(
+                    format!(
+                        "This expression is too slow: expected {} got {}",
+                        self, other
+                    ),
+                    Some(other.span),
+                )];
+                if let Some(def_site) = other.t.def_site() {
+                    v.push((format!("Found {} here", other), Some(def_site)));
+                }
+                v.push((
+                    "Expected because this expression moves at the implicit pace".to_owned(),
+                    Some(self.span),
+                ));
+                eaccum.error(v)
             }
-            (OffExplicit(l), OffExplicit(r)) => {
-                assert_eq!(l, &r);
-                Some(())
+            (OnExplicit(_) | OffExplicit(_), Implicit) => {
+                let mut v = vec![(
+                    format!(
+                        "This expression is too slow: expected {} got {}",
+                        other, self,
+                    ),
+                    Some(self.span),
+                )];
+                if let Some(def_site) = self.t.def_site() {
+                    v.push((format!("Found {} here", self), Some(def_site)));
+                }
+                v.push((
+                    "Expected because this expression moves at the implicit pace".to_owned(),
+                    Some(other.span),
+                ));
+                eaccum.error(v)
+            }
+            (OnExplicit(l), OnExplicit(r)) if l == r => Some(()),
+            (OffExplicit(l), OffExplicit(r)) if l == r => Some(()),
+            _ => {
+                let mut v = vec![(
+                    format!(
+                        "Two subexpressions have incomparable clocks: {} and {} are incompatible",
+                        other, self,
+                    ),
+                    Some(whole),
+                )];
+                v.push((format!("found {} here", self), Some(self.span)));
+                if let Some(def_site) = self.t.def_site() {
+                    v.push((format!("due to this"), Some(def_site)));
+                }
+                v.push((format!("Meanwhile found {} here", other), Some(other.span)));
+                if let Some(def_site) = other.t.def_site() {
+                    v.push((format!("due to this"), Some(def_site)));
+                }
+                eaccum.error(v)
             }
         }
     }
@@ -557,7 +611,7 @@ where
         let mut global = AbsoluteClk::Adaptative.with_span(span);
         for e in self.iter() {
             let clk = e.clockcheck(eaccum, &mut *ctx)?;
-            global.refine(eaccum, clk)?;
+            global.refine(eaccum, clk, span)?;
         }
         Some(global.t)
     }
@@ -680,269 +734,3 @@ impl ClockCheck for Sp<decl::Prog> {
         Some(())
     }
 }
-
-/*
-#[cfg(test)]
-mod translation_tests {
-    use super::*;
-
-    macro_rules! sp {
-        ( $x:expr ) => {
-            $x.with_span(Span::forge())
-        };
-    }
-    macro_rules! defsite {
-        ( $x:expr ) => {
-            WithDefSite::without($x)
-        };
-    }
-
-    macro_rules! forge {
-        ( & $T:tt : $($x:tt)* ) => { forge!($T:$($x)*).as_ref() };
-        ( str : $s:expr ) => { String::from($s).with_span(Span::forge()) };
-        ( relclk : = . ) => { Clocked { clk: sp!(RelativeClk::Implicit(sp!(()))), sign: true } };
-        ( relclk : = ? ) => { Clocked { clk: sp!(RelativeClk::Implicit(sp!(AbsoluteClk::Implicit))), sign: true } };
-        ( relclk : = $c:expr ) => { Clocked { clk: sp!(RelativeClk::Implicit(sp!(AbsoluteClk::Explicit(defsite!(forge!(str:$c)))))), sign: true }.with_span(Span::forge()) };
-        ( relclk : + $c:expr ) => { sp!(Clocked { clk: sp!(RelativeClk::Nth($c)), sign: true }) };
-        ( relclk : - $c:expr ) => { sp!(Clocked { clk: sp!(RelativeClk::Nth($c)), sign: false }) };
-        ( mapclk : = ) => { Clocked { clk: sp!(MappingClk::Implicit(sp!(()))), sign: true } };
-        ( mapclk : <+ $c:expr ) => { Clocked { clk: sp!(MappingClk::NthIn($c)), sign: true } };
-        ( mapclk : <- $c:expr ) => { Clocked { clk: sp!(MappingClk::NthIn($c)), sign: false } };
-        ( mapclk : +> $c:expr ) => { Clocked { clk: sp!(MappingClk::NthOut($c)), sign: true } };
-        ( mapclk : -> $c:expr ) => { Clocked { clk: sp!(MappingClk::NthOut($c)), sign: false } };
-        ( tyclk : = ) => { sp!(ty::Clock::Implicit) };
-        ( tyclk : + $s:expr ) => { sp!(ty::Clock::Explicit { id: forge!(str:$s), activation: true }) };
-        ( tyclk : - $s:expr ) => { sp!(ty::Clock::Explicit { id: forge!(str:$s), activation: false }) };
-        ( abs : + ? ) => { Clocked { clk: sp!(AbsoluteClk::Implicit), sign: true } };
-        ( abs : + $name:expr ) => { Clocked { clk: sp!(AbsoluteClk::Explicit(defsite!(forge!(str:$name)))), sign: true } };
-    }
-
-    #[test]
-    fn simple_io() {
-        // Inserting `(t0, t1 when t0, t2 whenot t1, t3)`
-        // And then we follow with the output tuple `(t4, t5 when t1, t6 when t4)`
-        let map = {
-            let mut map = ClkMap::default();
-            map.new_input(forge!(&str:"t0"), forge!(&tyclk:=));
-            map.new_input(forge!(&str:"t1"), forge!(&tyclk:+"t0"));
-            map.new_input(forge!(&str:"t2"), forge!(&tyclk:-"t1"));
-            map.new_input(forge!(&str:"t3"), forge!(&tyclk:=));
-            map.new_output(forge!(&str:"t4"), forge!(&tyclk:=));
-            map.new_output(forge!(&str:"t5"), forge!(&tyclk:+"t1"));
-            map.new_output(forge!(&str:"t6"), forge!(&tyclk:+"t4"));
-            map
-        };
-        assert_eq!(
-            map.inputs,
-            [
-                sp!(forge!(relclk:=.)),
-                sp!(forge!(relclk:+0)),
-                sp!(forge!(relclk:-1)),
-                sp!(forge!(relclk:=.))
-            ]
-        );
-        assert_eq!(
-            map.outputs,
-            [
-                sp!(forge!(mapclk:=)),
-                sp!(forge!(mapclk:<+1)),
-                sp!(forge!(mapclk:+>0))
-            ]
-        );
-    }
-
-    #[test]
-    #[should_panic]
-    fn undeclared_input() {
-        // Trying to insert a clock that does not correspond to an already
-        // declared variable.
-        let _map = {
-            let mut map = ClkMap::default();
-            map.new_input(forge!(&str:"t0"), forge!(&tyclk:+"t0"));
-        };
-    }
-
-    #[test]
-    fn empty_mapping() {
-        // () -> ()
-        let mut eaccum = EAccum::new();
-        let map = {
-            let map = ClkMap::default();
-            map
-        };
-        // Preserves the implicit clock
-        let itup1 = Clocks {
-            implicit: sp!(forge!(abs:+?)),
-            clocks: vec![],
-        };
-        let otup1 = map
-            .translate(&mut eaccum, itup1.with_span(Span::forge()))
-            .unwrap();
-        assert_eq!(
-            otup1,
-            Clocks {
-                implicit: sp!(forge!(abs:+?)),
-                clocks: vec![],
-            }
-        );
-        // Preserves an explicit clock
-        let itup2 = Clocks {
-            implicit: sp!(forge!(abs:+"c")),
-            clocks: vec![],
-        };
-        let otup2 = map
-            .translate(&mut eaccum, itup2.with_span(Span::forge()))
-            .unwrap();
-        assert_eq!(
-            otup2,
-            Clocks {
-                implicit: sp!(forge!(abs:+"c")),
-                clocks: vec![],
-            }
-        );
-    }
-
-    #[test]
-    fn singleton_mapping() {
-        let mut eaccum = EAccum::new();
-        // (x) -> (y)
-        let map = {
-            let mut map = ClkMap::default();
-            map.new_input(forge!(&str:"x"), forge!(&tyclk:=));
-            map.new_output(forge!(&str:"y"), forge!(&tyclk:=));
-            map
-        };
-        // Recognizes a tuple element going at the right speed
-        let itup1 = Clocks {
-            implicit: sp!(forge!(abs:+"c")),
-            clocks: vec![(Some(forge!(str:"x0")), forge!(relclk:="c"))],
-        };
-        let otup1 = map
-            .translate(&mut eaccum, itup1.with_span(Span::forge()))
-            .unwrap();
-        assert_eq!(
-            otup1,
-            Clocks {
-                implicit: sp!(forge!(abs:+"c")),
-                clocks: vec![(None, forge!(relclk:="c"))],
-            }
-        );
-        // Preserves the implicit clock
-        let itup2 = Clocks {
-            implicit: sp!(forge!(abs:+?)),
-            clocks: vec![(Some(forge!(str:"x0")), sp!(forge!(relclk:=?)))],
-        };
-        let otup2 = map
-            .translate(&mut eaccum, itup2.with_span(Span::forge()))
-            .unwrap();
-        assert_eq!(
-            otup2,
-            Clocks {
-                implicit: sp!(forge!(abs:+?)),
-                clocks: vec![(None, sp!(forge!(relclk:=?)))],
-            }
-        );
-        // Rejects a mismatch between the tuple's speed and the first element's speed
-        let itup3 = Clocks {
-            implicit: sp!(forge!(abs:+?)),
-            clocks: vec![(Some(forge!(str:"x0")), forge!(relclk:="x"))],
-        };
-        assert!(map
-            .translate(&mut eaccum, itup3.with_span(Span::forge()))
-            .is_none());
-    }
-
-    #[test]
-    fn depends_on_input() {
-        let mut eaccum = EAccum::new();
-        // (x) -> (y when x)
-        let map = {
-            let mut map = ClkMap::default();
-            map.new_input(forge!(&str:"x"), forge!(&tyclk:=));
-            map.new_output(forge!(&str:"y"), forge!(&tyclk:+"x"));
-            map
-        };
-        // Transports whatever name `x` has.
-        let itup1 = Clocks {
-            implicit: sp!(forge!(abs:+?)),
-            clocks: vec![(Some(forge!(str:"x0")), sp!(forge!(relclk:=?)))],
-        };
-        let otup1 = map
-            .translate(&mut eaccum, itup1.with_span(Span::forge()))
-            .unwrap();
-        assert_eq!(
-            otup1,
-            Clocks {
-                implicit: sp!(forge!(abs:+?)),
-                clocks: vec![(None, forge!(relclk:="x0"))],
-            }
-        );
-        // Including if `x` itself is clocked.
-        let itup2 = Clocks {
-            implicit: sp!(forge!(abs:+"z")),
-            clocks: vec![(Some(forge!(str:"x0")), forge!(relclk:="z"))],
-        };
-        let otup2 = map
-            .translate(&mut eaccum, itup2.with_span(Span::forge()))
-            .unwrap();
-        assert_eq!(
-            otup2,
-            Clocks {
-                implicit: sp!(forge!(abs:+"z")),
-                clocks: vec![(None, forge!(relclk:="x0"))],
-            }
-        );
-        // Fails if the input is not named.
-        let itup3 = Clocks {
-            implicit: sp!(forge!(abs:+?)),
-            clocks: vec![(None, sp!(forge!(relclk:=?)))],
-        };
-        assert!(map
-            .translate(&mut eaccum, itup3.with_span(Span::forge()))
-            .is_none());
-    }
-
-    #[test]
-    fn transports_autoref() {
-        let mut eaccum = EAccum::new();
-        // (x1, x2 when x1) -> (y1, y2 whenot y1)
-        let map = {
-            let mut map = ClkMap::default();
-            map.new_input(forge!(&str:"x1"), forge!(&tyclk:=));
-            map.new_input(forge!(&str:"x2"), forge!(&tyclk:+"x1"));
-            map.new_output(forge!(&str:"y1"), forge!(&tyclk:=));
-            map.new_output(forge!(&str:"y2"), forge!(&tyclk:-"y1"));
-            map
-        };
-        // Normal application.
-        let itup1 = Clocks {
-            implicit: sp!(forge!(abs:+"c")),
-            clocks: vec![
-                (Some(forge!(str:"a1")), forge!(relclk:="c")),
-                (Some(forge!(str:"a2")), forge!(relclk:+0)),
-            ],
-        };
-        let otup1 = map
-            .translate(&mut eaccum, itup1.with_span(Span::forge()))
-            .unwrap();
-        assert_eq!(
-            otup1,
-            Clocks {
-                implicit: sp!(forge!(abs:+"c")),
-                clocks: vec![(None, forge!(relclk:="c")), (None, forge!(relclk:-0)),],
-            }
-        );
-        // Second element has the wrong clock
-        let itup2 = Clocks {
-            implicit: sp!(forge!(abs:+"z")),
-            clocks: vec![
-                (Some(forge!(str:"a1")), forge!(relclk:="z")),
-                (Some(forge!(str:"a2")), forge!(relclk:="z")),
-            ],
-        };
-        assert!(map
-            .translate(&mut eaccum, itup2.with_span(Span::forge()))
-            .is_none());
-    }
-}
-*/

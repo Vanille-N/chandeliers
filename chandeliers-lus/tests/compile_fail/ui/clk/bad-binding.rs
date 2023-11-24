@@ -1,5 +1,3 @@
-use chandeliers_std::rand::random_bool;
-
 chandeliers_lus::decl! {
     extern node random_bool() returns (b : bool);
 
