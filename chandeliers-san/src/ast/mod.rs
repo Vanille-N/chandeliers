@@ -539,10 +539,10 @@ pub mod expr {
         /// to perform case analysis on the current value of the clock.
         Later {
             /// Number of steps after which we read the `after` field.
-            clk: Sp<past::Depth>,
-            /// Value to evaluate before `clk`.
+            delay: Sp<past::Depth>,
+            /// Value to evaluate before `delay`.
             before: Sp<Box<Expr>>,
-            /// Value to evaluate after `clk`.
+            /// Value to evaluate after `delay`.
             after: Sp<Box<Expr>>,
         },
         /// A conditional expression `if b then x else y`
@@ -566,7 +566,7 @@ pub mod expr {
         /// Advance a block.
         Substep {
             /// Number of steps to wait before activating for the first time.
-            clk: usize,
+            delay: usize,
             /// Index in the `struct`'s `__nodes` field.
             id: Sp<super::var::Node>,
             /// Arguments of the function call (parenthesized but not a tuple).
@@ -584,13 +584,17 @@ pub mod expr {
                 Self::Bin { op, lhs, rhs } => write!(f, "({lhs} {op} {rhs})"),
                 Self::Un { op, inner } => write!(f, "({op} {inner})"),
                 Self::Cmp { op, lhs, rhs } => write!(f, "({lhs} {op} {rhs})"),
-                Self::Later { clk, before, after } => write!(f, "({before} ->{clk} {after})"),
+                Self::Later {
+                    delay,
+                    before,
+                    after,
+                } => write!(f, "({before} ->{delay} {after})"),
                 Self::Ifx { cond, yes, no } => {
                     write!(f, "if {cond} {{ {yes} }} else {{ {no} }}")
                 }
-                Self::Substep { clk, id, args } => {
-                    if *clk > 0 {
-                        write!(f, "{id}@{clk}{args}")
+                Self::Substep { delay, id, args } => {
+                    if *delay > 0 {
+                        write!(f, "{id}@{delay}{args}")
                     } else {
                         write!(f, "{id}{args}")
                     }

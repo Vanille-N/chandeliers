@@ -169,9 +169,13 @@ impl CheckPositive for expr::Expr {
             // Now we finally get to the interesting cases.
             // Later relaxes the constraints, and we get to increase the
             // depth for the right side by as much as the later.
-            Self::Later { clk, before, after } => {
+            Self::Later {
+                delay,
+                before,
+                after,
+            } => {
                 before.check_positive(eaccum, fork!(depths))?;
-                after.check_positive(eaccum, fork!(depths).with(clk.t.dt + 1))?;
+                after.check_positive(eaccum, fork!(depths).with(delay.t.dt + 1))?;
                 Some(())
             }
             Self::Substep { args, .. } => args.check_positive(eaccum, depths),

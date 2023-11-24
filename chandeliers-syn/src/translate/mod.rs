@@ -1240,7 +1240,7 @@ impl Translate for src::expr::Fby {
             },
             compose: |before: Sp<tgt::expr::Expr>, _op, depth, after: Sp<tgt::expr::Expr>| {
                 tgt::expr::Expr::Later {
-                    clk: tgt::past::Depth {
+                    delay: tgt::past::Depth {
                         dt: ctx.depth + depth,
                     }
                     .with_span(before.span.join(after.span).unwrap_or_else(|| {
@@ -1290,7 +1290,7 @@ impl Translate for src::expr::Then {
             },
             compose: |before: Sp<tgt::expr::Expr>, _op, depth, after: Sp<tgt::expr::Expr>| {
                 tgt::expr::Expr::Later {
-                    clk: tgt::past::Depth {
+                    delay: tgt::past::Depth {
                         dt: ctx.depth + depth,
                     }
                     .with_span(before.span.join(after.span).unwrap_or_else(|| {
@@ -1487,7 +1487,7 @@ impl Translate for src::expr::Call {
         ctx.blocks
             .push(tgt::decl::NodeName { repr, run_uid }.with_span(span));
         Some(tgt::expr::Expr::Substep {
-            clk: ctx.depth,
+            delay: ctx.depth,
             id: id.clone(),
             args: args.boxed(),
         })

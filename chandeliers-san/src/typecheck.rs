@@ -307,7 +307,7 @@ impl TypeCheckExpr for ast::expr::Expr {
                 Some(ty::Tuple::Single(ty::Base::Bool.with_span(span)))
             }
             Self::Later {
-                clk: _,
+                delay: _,
                 before,
                 after,
             } => {
@@ -328,7 +328,7 @@ impl TypeCheckExpr for ast::expr::Expr {
                 yes.identical(eaccum, &no?, span)?;
                 Some(yes.t)
             }
-            Self::Substep { clk: _, id, args } => {
+            Self::Substep { delay: _, id, args } => {
                 let expected_tys = ctx.get_node_in(id.as_ref());
                 let actual_tys = args.typecheck(eaccum, ctx)?;
                 expected_tys.identical(eaccum, &actual_tys, span)?;

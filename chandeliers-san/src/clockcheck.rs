@@ -1,56 +1,27 @@
 //! Verify the consistency of clocks within and between nodes.
 //!
 //! The main challenge here is the handling of tuples and functions, because
-//! we need to have relative clocks and clock substitutions.
-//! A lot of the difficulty in that comes from the fact that we want this
-//! to be allowed:
+//! we need to have clock substitutions.
+//! As a first step, we DO NOT HANDLE non-homogeneous tuples, which means
+//! that declarations such as this:
 //! `node foo() returns (b; i when b)`
-//! This means that the output of `foo` must be a tuple where the second
-//! element is clocked by the first, and as soon as we assign it to
-//! a variable binding `(x, y) = foo()` we need to instanciate the type
-//! as `y when x`.
-//!
-//! To this end this module operates on the following core types
-//! - `AbsoluteClk` is a named clock, which is what we have for variables
-//!   and function arguments,
-//! - `RelativeClk` allows specifying dependencies within one tuple,
-//! - `MappingClk` can additionally specify relations between an input
-//!   tuple and an output tuple.
-//!
-//! Here are some examples to develop the intuition of how these are encoded:
-//! In `var x; y when x` we have
-//! - `x`: `AbsoluteClk::Implicit`
-//! - `y`: `AbsoluteClk::Explicit("x")`
-//!
-//! In `(x, y when x, z when y)` we have
-//! - `x`: `RelativeClk::Implicit`
-//! - `y`: `RelativeClk::Nth(0)` (0 is the index of `x`)
-//! - `z`: `RelativeClk::Nth(1)` (1 is the index of `y`)
-//!
-//! In `node foo(x; u when x) returns (y; z when x; w when y)` we have
-//! - `x`: `RelativeClk::Implicit`
-//! - `u`: `RelativeClk::Nth(0)` (0 is the index of `x`)
-//! - `y`: `MappingClk::Implicit`
-//! - `z`: `MappingClk::NthIn(0)` (0 is the index of `x`)
-//! - `w`: `MappingClk::NthOut(0)` (0 is the index of `y`)
-//!
-//! In all of the above there is one additional layer to the clock that states
-//! whether the dependency is positive (`when`) or negative (`whenot`).
-//!
-//! Once these types are in place and because each of them sufficiently
-//! restricts the representable constraitts, most of the rest is straightforward
-//! bookkeeping to translate from one representation to another.
+//! are not allowed. The codegen can handle them just fine, but they really
+//! are a pain to verify because they make substitutions much harder.
+//! Finer handling of clocks is something that I have already attempted, but
+//! this version does not implement that.
 
 #![allow(dead_code)] // FIXME
 
 use std::collections::HashMap;
+use std::fmt;
 
 use chandeliers_err::{self as err, EAccum, Transparent};
 
 use crate::ast::ty::Clock;
-use crate::ast::{decl, expr, op, stmt, ty, var};
+use crate::ast::{decl, expr, op, stmt, ty, var, Tuple};
 use crate::sp::{Sp, Span, WithSpan};
 
+/*
 macro_rules! at {
     ($arr:expr, $idx:expr) => {
         match $arr.get($idx) {
@@ -63,6 +34,7 @@ macro_rules! at {
         }
     };
 }
+*/
 
 crate::sp::derive_with_span!(WithDefSite<T> where <T>);
 /// A generic wrapper for objects that have two canonical `Span`s,
@@ -106,74 +78,14 @@ enum AbsoluteClk {
     OffExplicit(WithDefSite<String>),
 }
 
-crate::sp::derive_with_span!(RelativeClk);
-#[derive(Debug, Clone, PartialEq, Eq)]
-enum RelativeClk {
-    Current,
-    OnNth(usize),
-    OffNth(usize),
-}
-
-crate::sp::derive_with_span!(RelativeClkDescr);
-#[derive(Debug, Clone, PartialEq, Eq)]
-enum RelativeClkDescr {
-    Nth(usize),
-}
-impl RelativeClkDescr {
-    fn signed(self, sign: bool) -> RelativeClk {
-        match (self, sign) {
-            (Self::Nth(i), true) => RelativeClk::OnNth(i),
-            (Self::Nth(i), false) => RelativeClk::OffNth(i),
+impl fmt::Display for AbsoluteClk {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Implicit => write!(f, "'self"),
+            Self::Adaptative => write!(f, "'_"),
+            Self::OnExplicit(c) => write!(f, "when '{}", c.data),
+            Self::OffExplicit(c) => write!(f, "whenot '{}", c.data),
         }
-    }
-}
-
-impl Sp<RelativeClkDescr> {
-    fn signed(self, sign: bool) -> Sp<RelativeClk> {
-        self.map(|_, c| c.signed(sign))
-    }
-}
-
-crate::sp::derive_with_span!(MixedClk);
-#[derive(Debug, Clone, PartialEq, Eq)]
-enum MixedClk {
-    Extern(Sp<AbsoluteClk>),
-    Current,
-    OnNth(usize),
-    OffNth(usize),
-}
-
-crate::sp::derive_with_span!(MappingClk);
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum MappingClk {
-    Current,
-    OnNthIn(usize),
-    OffNthIn(usize),
-    OnNthOut(usize),
-    OffNthOut(usize),
-}
-
-crate::sp::derive_with_span!(MappingClkDescr);
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum MappingClkDescr {
-    NthIn(usize),
-    NthOut(usize),
-}
-
-impl MappingClkDescr {
-    fn signed(self, sign: bool) -> MappingClk {
-        match (self, sign) {
-            (Self::NthIn(i), true) => MappingClk::OnNthIn(i),
-            (Self::NthOut(i), true) => MappingClk::OnNthOut(i),
-            (Self::NthIn(i), false) => MappingClk::OffNthIn(i),
-            (Self::NthOut(i), false) => MappingClk::OffNthOut(i),
-        }
-    }
-}
-
-impl Sp<MappingClkDescr> {
-    fn signed(self, sign: bool) -> Sp<MappingClk> {
-        self.map(|_, c| c.signed(sign))
     }
 }
 
@@ -182,102 +94,6 @@ crate::sp::derive_with_span!(Named<T> where <T>);
 struct Named<T> {
     name: Option<Sp<String>>,
     data: Sp<T>,
-}
-
-crate::sp::derive_with_span!(FlatTup<Clk, T> where <Clk, T>);
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct FlatTup<Clk, T> {
-    global: Clk,
-    elems: Vec<Sp<T>>,
-}
-
-crate::sp::derive_with_span!(ClkTup);
-#[derive(Debug, Clone, PartialEq, Eq)]
-enum ClkTup {
-    Single(Named<MixedClk>),
-    Multiple(Sp<FlatTup<MixedClk, ClkTup>>),
-}
-
-crate::sp::derive_with_span!(ClkMap);
-/// Helper struct to map input clocks to output clocks.
-///
-/// Because of the fixed dependency order where variables can only have
-/// a clock that comes strictly before in the order of
-/// inputs then outputs then locals and in increasing index of each tuple,
-/// the correct way to build a `ClkMap` is to obtain a new one
-/// with `ClkMap::default()` and then for each input to
-/// declare a `map.new_input(name, clock)` and finally once all
-/// inputs have been added to use `map.new_output(name, clock)`.
-///
-/// Once such a map is built it can be used any number of times to transslate
-/// from an input tuple to an output tuple.
-#[derive(Debug, Default, Clone)]
-struct ClkMap {
-    /// Useful only during building: reverse access from names to provided clocks.
-    named_inputs: HashMap<Sp<String>, Sp<RelativeClkDescr>>,
-    named_outputs: HashMap<Sp<String>, Sp<MappingClkDescr>>,
-    /// Clocks used by the inputs, in order.
-    inputs: Vec<Sp<RelativeClk>>,
-    /// Clocks used by the outputs, in order.
-    outputs: Vec<Sp<MappingClk>>,
-}
-
-// We must implement conversions between all these types of clocks.
-// AbsoluteClk, RelativeClk<AbsoluteClk>, RelativeClk<()>, MappingClk<()>
-// ClkTup, ClkMap, Clocks
-
-impl AbsoluteClk {
-    fn into_relative(
-        self,
-        span: Span,
-        named_elems: &HashMap<Sp<String>, Sp<RelativeClkDescr>>,
-    ) -> Option<Sp<RelativeClk>> {
-        match &self {
-            Self::Implicit | Self::Adaptative => Some(RelativeClk::Current.with_span(span)),
-            Self::OnExplicit(name) => {
-                Some(named_elems.get(&name.data).cloned().unwrap().signed(true))
-            }
-            Self::OffExplicit(name) => {
-                Some(named_elems.get(&name.data).cloned().unwrap().signed(false))
-            }
-        }
-    }
-
-    fn into_mapping(
-        self,
-        span: Span,
-        named_inputs: &HashMap<Sp<String>, Sp<RelativeClkDescr>>,
-        named_outputs: &HashMap<Sp<String>, Sp<MappingClkDescr>>,
-    ) -> Option<Sp<MappingClk>> {
-        match &self {
-            Self::Implicit | Self::Adaptative => Some(MappingClk::Current.with_span(span)),
-            Self::OnExplicit(name) => Some(
-                named_inputs
-                    .get(&name.data)
-                    .map(|c| c.t.clone().into_mapping(c.span))
-                    .or_else(|| named_outputs.get(&name.data).cloned())
-                    .unwrap()
-                    .signed(true),
-            ),
-            Self::OffExplicit(name) => Some(
-                named_inputs
-                    .get(&name.data)
-                    .map(|c| c.t.clone().into_mapping(c.span))
-                    .or_else(|| named_outputs.get(&name.data).cloned())
-                    .unwrap()
-                    .signed(false),
-            ),
-        }
-    }
-}
-
-impl RelativeClkDescr {
-    fn into_mapping(self, span: Span) -> Sp<MappingClkDescr> {
-        match self {
-            Self::Nth(i) => MappingClkDescr::NthIn(i),
-        }
-        .with_span(span)
-    }
 }
 
 impl Sp<&ty::Clock> {
@@ -299,63 +115,13 @@ impl Sp<&ty::Clock> {
     }
 }
 
-impl ClkMap {
-    /// Provide a new named argument in the input tuple.
-    /// This handles both
-    /// - determining what the argument is clocked by, and
-    /// - registering the argument as one that may itself be a clock
-    ///   for others.
-    /// Note that this step of the compilation is *not* in charge
-    /// of checking that the argument is indeed a boolean.
-    fn new_input(&mut self, name: Sp<&String>, clk: Sp<&ty::Clock>) {
-        let uid = self.inputs.len();
-        let provides_clock = RelativeClkDescr::Nth(uid).with_span(name.span);
-        let clocked_by: Sp<RelativeClk> = clk
-            .into_absolute()
-            .map(|span, c| c.into_relative(span, &self.named_inputs))
-            .transpose()
-            .unwrap()
-            .t;
-        self.named_inputs.insert(name.cloned(), provides_clock);
-        self.inputs.push(clocked_by);
-    }
-
-    /// Provide a new named argument in the output tuple.
-    /// This handles both
-    /// - determining what the argument is clocked by, and
-    /// - registering the argument as one that may itself be a clock
-    ///   for others.
-    /// Note that this step of the compilation is *not* in charge
-    /// of checking that the argument is indeed a boolean.
-    fn new_output(&mut self, name: Sp<&String>, clk: Sp<&ty::Clock>) {
-        let uid = self.outputs.len();
-        let provides_clock = MappingClkDescr::NthOut(uid).with_span(name.span);
-        let clocked_by: Sp<MappingClk> = clk
-            .into_absolute()
-            .map(|span, c| c.into_mapping(span, &self.named_inputs, &self.named_outputs))
-            .transpose()
-            .unwrap()
-            .t;
-        self.named_outputs.insert(name.cloned(), provides_clock);
-        self.outputs.push(clocked_by);
-    }
-}
-
-/// Global clock context of clock mappings for each function.
-#[derive(Default)]
-struct ClkCtx {
-    /// Maps a node to its clock transformer.
-    signatures: HashMap<decl::NodeName, WithDefSite<ClkMap>>,
-}
-
 /// Local clock context, mapping local variables to their clocks.
-struct ExprClkCtx<'i> {
+struct ExprClkCtx {
     /// Known clocked variables.
     local: HashMap<var::Local, WithDefSite<Clock>>,
-    global: &'i ClkCtx,
 }
 
-impl ExprClkCtx<'_> {
+impl ExprClkCtx {
     /// Fetch the clock of a local variable (global constants have an implicit clock that we never
     /// check).
     fn clock_of(&self, var: &var::Local) -> WithDefSite<Clock> {
@@ -373,68 +139,38 @@ impl ExprClkCtx<'_> {
 /// Clock typing interface for expressions.
 trait ClockCheckExpr {
     /// Clock context (typically obtained by the `signature` on local variables and toplevel declarations)
-    type Ctx<'node, 'prog>
-    where
-        'prog: 'node;
+    type Ctx<'node>;
     /// Verify internal consistency of the clocks.
     fn clockcheck(
         &self,
         eaccum: &mut EAccum,
         span: Span,
-        ctx: Self::Ctx<'_, '_>,
-    ) -> Option<(AbsoluteClk, ClkTup)>;
+        ctx: Self::Ctx<'_>,
+    ) -> Option<AbsoluteClk>;
 }
 
 /// Helper trait for `Sp` to implement `ClockCheckExpr`.
 trait ClockCheckSpanExpr {
     /// Projection to the inner `Ctx`.
-    type Ctx<'node, 'prog>
-    where
-        'prog: 'node;
+    type Ctx<'node>;
     /// Projection to the inner `clockcheck`.
-    fn clockcheck(
-        &self,
-        eaccum: &mut EAccum,
-        ctx: Self::Ctx<'_, '_>,
-    ) -> Option<Sp<(AbsoluteClk, ClkTup)>>;
+    fn clockcheck(&self, eaccum: &mut EAccum, ctx: Self::Ctx<'_>) -> Option<Sp<AbsoluteClk>>;
 }
 
 /// Clock typing interface for statements.
-trait ClockCheckStmt {
+trait ClockCheckDecl {
     /// Clock context (typically obtained by the `signature` on local variables and toplevel declarations)
-    type Ctx<'node, 'prog>
-    where
-        'prog: 'node;
+    type Ctx<'node>;
     /// Verify internal consistency of the clocks.
-    fn clockcheck(&self, eaccum: &mut EAccum, span: Span, ctx: Self::Ctx<'_, '_>) -> Option<()>;
+    fn clockcheck(&self, eaccum: &mut EAccum, span: Span, ctx: Self::Ctx<'_>) -> Option<()>;
 }
 
 /// Helper trait for `Sp` to implement `ClockCheckStmt`.
-trait ClockCheckSpanStmt {
-    /// Projection to the inner `Ctx`.
-    type Ctx<'node, 'prog>
-    where
-        'prog: 'node;
-    /// Projection to the inner `clockcheck`.
-    fn clockcheck(&self, eaccum: &mut EAccum, ctx: Self::Ctx<'_, '_>) -> Option<Sp<()>>;
-}
-
-/// Clock typing interface of declarations.
-trait ClockCheckDecl {
-    /// Clock context (typically obtained by the `signature` on other toplevel declarations)
-    type Ctx<'i>;
-    /// Verify internal consistency of the clocks and produce the signature.
-    /// # Errors
-    /// Cannot verify that all clocks match.
-    fn clockcheck(&self, eaccum: &mut EAccum, span: Span, ctx: Self::Ctx<'_>) -> Option<ClkMap>;
-}
-
-/// Helper trait for `Sp` to implement `ClockCheckDecl`.
 trait ClockCheckSpanDecl {
     /// Projection to the inner `Ctx`.
-    type Ctx<'i>;
+    type Ctx<'node>;
     /// Projection to the inner `clockcheck`.
-    fn clockcheck(&self, eaccum: &mut EAccum, ctx: Self::Ctx<'_>) -> Option<Sp<ClkMap>>;
+    fn clockcheck(&self, eaccum: &mut EAccum, ctx: Self::Ctx<'_>) -> Option<()>;
 }
 
 /// Clock typing interface.
@@ -446,110 +182,76 @@ pub trait ClockCheck {
 }
 
 impl<T: ClockCheckExpr> ClockCheckSpanExpr for Sp<T> {
-    type Ctx<'node, 'prog> = T::Ctx<'node, 'prog> where 'prog: 'node;
-    fn clockcheck(
-        &self,
-        eaccum: &mut EAccum,
-        ctx: T::Ctx<'_, '_>,
-    ) -> Option<Sp<(AbsoluteClk, ClkTup)>> {
+    type Ctx<'node> = T::Ctx<'node>;
+    fn clockcheck(&self, eaccum: &mut EAccum, ctx: T::Ctx<'_>) -> Option<Sp<AbsoluteClk>> {
         self.as_ref()
             .map(|span, t| t.clockcheck(eaccum, span, ctx))
             .transpose()
     }
 }
 impl<T: ClockCheckExpr> ClockCheckExpr for Box<T> {
-    type Ctx<'node, 'prog> = T::Ctx<'node, 'prog> where 'prog: 'node;
-    fn clockcheck(
-        &self,
-        eaccum: &mut EAccum,
-        span: Span,
-        ctx: T::Ctx<'_, '_>,
-    ) -> Option<(AbsoluteClk, ClkTup)> {
+    type Ctx<'node> = T::Ctx<'node>;
+    fn clockcheck(&self, eaccum: &mut EAccum, span: Span, ctx: T::Ctx<'_>) -> Option<AbsoluteClk> {
         self.as_ref().clockcheck(eaccum, span, ctx)
     }
 }
 
-impl<T: ClockCheckStmt> ClockCheckSpanStmt for Sp<T> {
-    type Ctx<'node, 'prog> = T::Ctx<'node, 'prog> where 'prog: 'node;
-    fn clockcheck(&self, eaccum: &mut EAccum, ctx: T::Ctx<'_, '_>) -> Option<Sp<()>> {
-        self.as_ref()
-            .map(|span, t| t.clockcheck(eaccum, span, ctx))
-            .transpose()
-    }
-}
 impl<T: ClockCheckDecl> ClockCheckSpanDecl for Sp<T> {
-    type Ctx<'i> = T::Ctx<'i>;
-    fn clockcheck<'i>(&self, eaccum: &mut EAccum, ctx: Self::Ctx<'_>) -> Option<Sp<ClkMap>> {
+    type Ctx<'node> = T::Ctx<'node>;
+    fn clockcheck<'i>(&self, eaccum: &mut EAccum, ctx: Self::Ctx<'_>) -> Option<()> {
         self.as_ref()
             .map(|span, t| t.clockcheck(eaccum, span, ctx))
-            .transpose()
+            .transpose()?;
+        Some(())
     }
 }
 
 impl ClockCheckExpr for expr::Lit {
-    type Ctx<'node, 'prog> = &'node mut ExprClkCtx<'prog> where 'prog: 'node;
+    type Ctx<'node> = &'node mut ExprClkCtx;
     fn clockcheck(
         &self,
         _eaccum: &mut EAccum,
-        span: Span,
-        _ctx: Self::Ctx<'_, '_>,
-    ) -> Option<(AbsoluteClk, ClkTup)> {
-        Some((
-            AbsoluteClk::Adaptative,
-            ClkTup::Single(Named {
-                name: None,
-                data: MixedClk::Current.with_span(span).with_span(span),
-            }),
-        ))
+        _span: Span,
+        _ctx: Self::Ctx<'_>,
+    ) -> Option<AbsoluteClk> {
+        Some(AbsoluteClk::Adaptative)
     }
 }
 
 impl ClockCheckExpr for var::Global {
-    type Ctx<'node, 'prog> = &'node mut ExprClkCtx<'prog> where 'prog: 'node;
+    type Ctx<'node> = &'node mut ExprClkCtx;
     fn clockcheck(
         &self,
         _eaccum: &mut EAccum,
-        span: Span,
-        _ctx: Self::Ctx<'_, '_>,
-    ) -> Option<(AbsoluteClk, ClkTup)> {
-        Some((
-            AbsoluteClk::Adaptative,
-            ClkTup::Single(Named {
-                name: None,
-                data: MixedClk::Current.with_span(span).with_span(span),
-            }),
-        ))
+        _span: Span,
+        _ctx: Self::Ctx<'_>,
+    ) -> Option<AbsoluteClk> {
+        Some(AbsoluteClk::Adaptative)
     }
 }
 
 impl ClockCheckExpr for var::Local {
-    type Ctx<'node, 'prog> = &'node mut ExprClkCtx<'prog> where 'prog: 'node;
+    type Ctx<'node> = &'node mut ExprClkCtx;
     fn clockcheck(
         &self,
         _eaccum: &mut EAccum,
-        span: Span,
-        ctx: Self::Ctx<'_, '_>,
-    ) -> Option<(AbsoluteClk, ClkTup)> {
+        _span: Span,
+        ctx: Self::Ctx<'_>,
+    ) -> Option<AbsoluteClk> {
         let implicit = ctx.clock_of(self);
         let abs = implicit.data.as_ref().into_absolute();
-        Some((
-            abs.t,
-            ClkTup::Single(Named {
-                name: Some(self.repr.clone()),
-                data: MixedClk::Current.with_span(span).with_span(span),
-            }),
-        ))
+        Some(abs.t)
     }
 }
 
 impl ClockCheckExpr for var::Past {
-    type Ctx<'node, 'prog> = &'node mut ExprClkCtx<'prog> where 'prog: 'node;
+    type Ctx<'node> = &'node mut ExprClkCtx;
     fn clockcheck(
         &self,
         eaccum: &mut EAccum,
         _span: Span,
-        ctx: Self::Ctx<'_, '_>,
-    ) -> Option<(AbsoluteClk, ClkTup)> {
+        ctx: Self::Ctx<'_>,
+    ) -> Option<AbsoluteClk> {
         // There is a big question here in how we handle `pre (e when b)`.
         // The current approach is that it will be blocked at the level of
         // `DummyPre`.
@@ -559,13 +261,13 @@ impl ClockCheckExpr for var::Past {
 }
 
 impl ClockCheckExpr for var::Reference {
-    type Ctx<'node, 'prog> = &'node mut ExprClkCtx<'prog> where 'prog: 'node;
+    type Ctx<'node> = &'node mut ExprClkCtx;
     fn clockcheck(
         &self,
         eaccum: &mut EAccum,
         _span: Span,
-        ctx: Self::Ctx<'_, '_>,
-    ) -> Option<(AbsoluteClk, ClkTup)> {
+        ctx: Self::Ctx<'_>,
+    ) -> Option<AbsoluteClk> {
         match self {
             Self::Global(g) => Some(g.clockcheck(eaccum, ctx)?.t),
             Self::Var(v) => Some(v.clockcheck(eaccum, ctx)?.t),
@@ -574,7 +276,7 @@ impl ClockCheckExpr for var::Reference {
 }
 
 impl Sp<&AbsoluteClk> {
-    fn assert_matches(self, eaccum: &mut EAccum, other: Self) -> Option<()> {
+    fn assert_matches(self, eaccum: &mut EAccum, other: Self, whole: Span) -> Option<()> {
         match (&self.t, &other.t) {
             (AbsoluteClk::Adaptative, _)
             | (_, AbsoluteClk::Adaptative)
@@ -584,104 +286,28 @@ impl Sp<&AbsoluteClk> {
                 if id1 == id2 {
                     Some(())
                 } else {
-                    eaccum.error(err::Basic {
-                        msg: format!(
-                            "Mismatch between clocks: {:?} on the left but {:?} on the right",
-                            id1, id2
+                    eaccum.error(vec![(
+                        format!(
+                            "Mismatch between clocks: {} on the left but {} on the right",
+                            self, other
                         ),
-                        span: self.span,
-                    })
+                        Some(whole),
+                    )])
                 }
             }
-            _ => eaccum.error(err::Basic {
-                msg: format!(
-                    "Mismatch between clocks: {:?} on the left but {:?} on the right",
-                    self, other,
+            _ => eaccum.error(vec![
+                (
+                    format!(
+                        "Mismatch between clocks: {} on the left but {} on the right",
+                        self, other
+                    ),
+                    Some(whole),
                 ),
-                span: self.span,
-            }),
-        }
-    }
-}
-
-impl Sp<&MixedClk> {
-    fn assert_matches(self, eaccum: &mut EAccum, other: Self) -> Option<()> {
-        match (&self.t, &other.t) {
-            (MixedClk::Current, MixedClk::Current) => Some(()),
-            (MixedClk::OnNth(i1), MixedClk::OnNth(i2))
-            | (MixedClk::OffNth(i1), MixedClk::OffNth(i2)) => {
-                if i1 == i2 {
-                    Some(())
-                } else {
-                    panic!("Not the same mixed clock")
-                }
-            }
-            (MixedClk::Extern(id1), MixedClk::Extern(id2)) => {
-                id1.as_ref().assert_matches(eaccum, id2.as_ref())
-            }
-            _ => eaccum.error(err::Basic {
-                msg: format!(
-                    "Mismatch between clocks: {:?} on the left but {:?} on the right",
-                    self, other,
-                ),
-                span: self.span,
-            }),
-        }
-    }
-}
-
-impl ClkTup {
-    fn assert_matches(&self, eaccum: &mut EAccum, other: &Self) -> Option<()> {
-        match (&self, &other) {
-            (ClkTup::Single(clk1), ClkTup::Single(clk2)) => clk1
-                .data
-                .as_ref()
-                .assert_matches(eaccum, clk2.data.as_ref()),
-            (ClkTup::Multiple(tup1), ClkTup::Multiple(tup2)) => {
-                assert!(tup1.t.elems.len() == tup2.t.elems.len());
-                assert!(tup1.t.global == tup2.t.global);
-                for (el1, el2) in tup1.t.elems.iter().zip(tup2.t.elems.iter()) {
-                    el1.as_ref().t.assert_matches(eaccum, &el2.t)?;
-                }
-                Some(())
-            }
-            _ => unreachable!("Should have been caught at typechecking"),
-        }
-    }
-}
-
-impl ClkTup {
-    fn as_single(self, c: Sp<&AbsoluteClk>) -> Sp<AbsoluteClk> {
-        match self {
-            ClkTup::Single(n) => n.data.into_absolute(c),
-            ClkTup::Multiple(_) => unreachable!("Not a Single"),
-        }
-    }
-}
-
-impl Sp<MixedClk> {
-    fn into_absolute(self, global: Sp<&AbsoluteClk>) -> Sp<AbsoluteClk> {
-        match self.t {
-            MixedClk::Current => global.cloned(),
-            MixedClk::Extern(clk) => clk,
-            _ => panic!("Not convertible to absolute: {self:?}"),
-        }
-    }
-}
-
-impl Sp<ClkTup> {
-    fn into_clock(self, op: op::Clock) -> Sp<AbsoluteClk> {
-        match self.t {
-            ClkTup::Single(c) => {
-                if op == op::Clock::When {
-                    AbsoluteClk::OnExplicit(WithDefSite::without(c.name.unwrap()))
-                } else {
-                    AbsoluteClk::OffExplicit(WithDefSite::without(c.name.unwrap()))
-                }
-                .with_span(self.span)
-            }
-            .with_span(self.span),
-            _ => unreachable!("Not a Single"),
+                (format!("This is clocked by {}", self), Some(self.span)),
+                (format!("due to this"), Some(self.span)),
+                (format!("This is clocked by {}", other), Some(other.span)),
+                (format!("due to this"), Some(other.span)),
+            ]),
         }
     }
 }
@@ -690,6 +316,7 @@ trait Reclock: Sized {
     fn reclock(
         self,
         eaccum: &mut EAccum,
+        whole: Span,
         new: Sp<&AbsoluteClk>,
         clock_of_clock: Sp<&AbsoluteClk>,
     ) -> Option<Self>;
@@ -699,10 +326,11 @@ impl<T: Reclock> Reclock for Sp<T> {
     fn reclock(
         self,
         eaccum: &mut EAccum,
+        whole: Span,
         new: Sp<&AbsoluteClk>,
         clock_of_clock: Sp<&AbsoluteClk>,
     ) -> Option<Self> {
-        self.map(|_, t| t.reclock(eaccum, new, clock_of_clock))
+        self.map(|_, t| t.reclock(eaccum, whole, new, clock_of_clock))
             .transpose()
     }
 }
@@ -711,12 +339,13 @@ impl<T: Reclock, U: Reclock> Reclock for (T, U) {
     fn reclock(
         self,
         eaccum: &mut EAccum,
+        whole: Span,
         new: Sp<&AbsoluteClk>,
         clock_of_clock: Sp<&AbsoluteClk>,
     ) -> Option<Self> {
         Some((
-            self.0.reclock(eaccum, new, clock_of_clock)?,
-            self.1.reclock(eaccum, new, clock_of_clock)?,
+            self.0.reclock(eaccum, whole, new, clock_of_clock)?,
+            self.1.reclock(eaccum, whole, new, clock_of_clock)?,
         ))
     }
 }
@@ -725,40 +354,12 @@ impl Reclock for AbsoluteClk {
     fn reclock(
         self,
         eaccum: &mut EAccum,
+        span: Span,
         new: Sp<&AbsoluteClk>,
         clock_of_clock: Sp<&AbsoluteClk>,
     ) -> Option<Self> {
-        clock_of_clock.assert_matches(eaccum, self.with_span(Span::forge()).as_ref())?;
+        clock_of_clock.assert_matches(eaccum, self.with_span(Span::forge()).as_ref(), span)?;
         Some(new.t.clone())
-    }
-}
-
-impl<T: Reclock, U: Reclock> Reclock for FlatTup<T, U> {
-    fn reclock(
-        self,
-        eaccum: &mut EAccum,
-        new: Sp<&AbsoluteClk>,
-        clock_of_clock: Sp<&AbsoluteClk>,
-    ) -> Option<Self> {
-        Some(FlatTup {
-            global: self.global.reclock(eaccum, new, clock_of_clock)?,
-            elems: self
-                .elems
-                .into_iter()
-                .map(|e| e.reclock(eaccum, new, clock_of_clock))
-                .try_collect()?,
-        })
-    }
-}
-
-impl Reclock for MixedClk {
-    fn reclock(
-        self,
-        _eaccum: &mut EAccum,
-        _new: Sp<&AbsoluteClk>,
-        _clock_of_clock: Sp<&AbsoluteClk>,
-    ) -> Option<Self> {
-        unimplemented!("Reclock mixed")
     }
 }
 
@@ -766,124 +367,55 @@ impl<T: Reclock> Reclock for Named<T> {
     fn reclock(
         self,
         eaccum: &mut EAccum,
+        whole: Span,
         new: Sp<&AbsoluteClk>,
         clock_of_clock: Sp<&AbsoluteClk>,
     ) -> Option<Self> {
         Some(Self {
             name: None,
-            data: self.data.reclock(eaccum, new, clock_of_clock)?,
+            data: self.data.reclock(eaccum, whole, new, clock_of_clock)?,
         })
-    }
-}
-
-impl Reclock for ClkTup {
-    fn reclock(
-        self,
-        eaccum: &mut EAccum,
-        new: Sp<&AbsoluteClk>,
-        clock_of_clock: Sp<&AbsoluteClk>,
-    ) -> Option<Self> {
-        Some(match self {
-            Self::Single(n) => Self::Single(n.reclock(eaccum, new, clock_of_clock)?),
-            Self::Multiple(tup) => Self::Multiple(tup.reclock(eaccum, new, clock_of_clock)?),
-        })
-    }
-}
-
-impl ClkTup {
-    fn as_flat(
-        self,
-        _eaccum: &mut EAccum,
-        global: Sp<&AbsoluteClk>,
-    ) -> Option<Sp<FlatTup<AbsoluteClk, Named<RelativeClk>>>> {
-        match self {
-            Self::Single(c) => Some(
-                FlatTup {
-                    global: c.data.into_absolute(global).t,
-                    elems: vec![Named {
-                        name: c.name,
-                        data: RelativeClk::Current.with_span(c.data.span),
-                    }
-                    .with_span(c.data.span)],
-                }
-                .with_span(c.data.span),
-            ),
-            Self::Multiple(tup) => Some(
-                FlatTup {
-                    global: tup.map(|_, t| t.global).into_absolute().t,
-                    elems: tup.t.elems,
-                }
-                .with_span(tup.span),
-            ),
-        }
     }
 }
 
 impl ClockCheckExpr for expr::Expr {
-    type Ctx<'node, 'prog> = &'node mut ExprClkCtx<'prog> where 'prog: 'node;
+    type Ctx<'node> = &'node mut ExprClkCtx;
     fn clockcheck(
         &self,
         eaccum: &mut EAccum,
-        _span: Span,
-        ctx: Self::Ctx<'_, '_>,
-    ) -> Option<(AbsoluteClk, ClkTup)> {
+        span: Span,
+        ctx: Self::Ctx<'_>,
+    ) -> Option<AbsoluteClk> {
         match self {
             Self::Lit(l) => Some(l.clockcheck(eaccum, ctx)?.t),
             Self::Reference(r) => Some(r.clockcheck(eaccum, ctx)?.t),
             Self::DummyPre(e) => {
                 let clk = e.clockcheck(eaccum, ctx)?;
-                clk.as_ref().map(|_, x| &x.0).is_implicit(eaccum)?;
+                clk.as_ref().is_implicit(eaccum)?;
                 Some(clk.t)
             }
             Self::Bin { op: _, lhs, rhs } => {
                 let lhs = lhs.clockcheck(eaccum, ctx);
                 let rhs = rhs.clockcheck(eaccum, ctx);
                 let lhs = lhs?;
-                let lhs = lhs.t.1.as_single(lhs.t.0.with_span(lhs.span).as_ref());
                 let rhs = rhs?;
-                let rhs = rhs.t.1.as_single(rhs.t.0.with_span(rhs.span).as_ref());
-                lhs.as_ref().assert_matches(eaccum, rhs.as_ref())?;
-                Some((
-                    lhs.t,
-                    ClkTup::Single(Named {
-                        name: None,
-                        data: MixedClk::Current.with_span(lhs.span),
-                    }),
-                ))
+                lhs.as_ref().assert_matches(eaccum, rhs.as_ref(), span)?;
+                Some(lhs.t)
             }
             Self::Cmp { op: _, lhs, rhs } => {
                 let lhs = lhs.clockcheck(eaccum, ctx);
                 let rhs = rhs.clockcheck(eaccum, ctx);
                 let lhs = lhs?;
-                let lhs = lhs.t.1.as_single(lhs.t.0.with_span(lhs.span).as_ref());
                 let rhs = rhs?;
-                let rhs = rhs.t.1.as_single(rhs.t.0.with_span(rhs.span).as_ref());
-                lhs.as_ref().assert_matches(eaccum, rhs.as_ref())?;
-                Some((
-                    lhs.t,
-                    ClkTup::Single(Named {
-                        name: None,
-                        data: MixedClk::Current.with_span(lhs.span),
-                    }),
-                ))
+                lhs.as_ref().assert_matches(eaccum, rhs.as_ref(), span)?;
+                Some(lhs.t)
             }
             Self::Un { op: _, inner } => {
-                let inner = inner.clockcheck(eaccum, ctx);
-                let inner = inner?;
-                let inner = inner
-                    .t
-                    .1
-                    .as_single(inner.t.0.with_span(inner.span).as_ref());
-                Some((
-                    inner.t,
-                    ClkTup::Single(Named {
-                        name: None,
-                        data: MixedClk::Current.with_span(inner.span),
-                    }),
-                ))
+                let inner = inner.clockcheck(eaccum, ctx)?;
+                Some(inner.t)
             }
             Self::Later {
-                clk: _,
+                delay: _,
                 before,
                 after,
             } => {
@@ -891,8 +423,8 @@ impl ClockCheckExpr for expr::Expr {
                 let after = after.clockcheck(eaccum, ctx);
                 let before = before?;
                 let after = after?;
-                before.as_ref().map(|_, x| &x.0).is_implicit(eaccum);
-                after.as_ref().map(|_, x| &x.0).is_implicit(eaccum);
+                before.as_ref().is_implicit(eaccum);
+                after.as_ref().is_implicit(eaccum);
                 Some(before.t)
             }
             Self::Clock {
@@ -902,57 +434,54 @@ impl ClockCheckExpr for expr::Expr {
             } => {
                 let inner = inner.clockcheck(eaccum, ctx)?;
                 let clock_of_clock = activate.clockcheck(eaccum, ctx)?;
-                let clock_of_clock = clock_of_clock
-                    .t
-                    .1
-                    .as_single(clock_of_clock.t.0.with_span(clock_of_clock.span).as_ref());
-                let activate = activate.into_clock(*op)?;
+                let activate = activate.into_clock(eaccum, *op)?;
                 Some(
                     inner
-                        .reclock(eaccum, activate.as_ref(), clock_of_clock.as_ref())?
+                        .reclock(eaccum, span, activate.as_ref(), clock_of_clock.as_ref())?
                         .t,
                 )
             }
-            Self::Substep { clk: _, id, args } => {
+            Self::Substep {
+                delay: _,
+                id: _,
+                args,
+            } => {
                 let args = args.clockcheck(eaccum, ctx)?;
-                let args = args.t.1.as_flat(eaccum, args.map(|_, t| &t.0))?;
-                let fsig = ctx
-                    .global
-                    .signatures
-                    .get(&decl::NodeName {
-                        repr: id.t.repr.clone(),
-                        run_uid: Transparent::forge(),
-                    })
-                    .unwrap();
-                for (arg, expect) in args.t.elems.iter().zip(fsig.data.t.inputs.iter()) {
-                    if &arg.t.data != expect {
-                        panic!()
-                    }
-                }
-                let out = fsig.data.t.outputs.clone();
-                let out = FlatTup {
-                    global: args.t.global.clone(),
-                    elems: out,
-                };
-                Some(out.resolve(eaccum, args.t)?)
+                Some(args.t)
             }
-            _ => unimplemented!("{:?}", self),
+            Self::Tuple(tup) => Some(tup.clockcheck(eaccum, ctx)?.t),
+            Self::Ifx { cond, yes, no } => {
+                let cond = cond.clockcheck(eaccum, ctx);
+                let yes = yes.clockcheck(eaccum, ctx);
+                let no = no.clockcheck(eaccum, ctx);
+                let mut cond = cond?;
+                let yes = yes?;
+                let no = no?;
+                cond.refine(eaccum, yes)?;
+                cond.refine(eaccum, no)?;
+                Some(cond.t)
+            }
+            Self::Merge { switch, on, off } => {
+                let expect_on = switch.into_clock(eaccum, op::Clock::When);
+                let expect_off = switch.into_clock(eaccum, op::Clock::Whenot);
+                let switch = switch.clockcheck(eaccum, ctx);
+                let on = on.clockcheck(eaccum, ctx);
+                let off = off.clockcheck(eaccum, ctx);
+                let switch = switch?;
+                let on = on?;
+                let off = off?;
+                on.as_ref()
+                    .assert_matches(eaccum, expect_on?.as_ref(), span)?;
+                off.as_ref()
+                    .assert_matches(eaccum, expect_off?.as_ref(), span)?;
+                Some(switch.t)
+            }
         }
     }
 }
 
-impl FlatTup<AbsoluteClk, MappingClk> {
-    fn resolve(
-        self,
-        _eaccum: &mut EAccum,
-        _named_inputs: FlatTup<AbsoluteClk, Named<RelativeClk>>,
-    ) -> Option<(AbsoluteClk, ClkTup)> {
-        unimplemented!()
-    }
-}
-
 impl Sp<Box<expr::Expr>> {
-    fn into_clock(&self, op: op::Clock) -> Option<Sp<AbsoluteClk>> {
+    fn into_clock(&self, _eaccum: &mut EAccum, op: op::Clock) -> Option<Sp<AbsoluteClk>> {
         match &*self.t {
             expr::Expr::Reference(r) => match &r.t {
                 var::Reference::Var(v) => {
@@ -968,9 +497,9 @@ impl Sp<Box<expr::Expr>> {
                         )
                     }
                 }
-                _ => panic!(),
+                _ => panic!("Expected Var, got {:?}", r.t),
             },
-            _ => panic!(),
+            _ => panic!("Expected Reference, got {:?}", self.t),
         }
     }
 }
@@ -987,30 +516,72 @@ impl Sp<&AbsoluteClk> {
     }
 }
 
-impl ClockCheckExpr for stmt::VarTuple {
-    type Ctx<'node, 'prog> = &'node mut ExprClkCtx<'prog> where 'prog: 'node;
-    fn clockcheck(
-        &self,
-        eaccum: &mut EAccum,
-        _span: Span,
-        ctx: Self::Ctx<'_, '_>,
-    ) -> Option<(AbsoluteClk, ClkTup)> {
-        match self {
-            Self::Single(v) => Some(v.clockcheck(eaccum, ctx)?.t),
-            Self::Multiple(tup) => {
-                unimplemented!("VarTuple {tup:?}")
+impl Sp<AbsoluteClk> {
+    fn refine(&mut self, _eaccum: &mut EAccum, other: Self) -> Option<()> {
+        use AbsoluteClk::*;
+        match (&self.t, other.t) {
+            (Implicit, Implicit | Adaptative) => Some(()),
+            (Adaptative, any) => {
+                self.t = any;
+                Some(())
+            }
+            (OnExplicit(_) | OffExplicit(_), Adaptative) => Some(()),
+            (Implicit, OnExplicit(_) | OffExplicit(_)) => panic!(),
+            (OnExplicit(_) | OffExplicit(_), Implicit) => panic!(),
+            (OnExplicit(_), OffExplicit(_)) | (OffExplicit(_), OnExplicit(_)) => panic!(),
+            (OnExplicit(l), OnExplicit(r)) => {
+                assert_eq!(l, &r);
+                Some(())
+            }
+            (OffExplicit(l), OffExplicit(r)) => {
+                assert_eq!(l, &r);
+                Some(())
             }
         }
     }
 }
 
-impl ClockCheckStmt for stmt::Statement {
-    type Ctx<'node, 'prog> = &'node mut ExprClkCtx<'prog> where 'prog: 'node;
-    fn clockcheck(&self, eaccum: &mut EAccum, _: Span, ctx: Self::Ctx<'_, '_>) -> Option<()> {
+impl<T> ClockCheckExpr for Tuple<T>
+where
+    T: for<'node> ClockCheckSpanExpr<Ctx<'node> = &'node mut ExprClkCtx>,
+{
+    type Ctx<'i> = &'i mut ExprClkCtx;
+    fn clockcheck(
+        &self,
+        eaccum: &mut EAccum,
+        span: Span,
+        ctx: Self::Ctx<'_>,
+    ) -> Option<AbsoluteClk> {
+        let mut global = AbsoluteClk::Adaptative.with_span(span);
+        for e in self.iter() {
+            let clk = e.clockcheck(eaccum, &mut *ctx)?;
+            global.refine(eaccum, clk)?;
+        }
+        Some(global.t)
+    }
+}
+
+impl ClockCheckExpr for stmt::VarTuple {
+    type Ctx<'node> = &'node mut ExprClkCtx;
+    fn clockcheck(
+        &self,
+        eaccum: &mut EAccum,
+        _span: Span,
+        ctx: Self::Ctx<'_>,
+    ) -> Option<AbsoluteClk> {
+        match self {
+            Self::Single(v) => Some(v.clockcheck(eaccum, ctx)?.t),
+            Self::Multiple(tup) => Some(tup.clockcheck(eaccum, ctx)?.t),
+        }
+    }
+}
+
+impl ClockCheckDecl for stmt::Statement {
+    type Ctx<'node> = &'node mut ExprClkCtx;
+    fn clockcheck(&self, eaccum: &mut EAccum, span: Span, ctx: Self::Ctx<'_>) -> Option<()> {
         match self {
             Self::Assert(e) => {
                 let clk = e.clockcheck(eaccum, ctx)?;
-                let clk = clk.t.1.as_single(clk.t.0.with_span(clk.span).as_ref());
                 clk.as_ref().is_implicit(eaccum)?;
                 Some(())
             }
@@ -1019,32 +590,34 @@ impl ClockCheckStmt for stmt::Statement {
                 let source = source.clockcheck(eaccum, ctx)?;
                 target
                     .as_ref()
-                    .map(|_, x| &x.0)
-                    .assert_matches(eaccum, source.as_ref().map(|_, x| &x.0));
-                target.t.1.assert_matches(eaccum, &source.t.1)
+                    .assert_matches(eaccum, source.as_ref(), span)?;
+                Some(())
             }
         }
     }
 }
 
 impl ClockCheckDecl for decl::Node {
-    type Ctx<'i> = &'i mut ClkCtx;
-    fn clockcheck(&self, eaccum: &mut EAccum, _span: Span, ctx: Self::Ctx<'_>) -> Option<ClkMap> {
-        // First the interface
-        let interface = {
-            let mut map = ClkMap::default();
-            for i in self.inputs.t.iter() {
-                map.new_input(i.t.name.t.repr.as_ref(), i.t.ty.t.ty.t.clk.as_ref());
+    type Ctx<'node> = ();
+    fn clockcheck(&self, eaccum: &mut EAccum, _span: Span, _ctx: Self::Ctx<'_>) -> Option<()> {
+        // First the interface must be homogeneous
+        for vs in [&self.inputs.t, &self.outputs.t] {
+            for v in vs.iter() {
+                v.t.ty
+                    .t
+                    .ty
+                    .t
+                    .clk
+                    .as_ref()
+                    .into_absolute()
+                    .as_ref()
+                    .is_implicit(eaccum)?;
             }
-            for o in self.outputs.t.iter() {
-                map.new_output(o.t.name.t.repr.as_ref(), o.t.ty.t.ty.t.clk.as_ref());
-            }
-            map
-        };
-        // Now the body
+        }
+        // Then we can check the body in the context of the interface with added
+        // locals
         let mut ectx = ExprClkCtx {
             local: HashMap::new(),
-            global: ctx,
         };
         for vs in [&self.inputs.t, &self.outputs.t, &self.locals.t] {
             for v in vs.iter() {
@@ -1057,41 +630,40 @@ impl ClockCheckDecl for decl::Node {
         for stmt in &self.stmts {
             stmt.clockcheck(eaccum, &mut ectx)?;
         }
-        Some(interface)
+        Some(())
     }
 }
 
 impl ClockCheckDecl for decl::ExtNode {
     type Ctx<'i> = ();
-    fn clockcheck(&self, _eaccum: &mut EAccum, _: Span, (): ()) -> Option<ClkMap> {
-        let mut map = ClkMap::default();
-        for i in self.inputs.t.iter() {
-            map.new_input(i.t.name.t.repr.as_ref(), i.t.ty.t.ty.t.clk.as_ref());
+    fn clockcheck(&self, eaccum: &mut EAccum, _: Span, (): ()) -> Option<()> {
+        for vs in [&self.inputs.t, &self.outputs.t] {
+            for v in vs.iter() {
+                v.t.ty
+                    .t
+                    .ty
+                    .t
+                    .clk
+                    .as_ref()
+                    .into_absolute()
+                    .as_ref()
+                    .is_implicit(eaccum)?;
+            }
         }
-        for o in self.outputs.t.iter() {
-            map.new_output(o.t.name.t.repr.as_ref(), o.t.ty.t.ty.t.clk.as_ref());
-        }
-        Some(map)
+        Some(())
     }
 }
 
 impl ClockCheck for Sp<decl::Prog> {
     fn clockcheck(&self, eaccum: &mut EAccum) -> Option<()> {
-        let mut ctx = ClkCtx::default();
         for decl in &self.t.decls {
             match &decl.t {
                 decl::Decl::Const(_) | decl::Decl::ExtConst(_) => {}
                 decl::Decl::Node(n) => {
-                    let sig = n.clockcheck(eaccum, &mut ctx)?;
-                    let sp_sig =
-                        WithDefSite::without(sig.t.with_span(n.span)).with_def_site(sig.span);
-                    ctx.signatures.insert(n.t.name.t.clone(), sp_sig);
+                    n.clockcheck(eaccum, ())?;
                 }
                 decl::Decl::ExtNode(n) => {
-                    let sig = n.clockcheck(eaccum, ())?;
-                    let sp_sig =
-                        WithDefSite::without(sig.t.with_span(n.span)).with_def_site(sig.span);
-                    ctx.signatures.insert(n.t.name.t.clone(), sp_sig);
+                    n.clockcheck(eaccum, ())?;
                 }
             }
         }
@@ -1099,6 +671,7 @@ impl ClockCheck for Sp<decl::Prog> {
     }
 }
 
+/*
 #[cfg(test)]
 mod translation_tests {
     use super::*;
@@ -1362,3 +935,4 @@ mod translation_tests {
             .is_none());
     }
 }
+*/

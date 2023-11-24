@@ -840,18 +840,22 @@ impl ToTokens for expr::Expr {
             Self::Cmp { op, lhs, rhs } => {
                 quote!(::chandeliers_sem::cmp!(#op; #lhs, #rhs))
             }
-            Self::Later { clk, before, after } => {
-                let clk = clk.as_lit();
+            Self::Later {
+                delay,
+                before,
+                after,
+            } => {
+                let clk = delay.as_lit();
                 quote!(::chandeliers_sem::later!(self <~ #clk; #before, #after))
             }
             Self::Ifx { cond, yes, no } => {
                 quote!(::chandeliers_sem::ifx!((#cond) then { #yes } else { #no }))
             }
-            Self::Substep { clk, id, args } => {
+            Self::Substep { delay, id, args } => {
                 let id_lit = syn::LitInt::new(&format!("{}", id.t.id), id.span.unwrap());
                 quote! {
                     ::chandeliers_sem::substep!(
-                        self <~ #clk;
+                        self <~ #delay;
                         #id_lit => {
                             #args
                         }
