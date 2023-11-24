@@ -83,17 +83,19 @@ impl fmt::Display for AbsoluteClk {
         match self {
             Self::Implicit => write!(f, "'self"),
             Self::Adaptative => write!(f, "'_"),
-            Self::OnExplicit(c) => write!(f, "when '{}", c.data),
-            Self::OffExplicit(c) => write!(f, "whenot '{}", c.data),
+            Self::OnExplicit(c) => write!(f, "'when {}", c.data),
+            Self::OffExplicit(c) => write!(f, "'whenot {}", c.data),
         }
     }
 }
 
-crate::sp::derive_with_span!(Named<T> where <T>);
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct Named<T> {
-    name: Option<Sp<String>>,
-    data: Sp<T>,
+impl AbsoluteClk {
+    fn def_site(&self) -> Option<Span> {
+        match self {
+            Self::Implicit | Self::Adaptative => None,
+            Self::OnExplicit(c) | Self::OffExplicit(c) => Some(c.def_site.flatten()?.flatten()),
+        }
+    }
 }
 
 impl Sp<&ty::Clock> {
@@ -282,32 +284,29 @@ impl Sp<&AbsoluteClk> {
             | (_, AbsoluteClk::Adaptative)
             | (AbsoluteClk::Implicit, AbsoluteClk::Implicit) => Some(()),
             (AbsoluteClk::OnExplicit(id1), AbsoluteClk::OnExplicit(id2))
-            | (AbsoluteClk::OffExplicit(id1), AbsoluteClk::OffExplicit(id2)) => {
-                if id1 == id2 {
-                    Some(())
-                } else {
-                    eaccum.error(vec![(
-                        format!(
-                            "Mismatch between clocks: {} on the left but {} on the right",
-                            self, other
-                        ),
-                        Some(whole),
-                    )])
-                }
+            | (AbsoluteClk::OffExplicit(id1), AbsoluteClk::OffExplicit(id2))
+                if id1 == id2 =>
+            {
+                Some(())
             }
-            _ => eaccum.error(vec![
-                (
+            _ => {
+                let mut v = vec![(
                     format!(
                         "Mismatch between clocks: {} on the left but {} on the right",
                         self, other
                     ),
                     Some(whole),
-                ),
-                (format!("This is clocked by {}", self), Some(self.span)),
-                (format!("due to this"), Some(self.span)),
-                (format!("This is clocked by {}", other), Some(other.span)),
-                (format!("due to this"), Some(other.span)),
-            ]),
+                )];
+                v.push((format!("This is clocked by {}", self), Some(self.span)));
+                if let Some(def_site) = self.t.def_site() {
+                    v.push((format!("due to this"), Some(def_site)));
+                }
+                v.push((format!("This is clocked by {}", other), Some(other.span)));
+                if let Some(def_site) = other.t.def_site() {
+                    v.push((format!("due to this"), Some(def_site)));
+                }
+                eaccum.error(v)
+            }
         }
     }
 }
@@ -317,6 +316,7 @@ trait Reclock: Sized {
         self,
         eaccum: &mut EAccum,
         whole: Span,
+        lhs_span: Span,
         new: Sp<&AbsoluteClk>,
         clock_of_clock: Sp<&AbsoluteClk>,
     ) -> Option<Self>;
@@ -327,26 +327,12 @@ impl<T: Reclock> Reclock for Sp<T> {
         self,
         eaccum: &mut EAccum,
         whole: Span,
+        _lhs_span: Span,
         new: Sp<&AbsoluteClk>,
         clock_of_clock: Sp<&AbsoluteClk>,
     ) -> Option<Self> {
-        self.map(|_, t| t.reclock(eaccum, whole, new, clock_of_clock))
+        self.map(|span, t| t.reclock(eaccum, whole, span, new, clock_of_clock))
             .transpose()
-    }
-}
-
-impl<T: Reclock, U: Reclock> Reclock for (T, U) {
-    fn reclock(
-        self,
-        eaccum: &mut EAccum,
-        whole: Span,
-        new: Sp<&AbsoluteClk>,
-        clock_of_clock: Sp<&AbsoluteClk>,
-    ) -> Option<Self> {
-        Some((
-            self.0.reclock(eaccum, whole, new, clock_of_clock)?,
-            self.1.reclock(eaccum, whole, new, clock_of_clock)?,
-        ))
     }
 }
 
@@ -354,27 +340,15 @@ impl Reclock for AbsoluteClk {
     fn reclock(
         self,
         eaccum: &mut EAccum,
-        span: Span,
-        new: Sp<&AbsoluteClk>,
-        clock_of_clock: Sp<&AbsoluteClk>,
-    ) -> Option<Self> {
-        clock_of_clock.assert_matches(eaccum, self.with_span(Span::forge()).as_ref(), span)?;
-        Some(new.t.clone())
-    }
-}
-
-impl<T: Reclock> Reclock for Named<T> {
-    fn reclock(
-        self,
-        eaccum: &mut EAccum,
         whole: Span,
+        lhs_span: Span,
         new: Sp<&AbsoluteClk>,
         clock_of_clock: Sp<&AbsoluteClk>,
     ) -> Option<Self> {
-        Some(Self {
-            name: None,
-            data: self.data.reclock(eaccum, whole, new, clock_of_clock)?,
-        })
+        self.with_span(lhs_span)
+            .as_ref()
+            .assert_matches(eaccum, clock_of_clock, whole)?;
+        Some(new.t.clone())
     }
 }
 
@@ -391,23 +365,26 @@ impl ClockCheckExpr for expr::Expr {
             Self::Reference(r) => Some(r.clockcheck(eaccum, ctx)?.t),
             Self::DummyPre(e) => {
                 let clk = e.clockcheck(eaccum, ctx)?;
-                clk.as_ref().is_implicit(eaccum)?;
+                clk.as_ref().is_implicit(
+                    eaccum,
+                    "The pre operator operates under the nodes's implicit clock",
+                )?;
                 Some(clk.t)
             }
             Self::Bin { op: _, lhs, rhs } => {
                 let lhs = lhs.clockcheck(eaccum, ctx);
                 let rhs = rhs.clockcheck(eaccum, ctx);
-                let lhs = lhs?;
+                let mut lhs = lhs?;
                 let rhs = rhs?;
-                lhs.as_ref().assert_matches(eaccum, rhs.as_ref(), span)?;
+                lhs.refine(eaccum, rhs)?;
                 Some(lhs.t)
             }
             Self::Cmp { op: _, lhs, rhs } => {
                 let lhs = lhs.clockcheck(eaccum, ctx);
                 let rhs = rhs.clockcheck(eaccum, ctx);
-                let lhs = lhs?;
+                let mut lhs = lhs?;
                 let rhs = rhs?;
-                lhs.as_ref().assert_matches(eaccum, rhs.as_ref(), span)?;
+                lhs.refine(eaccum, rhs)?;
                 Some(lhs.t)
             }
             Self::Un { op: _, inner } => {
@@ -423,8 +400,14 @@ impl ClockCheckExpr for expr::Expr {
                 let after = after.clockcheck(eaccum, ctx);
                 let before = before?;
                 let after = after?;
-                before.as_ref().is_implicit(eaccum);
-                after.as_ref().is_implicit(eaccum);
+                before.as_ref().is_implicit(
+                    eaccum,
+                    "The delay operator (-> / fby) operates under the nodes's implicit clock",
+                );
+                after.as_ref().is_implicit(
+                    eaccum,
+                    "The delay operator (-> / fby) operates under the nodes's implicit clock",
+                );
                 Some(before.t)
             }
             Self::Clock {
@@ -437,7 +420,13 @@ impl ClockCheckExpr for expr::Expr {
                 let activate = activate.into_clock(eaccum, *op)?;
                 Some(
                     inner
-                        .reclock(eaccum, span, activate.as_ref(), clock_of_clock.as_ref())?
+                        .reclock(
+                            eaccum,
+                            span,
+                            span,
+                            activate.as_ref(),
+                            clock_of_clock.as_ref(),
+                        )?
                         .t,
                 )
             }
@@ -487,13 +476,19 @@ impl Sp<Box<expr::Expr>> {
                 var::Reference::Var(v) => {
                     if op == op::Clock::When {
                         Some(
-                            AbsoluteClk::OnExplicit(WithDefSite::without(v.t.var.t.repr.clone()))
-                                .with_span(v.span),
+                            AbsoluteClk::OnExplicit(
+                                WithDefSite::without(v.t.var.t.repr.clone())
+                                    .with_def_site(self.span),
+                            )
+                            .with_span(v.span),
                         )
                     } else {
                         Some(
-                            AbsoluteClk::OffExplicit(WithDefSite::without(v.t.var.t.repr.clone()))
-                                .with_span(v.span),
+                            AbsoluteClk::OffExplicit(
+                                WithDefSite::without(v.t.var.t.repr.clone())
+                                    .with_def_site(self.span),
+                            )
+                            .with_span(v.span),
                         )
                     }
                 }
@@ -505,13 +500,20 @@ impl Sp<Box<expr::Expr>> {
 }
 
 impl Sp<&AbsoluteClk> {
-    fn is_implicit(self, eaccum: &mut EAccum) -> Option<()> {
+    fn is_implicit(self, eaccum: &mut EAccum, help: &'static str) -> Option<()> {
         match &self.t {
             AbsoluteClk::Implicit | AbsoluteClk::Adaptative => Some(()),
-            AbsoluteClk::OnExplicit(e) | AbsoluteClk::OffExplicit(e) => eaccum.error(err::Basic {
-                msg: format!("This clock is too slow (clocked by {})", e.data),
-                span: self.span,
-            }),
+            AbsoluteClk::OnExplicit(_) | AbsoluteClk::OffExplicit(_) => eaccum.error(vec![
+                (
+                    format!(
+                        "This clock is too slow: found {}, expected the implicit clock '_",
+                        self
+                    ),
+                    Some(self.span),
+                ),
+                (help.to_owned(), None),
+                ("Delete the extra clock definition or put this in a separate node with its own clock".to_owned(), None),
+            ]),
         }
     }
 }
@@ -582,7 +584,8 @@ impl ClockCheckDecl for stmt::Statement {
         match self {
             Self::Assert(e) => {
                 let clk = e.clockcheck(eaccum, ctx)?;
-                clk.as_ref().is_implicit(eaccum)?;
+                clk.as_ref()
+                    .is_implicit(eaccum, "Assert operates under the nodes's implicit clock")?;
                 Some(())
             }
             Self::Let { target, source } => {
@@ -611,7 +614,10 @@ impl ClockCheckDecl for decl::Node {
                     .as_ref()
                     .into_absolute()
                     .as_ref()
-                    .is_implicit(eaccum)?;
+                    .is_implicit(
+                        eaccum,
+                        "Node signature should use the implicit clock of the node",
+                    )?;
             }
         }
         // Then we can check the body in the context of the interface with added
@@ -627,10 +633,11 @@ impl ClockCheckDecl for decl::Node {
                 );
             }
         }
+        let mut scope = eaccum.scope();
         for stmt in &self.stmts {
-            stmt.clockcheck(eaccum, &mut ectx)?;
+            scope.compute(|eaccum| stmt.clockcheck(eaccum, &mut ectx));
         }
-        Some(())
+        scope.close()
     }
 }
 
@@ -647,7 +654,10 @@ impl ClockCheckDecl for decl::ExtNode {
                     .as_ref()
                     .into_absolute()
                     .as_ref()
-                    .is_implicit(eaccum)?;
+                    .is_implicit(
+                        eaccum,
+                        "Node signature should use the implicit clock of the node",
+                    )?;
             }
         }
         Some(())

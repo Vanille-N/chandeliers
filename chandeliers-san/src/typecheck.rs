@@ -384,7 +384,7 @@ impl TypeCheckExpr for ast::expr::Expr {
                 site: span,
             }),
             Self::Later { .. } => eaccum.error(err::NotConst {
-                what: "The later operator (-> / fby) is",
+                what: "The delay operator (-> / fby) is",
                 site: span,
             }),
             Self::Substep { .. } => eaccum.error(err::NotConst {
@@ -941,8 +941,8 @@ impl TypeCheckExpr for ty::Clock {
                     id.as_ref()
                         .map(|span, repr| var::Local {
                             repr: repr.clone().with_span(span),
-                            run_uid: Transparent::forge(), // We can forge the `run_uid` since it's not relevant in
-                                                           // the `impl PartialEq` and `impl Hash`.
+                            run_uid: Transparent::forge(err::here!()), // We can forge the `run_uid` since it's not relevant in
+                                                                       // the `impl PartialEq` and `impl Hash`.
                         })
                         .as_ref(),
                 )?;

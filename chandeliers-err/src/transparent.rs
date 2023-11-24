@@ -35,7 +35,7 @@ use std::hash::{Hash, Hasher};
 #[derive(Clone, Copy)]
 pub struct Transparent<T> {
     /// Payload.
-    inner: Option<T>,
+    inner: Result<T, &'static str>,
 }
 
 impl<T> fmt::Debug for Transparent<T> {
@@ -50,21 +50,47 @@ impl<T> Transparent<T> {
     /// fails if `self` was obtainedy by `Transparent::forge()`.
     pub fn unwrap(self) -> T {
         match self.inner {
-            Some(x) => x,
-            None => crate::abort!("Attempted to read a forged transparent value"),
+            Ok(x) => x,
+            Err(l) => crate::abort!(
+                "Attempted to read a forged transparent value. Forged at {}",
+                l
+            ),
         }
     }
 
     /// Create a dummy value.
-    pub fn forge() -> Self {
-        Self { inner: None }
+    pub fn forge(loc: &'static str) -> Self {
+        Self { inner: Err(loc) }
+    }
+}
+
+impl<T> Transparent<Transparent<T>> {
+    /// Remove the outer `Transparent`
+    pub fn flatten(self) -> Transparent<T> {
+        match self.inner {
+            Ok(x1) => match x1.inner {
+                Ok(x2) => Transparent { inner: Ok(x2) },
+                Err(loc) => Transparent { inner: Err(loc) },
+            },
+            Err(loc) => Transparent { inner: Err(loc) },
+        }
+    }
+}
+
+impl<T> Transparent<Option<T>> {
+    /// Remove the outer `Transparent`
+    pub fn flatten(self) -> Option<Transparent<T>> {
+        match self.inner {
+            Ok(x1) => Some(Transparent { inner: Ok(x1?) }),
+            Err(loc) => Some(Transparent { inner: Err(loc) }),
+        }
     }
 }
 
 impl<T> Transparent<T> {
     /// Wrap in a transparent.
     pub fn from(inner: T) -> Self {
-        Self { inner: Some(inner) }
+        Self { inner: Ok(inner) }
     }
 }
 
@@ -83,8 +109,8 @@ impl<T> Hash for Transparent<T> {
 impl<T: fmt::Display> fmt::Display for Transparent<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match &self.inner {
-            Some(v) => write!(f, "{v}"),
-            None => write!(f, "<undef>"),
+            Ok(v) => write!(f, "{v}"),
+            Err(_) => write!(f, "<undef>"),
         }
     }
 }
@@ -93,14 +119,14 @@ impl Transparent<proc_macro2::Span> {
     /// Map `join` to the inner `span`s
     #[must_use]
     pub fn join(self, other: Self) -> Option<Self> {
-        let Some(v1) = self.inner else {
+        let Ok(v1) = self.inner else {
             return Some(self);
         };
-        let Some(v2) = other.inner else {
+        let Ok(v2) = other.inner else {
             return Some(self);
         };
         Some(Self {
-            inner: Some(v1.join(v2)?),
+            inner: Ok(v1.join(v2)?),
         })
     }
 }

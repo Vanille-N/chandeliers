@@ -49,6 +49,13 @@ impl<T: TrySpan> TrySpan for Option<T> {
     }
 }
 
+/// Trivial projection.
+impl<T: TrySpan, E> TrySpan for Result<T, E> {
+    fn try_span(&self) -> Option<Span> {
+        self.as_ref().ok().and_then(TrySpan::try_span)
+    }
+}
+
 /// An explicit error message with its span.
 pub struct Basic {
     /// Error kind.

@@ -38,22 +38,28 @@ macro_rules! repo {
     };
 }
 
+/// Location in the source code.
+#[macro_export]
+macro_rules! here {
+    () => {
+        concat!(file!(), ":", line!(), ":", column!())
+    };
+}
+
 /// Generate an error message better than just "proc macro panicked".
 #[macro_export]
 macro_rules! abort {
     ($($err:tt)*) => {{
         std::panic!("
 Chandeliers panicked: \x1b[1;31m{}.\x1b[0m
-This error occured in \x1b[1;35m{}:{}:{}\x1b[0m
+This error occured in \x1b[1;35m{}\x1b[0m
 
 If you are not a developper of Chandeliers and you see this message then this is a bug.
 I'd be grateful if you could report this error at \x1b[33m{}\x1b[0m
 with the code that produced it and the version of Chandeliers you are using.
 ",
             format!($($err)*),
-            file!(),
-            line!(),
-            column!(),
+            $crate::here!(),
             $crate::repo!(),
         );
     }};
