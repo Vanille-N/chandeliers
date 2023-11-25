@@ -1,4 +1,4 @@
-error: Mismatch between clocks: 'when b0 on the left but 'when b1a on the right
+error: Two subexpressions have incomparable clocks: 'when b1a and 'when b0 are incompatible
   --> tests/compile_fail/ui/clk/reclock.rs:11:9
    |
 11 |         b1b = true when b1a; // Error
@@ -25,24 +25,19 @@ note: defined here
 11 |         b1b = true when b1a; // Error
    |                         ^^^
 
-error: Mismatch between clocks: 'self on the left but 'when b0 on the right
-  --> tests/compile_fail/ui/clk/reclock.rs:16:15
-   |
-16 |         b2c = (not b0) when b1a; // Error
-   |               ^^^^^^^^^^^^^^^^^
-   |
-note: This is clocked by 'self
-  --> tests/compile_fail/ui/clk/reclock.rs:16:15
-   |
-16 |         b2c = (not b0) when b1a; // Error
-   |               ^^^^^^^^
-note: This is clocked by 'when b0
+error: This expression is too slow: expected the implicit clock 'self, found 'when b0
   --> tests/compile_fail/ui/clk/reclock.rs:16:29
    |
 16 |         b2c = (not b0) when b1a; // Error
    |                             ^^^
-note: defined here
+   |
+note: Found 'when b0 here
   --> tests/compile_fail/ui/clk/reclock.rs:4:35
    |
 4  |         b1a, b1b, b1c : bool when b0;
    |                                   ^^
+note: Expected because this expression moves at the implicit pace
+  --> tests/compile_fail/ui/clk/reclock.rs:16:15
+   |
+16 |         b2c = (not b0) when b1a; // Error
+   |               ^^^^^^^^

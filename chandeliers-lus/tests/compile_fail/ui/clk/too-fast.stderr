@@ -1,20 +1,15 @@
-error: Mismatch between clocks: 'when b on the left but 'self on the right
- --> tests/compile_fail/ui/clk/too-fast.rs:7:9
-  |
-7 |         n = if b then 1 else 2;
-  |         ^^^^^^^^^^^^^^^^^^^^^^
-  |
-note: This is clocked by 'when b
+error: This expression is too slow: expected the implicit clock 'self, found 'when b
  --> tests/compile_fail/ui/clk/too-fast.rs:7:9
   |
 7 |         n = if b then 1 else 2;
   |         ^
-note: defined here
+  |
+note: Found 'when b here
  --> tests/compile_fail/ui/clk/too-fast.rs:4:22
   |
 4 |         n : int when b;
   |                      ^
-note: This is clocked by 'self
+note: Expected because this expression moves at the implicit pace
  --> tests/compile_fail/ui/clk/too-fast.rs:7:13
   |
 7 |         n = if b then 1 else 2;

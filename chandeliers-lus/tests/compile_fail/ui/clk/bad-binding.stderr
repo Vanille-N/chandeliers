@@ -1,4 +1,4 @@
-error: Mismatch between clocks: 'when b1 on the left but 'when b2 on the right
+error: Two subexpressions have incomparable clocks: 'when b2 and 'when b1 are incompatible
   --> tests/compile_fail/ui/clk/bad-binding.rs:10:9
    |
 10 |         _n = 1 when b2;

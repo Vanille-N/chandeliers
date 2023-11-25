@@ -19,21 +19,6 @@ use crate::ast::ty::Clock;
 use crate::ast::{decl, expr, op, stmt, ty, var, Tuple};
 use crate::sp::{Sp, Span, WithSpan};
 
-/*
-macro_rules! at {
-    ($arr:expr, $idx:expr) => {
-        match $arr.get($idx) {
-            Some(x) => x,
-            None => err::abort!(
-                "Created a relative index of invalid size: index {} on tuple of length {}",
-                $idx,
-                $arr.len()
-            ),
-        }
-    };
-}
-*/
-
 crate::sp::derive_with_span!(WithDefSite<T> where <T>);
 /// A generic wrapper for objects that have two canonical `Span`s,
 /// one at the definition site and one at the call site.
@@ -292,31 +277,6 @@ impl ClockCheckExpr for var::Reference {
     }
 }
 
-impl Sp<&AbsoluteClk> {
-    fn assert_matches(self, eaccum: &mut EAccum, other: Self, whole: Span) -> Option<()> {
-        match (&self.t, &other.t) {
-            (AbsoluteClk::Adaptative, _)
-            | (_, AbsoluteClk::Adaptative)
-            | (AbsoluteClk::Implicit, AbsoluteClk::Implicit) => Some(()),
-            (AbsoluteClk::OnExplicit(id1), AbsoluteClk::OnExplicit(id2))
-            | (AbsoluteClk::OffExplicit(id1), AbsoluteClk::OffExplicit(id2))
-                if id1 == id2 =>
-            {
-                Some(())
-            }
-            _ => {
-                let mut es = vec![(
-                    format!("Mismatch between clocks: {self} on the left but {other} on the right",),
-                    Some(whole),
-                )];
-                err::clock_and_def_site(&mut es, &self);
-                err::clock_and_def_site(&mut es, &other);
-                eaccum.error(err::TmpRaw { es })
-            }
-        }
-    }
-}
-
 trait Reclock: Sized {
     fn reclock(
         self,
@@ -324,7 +284,7 @@ trait Reclock: Sized {
         whole: Span,
         lhs_span: Span,
         new: Sp<&AbsoluteClk>,
-        clock_of_clock: Sp<&AbsoluteClk>,
+        clock_of_clock: Sp<AbsoluteClk>,
     ) -> Option<Self>;
 }
 
@@ -335,7 +295,7 @@ impl<T: Reclock> Reclock for Sp<T> {
         whole: Span,
         _lhs_span: Span,
         new: Sp<&AbsoluteClk>,
-        clock_of_clock: Sp<&AbsoluteClk>,
+        clock_of_clock: Sp<AbsoluteClk>,
     ) -> Option<Self> {
         self.map(|span, t| t.reclock(eaccum, whole, span, new, clock_of_clock))
             .transpose()
@@ -349,11 +309,10 @@ impl Reclock for AbsoluteClk {
         whole: Span,
         lhs_span: Span,
         new: Sp<&AbsoluteClk>,
-        clock_of_clock: Sp<&AbsoluteClk>,
+        clock_of_clock: Sp<AbsoluteClk>,
     ) -> Option<Self> {
         self.with_span(lhs_span)
-            .as_ref()
-            .assert_matches(eaccum, clock_of_clock, whole)?;
+            .refine(eaccum, clock_of_clock, whole)?;
         Some(new.t.clone())
     }
 }
@@ -426,13 +385,7 @@ impl ClockCheckExpr for expr::Expr {
                 let activate = activate.as_clock(eaccum, *op)?;
                 Some(
                     inner
-                        .reclock(
-                            eaccum,
-                            span,
-                            span,
-                            activate.as_ref(),
-                            clock_of_clock.as_ref(),
-                        )?
+                        .reclock(eaccum, span, span, activate.as_ref(), clock_of_clock)?
                         .t,
                 )
             }
@@ -463,12 +416,10 @@ impl ClockCheckExpr for expr::Expr {
                 let on = on.clockcheck(eaccum, ctx);
                 let off = off.clockcheck(eaccum, ctx);
                 let switch = switch?;
-                let on = on?;
-                let off = off?;
-                on.as_ref()
-                    .assert_matches(eaccum, expect_on?.as_ref(), span)?;
-                off.as_ref()
-                    .assert_matches(eaccum, expect_off?.as_ref(), span)?;
+                let mut on = on?;
+                let mut off = off?;
+                on.refine(eaccum, expect_on?, span)?;
+                off.refine(eaccum, expect_off?, span)?;
                 Some(switch.t)
             }
         }
@@ -620,11 +571,9 @@ impl ClockCheckDecl for stmt::Statement {
                 Some(())
             }
             Self::Let { target, source } => {
-                let target = target.clockcheck(eaccum, ctx)?;
+                let mut target = target.clockcheck(eaccum, ctx)?;
                 let source = source.clockcheck(eaccum, ctx)?;
-                target
-                    .as_ref()
-                    .assert_matches(eaccum, source.as_ref(), span)?;
+                target.refine(eaccum, source, span)?;
                 Some(())
             }
         }
