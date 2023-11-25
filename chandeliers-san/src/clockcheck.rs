@@ -498,15 +498,9 @@ impl Sp<Box<expr::Expr>> {
                         )
                     }
                 }
-                var::Reference::Global(_) => eaccum.error(err::TmpBasic {
-                    msg: format!("Expression `{self}` cannot be interpreted as a clock."),
-                    span: self.span,
-                }),
+                var::Reference::Global(_) => eaccum.error(err::NotAClock { expr: self }),
             },
-            _ => eaccum.error(err::TmpBasic {
-                msg: format!("Expression `{self}` cannot be interpreted as a clock."),
-                span: self.span,
-            }),
+            _ => eaccum.error(err::NotAClock { expr: self }),
         }
     }
 }
@@ -519,24 +513,11 @@ impl Sp<&AbsoluteClk> {
                 eaccum.error(err::ClkTooSlowExpectImplicit {
                     slow: self,
                     implicit: None::<Span>,
-                    extra: &[help.to_owned(),
-                        "Delete the extra clock definition or put this in a separate node with its own clock".to_owned(),
+                    extra: &[
+                        help,
+                        "Delete the extra clock definition or put this in a separate node with its own clock",
                     ],
                 })
-                /*
-                let mut v = vec![(
-                    format!(
-                        "This clock is too slow: found {self}, expected the implicit clock 'self",
-                    ),
-                    Some(self.span),
-                )];
-                use err::TryDefSite;
-                if let Some(def_site) = self.try_def_site() {
-                    v.push(("due to this".to_owned(), Some(def_site)));
-                }
-                // FIXME: better suggestions
-                eaccum.error(err::TmpRaw { es: v })
-                */
             }
         }
     }

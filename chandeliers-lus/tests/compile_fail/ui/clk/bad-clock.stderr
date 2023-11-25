@@ -1,16 +1,16 @@
-error: Expression `true` cannot be interpreted as a clock.
+error: The expression `true` cannot be interpreted as a clock because it is not a local boolean variable
   --> tests/compile_fail/ui/clk/bad-clock.rs:10:29
    |
 10 |         () = ignore(() when true);
    |                             ^^^^
 
-error: Expression `(42 = 12)` cannot be interpreted as a clock.
+error: The expression `(42 = 12)` cannot be interpreted as a clock because it is not a local boolean variable
   --> tests/compile_fail/ui/clk/bad-clock.rs:11:29
    |
 11 |         () = ignore(() when (42 = 12));
    |                             ^^^^^^^^^
 
-error: Expression `b()` cannot be interpreted as a clock.
+error: The expression `b()` cannot be interpreted as a clock because it is not a local boolean variable
   --> tests/compile_fail/ui/clk/bad-clock.rs:12:29
    |
 12 |         () = ignore(() when (b()));

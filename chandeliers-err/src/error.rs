@@ -674,3 +674,21 @@ where
         es
     }
 }
+
+/// When an expression is not a valid clock (anything but a local variable).
+pub struct NotAClock<Expr> {
+    /// The faulty expression.
+    pub expr: Expr,
+}
+
+impl<Expr> IntoError for NotAClock<Expr>
+where
+    Expr: Display + TrySpan,
+{
+    fn into_err(self) -> Error {
+        vec![(
+            format!("The expression `{}` cannot be interpreted as a clock because it is not a local boolean variable", self.expr),
+            self.expr.try_span(),
+        )]
+    }
+}
