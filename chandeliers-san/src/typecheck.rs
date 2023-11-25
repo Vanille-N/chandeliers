@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use chandeliers_err::{self as err, EAccum, Transparent};
 
 use crate::ast::{self, ty, var, Tuple};
-use crate::sp::{Sp, Span, WithSpan};
+use crate::sp::{Sp, Span, WithDefSite, WithSpan};
 
 use ast::options::usage::Typecheck as This;
 
@@ -13,45 +13,13 @@ use ast::options::usage::Typecheck as This;
 /// lets' give it a less confusing alias.
 type SpTyBaseTuple = Sp<Tuple<Sp<ty::Base>>>;
 
-/// Representation of an object that has two relevant `Span`s:
-/// one where it is used, and one where it is defined.
-#[derive(Debug)]
-struct WithDefSite<T> {
-    /// Object and its usage site.
-    inner: Sp<T>,
-    /// Where the object was first defined.
-    def_site: Span,
-}
-
-impl<T> WithDefSite<T> {
-    /// Apply a function to the inner contents.
-    fn map<F, U>(self, f: F) -> WithDefSite<U>
-    where
-        F: FnOnce(Span, T) -> U,
-    {
-        WithDefSite {
-            inner: self.inner.map(f),
-            def_site: self.def_site,
-        }
-    }
-
-    /// Swap `WithDefSite` with a `&` so that `map` can be applied
-    /// without consuming the value.
-    fn as_ref(&self) -> WithDefSite<&T> {
-        WithDefSite {
-            inner: self.inner.as_ref(),
-            def_site: self.def_site,
-        }
-    }
-}
-
 /// Context that the typechecking is done in.
 #[derive(Debug)]
 struct TyCtx<'i> {
     /// Global variables with their types (all scalar).
-    global: &'i HashMap<var::Global, WithDefSite<ty::Base>>,
+    global: &'i HashMap<var::Global, WithDefSite<Sp<ty::Base>>>,
     /// Local variables (both inputs/outputs and hidden locals).
-    vars: HashMap<var::Local, WithDefSite<ty::Base>>,
+    vars: HashMap<var::Local, WithDefSite<Sp<ty::Base>>>,
     /// Known input and output types of nodes.
     /// Notice how these maps use `Node`s, not `NodeName`s:
     /// at the level at which typechecking on expressions is done, we have
@@ -65,7 +33,7 @@ struct TyCtx<'i> {
 impl<'i> TyCtx<'i> {
     /// Construct a fresh context with known global variables but no
     /// locals or blocks.
-    fn from_ext(global: &'i HashMap<var::Global, WithDefSite<ty::Base>>) -> TyCtx<'i> {
+    fn from_ext(global: &'i HashMap<var::Global, WithDefSite<Sp<ty::Base>>>) -> TyCtx<'i> {
         Self {
             global,
             vars: HashMap::default(),
@@ -77,12 +45,16 @@ impl<'i> TyCtx<'i> {
 
 impl TyCtx<'_> {
     /// Interpret a variable as a local variable and get its type if it exists.
-    fn get_var(&self, eaccum: &mut EAccum, var: Sp<&var::Local>) -> Option<WithDefSite<ty::Tuple>> {
+    fn get_var(
+        &self,
+        eaccum: &mut EAccum,
+        var: Sp<&var::Local>,
+    ) -> Option<WithDefSite<Sp<ty::Tuple>>> {
         match self.vars.get(var.t) {
             Some(vardef) => Some(
                 vardef
-                    .as_ref()
-                    .map(|span, ty| ty::Tuple::Single(ty.with_span(span))),
+                    .as_sp_ref()
+                    .sp_map(|span, ty| ty::Tuple::Single(ty.with_span(span))),
             ),
             None => eaccum.error(err::VarNotFound {
                 var: &var,
@@ -99,12 +71,12 @@ impl TyCtx<'_> {
         &self,
         eaccum: &mut EAccum,
         var: Sp<&var::Local>,
-    ) -> Option<WithDefSite<ty::Tuple>> {
+    ) -> Option<WithDefSite<Sp<ty::Tuple>>> {
         match self.vars.get(var.t) {
             Some(vardef) => Some(
                 vardef
-                    .as_ref()
-                    .map(|span, ty| ty::Tuple::Single(ty.with_span(span))),
+                    .as_sp_ref()
+                    .sp_map(|span, ty| ty::Tuple::Single(ty.with_span(span))),
             ),
             None => eaccum.error(err::TyVarNotFound {
                 var: &var,
@@ -118,12 +90,12 @@ impl TyCtx<'_> {
         &self,
         eaccum: &mut EAccum,
         var: Sp<&var::Global>,
-    ) -> Option<WithDefSite<ty::Tuple>> {
+    ) -> Option<WithDefSite<Sp<ty::Tuple>>> {
         match self.global.get(var.t) {
             Some(vardef) => Some(
                 vardef
-                    .as_ref()
-                    .map(|span, ty| ty::Tuple::Single(ty.with_span(span))),
+                    .as_sp_ref()
+                    .sp_map(|span, ty| ty::Tuple::Single(ty.with_span(span))),
             ),
             None => eaccum.error(err::VarNotFound {
                 var: &var,
@@ -436,12 +408,8 @@ impl TypeCheckExpr for ast::expr::Lit {
 impl TypeCheckExpr for var::Reference {
     fn typecheck(&self, eaccum: &mut EAccum, _span: Span, ctx: &TyCtx) -> Option<ty::Tuple> {
         Some(match self {
-            Self::Var(v) => {
-                ctx.get_var(eaccum, v.as_ref().map(|_, v| &v.var.t))?
-                    .inner
-                    .t
-            }
-            Self::Global(v) => ctx.get_global(eaccum, v.as_ref())?.inner.t,
+            Self::Var(v) => ctx.get_var(eaccum, v.as_ref().map(|_, v| &v.var.t))?.data.t,
+            Self::Global(v) => ctx.get_global(eaccum, v.as_ref())?.data.t,
         })
     }
 
@@ -466,7 +434,7 @@ impl TypeCheckExpr for ast::stmt::VarTuple {
             Some(ty::Tuple::Multiple(ts.with_span(span)))
         }
         match self {
-            VarTuple::Single(v) => Some(ctx.get_var(eaccum, v.as_ref())?.inner.t),
+            VarTuple::Single(v) => Some(ctx.get_var(eaccum, v.as_ref())?.data.t),
             VarTuple::Multiple(vs) => {
                 vs.as_ref()
                     .map(|span, vs| aux_multiple(eaccum, span, vs, ctx))
@@ -714,7 +682,7 @@ trait TypeCheckDecl {
         eaccum: &mut EAccum,
         span: Span,
         extfun: &HashMap<ast::decl::NodeName, (SpTyBaseTuple, SpTyBaseTuple)>,
-        extvar: &HashMap<var::Global, WithDefSite<ty::Base>>,
+        extvar: &HashMap<var::Global, WithDefSite<Sp<ty::Base>>>,
     ) -> Option<()>;
 
     /// Extract the public interface of the item, typically its name and input/output types
@@ -731,7 +699,7 @@ trait TypeCheckSpanDecl {
         &mut self,
         eaccum: &mut EAccum,
         extfun: &HashMap<ast::decl::NodeName, (SpTyBaseTuple, SpTyBaseTuple)>,
-        extvar: &HashMap<var::Global, WithDefSite<ty::Base>>,
+        extvar: &HashMap<var::Global, WithDefSite<Sp<ty::Base>>>,
     ) -> Option<()>;
     /// Projection to the inner `signature`.
     fn signature(&self) -> Self::Signature;
@@ -743,7 +711,7 @@ impl<T: TypeCheckDecl> TypeCheckSpanDecl for Sp<T> {
         &mut self,
         eaccum: &mut EAccum,
         extfun: &HashMap<ast::decl::NodeName, (SpTyBaseTuple, SpTyBaseTuple)>,
-        extvar: &HashMap<var::Global, WithDefSite<ty::Base>>,
+        extvar: &HashMap<var::Global, WithDefSite<Sp<ty::Base>>>,
     ) -> Option<()> {
         self.t.typecheck(eaccum, self.span, extfun, extvar)
     }
@@ -762,7 +730,7 @@ impl TypeCheckDecl for ast::decl::Node {
         eaccum: &mut EAccum,
         _span: Span,
         extfun: &HashMap<ast::decl::NodeName, (SpTyBaseTuple, SpTyBaseTuple)>,
-        extvar: &HashMap<var::Global, WithDefSite<ty::Base>>,
+        extvar: &HashMap<var::Global, WithDefSite<Sp<ty::Base>>>,
     ) -> Option<()> {
         let mut ctx = TyCtx::from_ext(extvar);
         // FIXME: prettify
@@ -801,8 +769,8 @@ impl TypeCheckDecl for ast::decl::Node {
                 ctx.vars.insert(
                     v.t.name.t.clone(),
                     WithDefSite {
-                        def_site: v.span,
-                        inner: v.t.ty.as_ref().map(|_, t| t.ty.t.inner.t),
+                        def_site: Transparent::from(Some(v.span)),
+                        data: v.t.ty.as_ref().map(|_, t| t.ty.t.inner.t),
                     },
                 );
             }
@@ -859,7 +827,7 @@ impl TypeCheckDecl for ast::decl::ExtNode {
         eaccum: &mut EAccum,
         _span: Span,
         _extfun: &HashMap<ast::decl::NodeName, (SpTyBaseTuple, SpTyBaseTuple)>,
-        _extvar: &HashMap<var::Global, WithDefSite<ty::Base>>,
+        _extvar: &HashMap<var::Global, WithDefSite<Sp<ty::Base>>>,
     ) -> Option<()> {
         let extvar = HashMap::default();
         let mut ctx = TyCtx::from_ext(&extvar);
@@ -897,8 +865,8 @@ impl TypeCheckDecl for ast::decl::ExtNode {
                 ctx.vars.insert(
                     v.t.name.t.clone(),
                     WithDefSite {
-                        def_site: v.span,
-                        inner: v.t.ty.as_ref().map(|_, t| t.ty.t.inner.t),
+                        def_site: Transparent::from(Some(v.span)),
+                        data: v.t.ty.as_ref().map(|_, t| t.ty.t.inner.t),
                     },
                 );
             }
@@ -946,7 +914,7 @@ impl TypeCheckExpr for ty::Clock {
                         })
                         .as_ref(),
                 )?;
-                let ty = ty.inner.is_primitive(eaccum)?;
+                let ty = ty.data.is_primitive(eaccum)?;
                 ty.is_bool(eaccum, "Clock", span)?;
                 Some(ty::Tuple::Single(ty))
             }
@@ -965,7 +933,7 @@ impl TypeCheckDecl for ast::decl::Const {
         eaccum: &mut EAccum,
         span: Span,
         _functx: &HashMap<ast::decl::NodeName, (SpTyBaseTuple, SpTyBaseTuple)>,
-        varctx: &HashMap<var::Global, WithDefSite<ty::Base>>,
+        varctx: &HashMap<var::Global, WithDefSite<Sp<ty::Base>>>,
     ) -> Option<()> {
         self.value.is_const(eaccum)?;
         let e = self.value.typecheck(eaccum, &TyCtx::from_ext(varctx))?;
@@ -989,7 +957,7 @@ impl TypeCheckDecl for ast::decl::ExtConst {
         _eaccum: &mut EAccum,
         _span: Span,
         _functx: &HashMap<ast::decl::NodeName, (SpTyBaseTuple, SpTyBaseTuple)>,
-        _varctx: &HashMap<var::Global, WithDefSite<ty::Base>>,
+        _varctx: &HashMap<var::Global, WithDefSite<Sp<ty::Base>>>,
     ) -> Option<()> {
         Some(())
     }
@@ -1022,8 +990,8 @@ impl Sp<ast::decl::Prog> {
                         .insert(
                             name.t.clone(),
                             WithDefSite {
-                                def_site: name.span,
-                                inner: ty,
+                                def_site: Transparent::from(Some(name.span)),
+                                data: ty,
                             },
                         )
                         .is_some()
@@ -1053,8 +1021,8 @@ impl Sp<ast::decl::Prog> {
                         .insert(
                             name.t.clone(),
                             WithDefSite {
-                                def_site: name.span,
-                                inner: ty,
+                                def_site: Transparent::from(Some(name.span)),
+                                data: ty,
                             },
                         )
                         .is_some()

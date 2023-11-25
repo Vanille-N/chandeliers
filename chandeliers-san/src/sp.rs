@@ -29,7 +29,7 @@ use std::fmt;
 use proc_macro2::TokenStream;
 use quote::{quote_spanned, ToTokens};
 
-use chandeliers_err as err;
+use chandeliers_err::{self as err, Transparent, TrySpan};
 pub use err::Span;
 
 /// Span wrapper.
@@ -127,6 +127,93 @@ impl<T> Sp<Option<T>> {
             Some(t) => Some(Sp { t, span: self.span }),
             None => None,
         }
+    }
+}
+
+derive_with_span!(WithDefSite<T> where <T>);
+/// A generic wrapper for objects that have two canonical `Span`s,
+/// one at the definition site and one at the call site.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct WithDefSite<T> {
+    /// Payload.
+    pub data: T,
+    /// Place where it was defined.
+    pub def_site: Transparent<Option<Span>>,
+}
+
+impl<T> WithDefSite<T> {
+    /// No relevant span to associate.
+    pub fn new_without(data: T) -> Self {
+        Self {
+            data,
+            def_site: Transparent::from(None),
+        }
+    }
+
+    /// Attach an additional span to an object.
+    pub fn try_with_def_site(mut self, span: Option<Span>) -> Self {
+        self.def_site = Transparent::from(span);
+        self
+    }
+
+    /// Attach an additional span to an object.
+    pub fn with_def_site(self, span: Span) -> Self {
+        self.try_with_def_site(Some(span))
+    }
+
+    /// Some extra associated span.
+    pub fn new_try_with(data: T, def_site: Option<Span>) -> Self {
+        Self::new_without(data).try_with_def_site(def_site)
+    }
+
+    /// Some extra associated span.
+    pub fn new_with(data: T, def_site: Span) -> Self {
+        Self::new_without(data).with_def_site(def_site)
+    }
+
+    /// Replace the definition site span, but only if there is not
+    /// already one defined.
+    pub fn try_override_inner(&mut self, t: &T)
+    where
+        T: TrySpan,
+    {
+        if let Some(new) = t.try_span() {
+            self.def_site.try_override_inner(new);
+        }
+    }
+}
+
+impl<T> WithDefSite<Sp<T>> {
+    /// Apply a function to the inner contents.
+    pub fn sp_map<F, U>(self, f: F) -> WithDefSite<Sp<U>>
+    where
+        F: FnOnce(Span, T) -> U,
+    {
+        WithDefSite {
+            data: self.data.map(f),
+            def_site: self.def_site,
+        }
+    }
+
+    /// Swap `WithDefSite` with a `&` so that `map` can be applied
+    /// without consuming the value.
+    pub fn as_sp_ref(&self) -> WithDefSite<Sp<&T>> {
+        WithDefSite {
+            data: self.data.as_ref(),
+            def_site: self.def_site,
+        }
+    }
+}
+
+impl<T: err::TrySpan> err::TrySpan for WithDefSite<T> {
+    fn try_span(&self) -> Option<Span> {
+        self.data.try_span()
+    }
+}
+
+impl<T> err::TryDefSite for WithDefSite<T> {
+    fn try_def_site(&self) -> Option<Span> {
+        Some(self.def_site.flatten()?.flatten())
     }
 }
 

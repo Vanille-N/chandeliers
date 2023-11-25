@@ -13,54 +13,18 @@
 use std::collections::HashMap;
 use std::fmt;
 
-use chandeliers_err::{self as err, EAccum, Transparent};
+use chandeliers_err::{self as err, EAccum};
 
 use crate::ast::ty::Clock;
 use crate::ast::{decl, expr, op, stmt, ty, var, Tuple};
-use crate::sp::{Sp, Span, WithSpan};
+use crate::sp::{Sp, Span, WithDefSite, WithSpan};
 
-crate::sp::derive_with_span!(WithDefSite<T> where <T>);
-/// A generic wrapper for objects that have two canonical `Span`s,
-/// one at the definition site and one at the call site.
-#[derive(Clone, PartialEq, Eq, Debug)]
-struct WithDefSite<T> {
-    /// Payload.
-    data: Sp<T>,
-    /// Place where it was defined.
-    def_site: Transparent<Option<Span>>,
-}
-
-impl<T> WithDefSite<T> {
-    /// No relevant span to associate.
-    fn without(data: Sp<T>) -> Self {
-        Self {
-            data,
-            def_site: Transparent::from(None),
-        }
-    }
-
-    /// Attach an additional span to an object.
-    fn with_def_site(mut self, span: Span) -> Self {
-        self.def_site = Transparent::from(Some(span));
-        self
-    }
-}
-
-impl<T> err::TrySpan for WithDefSite<T> {
-    fn try_span(&self) -> Option<Span> {
-        self.data.try_span()
-    }
-}
-
-impl<T> err::TryDefSite for WithDefSite<T> {
-    fn try_def_site(&self) -> Option<Span> {
-        Some(self.def_site.flatten()?.flatten())
-    }
-}
-
-crate::sp::derive_with_span!(AbsoluteClk);
+crate::sp::derive_with_span!(Clk);
+/// The clock of an expression.
+/// This is usually `Implicit` for variables and `Adaptative` for constants,
+/// but temporal operators produce other clocks.
 #[derive(Debug, Clone, PartialEq, Eq)]
-enum AbsoluteClk {
+enum Clk {
     /// Variables that move at the same speed as the node. You can call temporal
     /// operators (`pre`, `fby`) on these.
     Implicit,
@@ -71,14 +35,14 @@ enum AbsoluteClk {
     /// Positive dependency on a clock (obtained by the `when` operator).
     /// Carries a value whenever the contained variable (whose name is the `String`)
     /// is `true`.
-    OnExplicit(WithDefSite<String>),
+    OnExplicit(WithDefSite<Sp<String>>),
     /// Negative dependency on a clock (obtained by the `whenot` operator).
     /// Carries a value whenever the contained variable (whose name is the `String`)
     /// is `false`.
-    OffExplicit(WithDefSite<String>),
+    OffExplicit(WithDefSite<Sp<String>>),
 }
 
-impl fmt::Display for AbsoluteClk {
+impl fmt::Display for Clk {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Implicit => write!(f, "'self"),
@@ -89,7 +53,7 @@ impl fmt::Display for AbsoluteClk {
     }
 }
 
-impl err::TryDefSite for AbsoluteClk {
+impl err::TryDefSite for Clk {
     fn try_def_site(&self) -> Option<Span> {
         match self {
             Self::Implicit | Self::Adaptative => None,
@@ -99,16 +63,16 @@ impl err::TryDefSite for AbsoluteClk {
 }
 
 impl Sp<&ty::Clock> {
-    fn into_absolute(self) -> Sp<AbsoluteClk> {
+    fn into_clk(self) -> Sp<Clk> {
         match &self.t {
-            ty::Clock::Implicit => AbsoluteClk::Implicit,
-            ty::Clock::Adaptative => AbsoluteClk::Adaptative,
+            ty::Clock::Implicit => Clk::Implicit,
+            ty::Clock::Adaptative => Clk::Adaptative,
             ty::Clock::Explicit { id, activation } => {
-                let clk = WithDefSite::without(id.clone()).with_def_site(id.span);
+                let clk = WithDefSite::new_with(id.clone(), id.span);
                 if *activation {
-                    AbsoluteClk::OnExplicit(clk)
+                    Clk::OnExplicit(clk)
                 } else {
-                    AbsoluteClk::OffExplicit(clk)
+                    Clk::OffExplicit(clk)
                 }
             }
         }
@@ -120,13 +84,13 @@ impl Sp<&ty::Clock> {
 /// Local clock context, mapping local variables to their clocks.
 struct ExprClkCtx {
     /// Known clocked variables.
-    local: HashMap<var::Local, WithDefSite<Clock>>,
+    local: HashMap<var::Local, WithDefSite<Sp<Clock>>>,
 }
 
 impl ExprClkCtx {
     /// Fetch the clock of a local variable (global constants have an implicit clock that we never
     /// check).
-    fn clock_of(&self, var: &var::Local) -> WithDefSite<Clock> {
+    fn clock_of(&self, var: &var::Local) -> WithDefSite<Sp<Clock>> {
         self.local
             .get(var)
             .unwrap_or_else(|| {
@@ -143,12 +107,7 @@ trait ClockCheckExpr {
     /// Clock context (typically obtained by the `signature` on local variables and toplevel declarations)
     type Ctx<'node>;
     /// Verify internal consistency of the clocks.
-    fn clockcheck(
-        &self,
-        eaccum: &mut EAccum,
-        span: Span,
-        ctx: Self::Ctx<'_>,
-    ) -> Option<AbsoluteClk>;
+    fn clockcheck(&self, eaccum: &mut EAccum, span: Span, ctx: Self::Ctx<'_>) -> Option<Clk>;
 }
 
 /// Helper trait for `Sp` to implement `ClockCheckExpr`.
@@ -156,7 +115,7 @@ trait ClockCheckSpanExpr {
     /// Projection to the inner `Ctx`.
     type Ctx<'node>;
     /// Projection to the inner `clockcheck`.
-    fn clockcheck(&self, eaccum: &mut EAccum, ctx: Self::Ctx<'_>) -> Option<Sp<AbsoluteClk>>;
+    fn clockcheck(&self, eaccum: &mut EAccum, ctx: Self::Ctx<'_>) -> Option<Sp<Clk>>;
 }
 
 /// Clock typing interface for statements.
@@ -185,7 +144,7 @@ pub trait ClockCheck {
 
 impl<T: ClockCheckExpr> ClockCheckSpanExpr for Sp<T> {
     type Ctx<'node> = T::Ctx<'node>;
-    fn clockcheck(&self, eaccum: &mut EAccum, ctx: T::Ctx<'_>) -> Option<Sp<AbsoluteClk>> {
+    fn clockcheck(&self, eaccum: &mut EAccum, ctx: T::Ctx<'_>) -> Option<Sp<Clk>> {
         self.as_ref()
             .map(|span, t| t.clockcheck(eaccum, span, ctx))
             .transpose()
@@ -193,7 +152,7 @@ impl<T: ClockCheckExpr> ClockCheckSpanExpr for Sp<T> {
 }
 impl<T: ClockCheckExpr> ClockCheckExpr for Box<T> {
     type Ctx<'node> = T::Ctx<'node>;
-    fn clockcheck(&self, eaccum: &mut EAccum, span: Span, ctx: T::Ctx<'_>) -> Option<AbsoluteClk> {
+    fn clockcheck(&self, eaccum: &mut EAccum, span: Span, ctx: T::Ctx<'_>) -> Option<Clk> {
         self.as_ref().clockcheck(eaccum, span, ctx)
     }
 }
@@ -210,50 +169,30 @@ impl<T: ClockCheckDecl> ClockCheckSpanDecl for Sp<T> {
 
 impl ClockCheckExpr for expr::Lit {
     type Ctx<'node> = &'node mut ExprClkCtx;
-    fn clockcheck(
-        &self,
-        _eaccum: &mut EAccum,
-        _span: Span,
-        _ctx: Self::Ctx<'_>,
-    ) -> Option<AbsoluteClk> {
-        Some(AbsoluteClk::Adaptative)
+    fn clockcheck(&self, _eaccum: &mut EAccum, _span: Span, _ctx: Self::Ctx<'_>) -> Option<Clk> {
+        Some(Clk::Adaptative)
     }
 }
 
 impl ClockCheckExpr for var::Global {
     type Ctx<'node> = &'node mut ExprClkCtx;
-    fn clockcheck(
-        &self,
-        _eaccum: &mut EAccum,
-        _span: Span,
-        _ctx: Self::Ctx<'_>,
-    ) -> Option<AbsoluteClk> {
-        Some(AbsoluteClk::Adaptative)
+    fn clockcheck(&self, _eaccum: &mut EAccum, _span: Span, _ctx: Self::Ctx<'_>) -> Option<Clk> {
+        Some(Clk::Adaptative)
     }
 }
 
 impl ClockCheckExpr for var::Local {
     type Ctx<'node> = &'node mut ExprClkCtx;
-    fn clockcheck(
-        &self,
-        _eaccum: &mut EAccum,
-        _span: Span,
-        ctx: Self::Ctx<'_>,
-    ) -> Option<AbsoluteClk> {
+    fn clockcheck(&self, _eaccum: &mut EAccum, _span: Span, ctx: Self::Ctx<'_>) -> Option<Clk> {
         let implicit = ctx.clock_of(self);
-        let abs = implicit.data.as_ref().into_absolute();
+        let abs = implicit.data.as_ref().into_clk();
         Some(abs.t)
     }
 }
 
 impl ClockCheckExpr for var::Past {
     type Ctx<'node> = &'node mut ExprClkCtx;
-    fn clockcheck(
-        &self,
-        eaccum: &mut EAccum,
-        _span: Span,
-        ctx: Self::Ctx<'_>,
-    ) -> Option<AbsoluteClk> {
+    fn clockcheck(&self, eaccum: &mut EAccum, _span: Span, ctx: Self::Ctx<'_>) -> Option<Clk> {
         // There is a big question here in how we handle `pre (e when b)`.
         // The current approach is that it will be blocked at the level of
         // `DummyPre`.
@@ -264,12 +203,7 @@ impl ClockCheckExpr for var::Past {
 
 impl ClockCheckExpr for var::Reference {
     type Ctx<'node> = &'node mut ExprClkCtx;
-    fn clockcheck(
-        &self,
-        eaccum: &mut EAccum,
-        _span: Span,
-        ctx: Self::Ctx<'_>,
-    ) -> Option<AbsoluteClk> {
+    fn clockcheck(&self, eaccum: &mut EAccum, _span: Span, ctx: Self::Ctx<'_>) -> Option<Clk> {
         match self {
             Self::Global(g) => Some(g.clockcheck(eaccum, ctx)?.t),
             Self::Var(v) => Some(v.clockcheck(eaccum, ctx)?.t),
@@ -283,8 +217,8 @@ trait Reclock: Sized {
         eaccum: &mut EAccum,
         whole: Span,
         lhs_span: Span,
-        new: Sp<&AbsoluteClk>,
-        clock_of_clock: Sp<AbsoluteClk>,
+        new: Sp<&Clk>,
+        clock_of_clock: Sp<Clk>,
     ) -> Option<Self>;
 }
 
@@ -294,22 +228,22 @@ impl<T: Reclock> Reclock for Sp<T> {
         eaccum: &mut EAccum,
         whole: Span,
         _lhs_span: Span,
-        new: Sp<&AbsoluteClk>,
-        clock_of_clock: Sp<AbsoluteClk>,
+        new: Sp<&Clk>,
+        clock_of_clock: Sp<Clk>,
     ) -> Option<Self> {
         self.map(|span, t| t.reclock(eaccum, whole, span, new, clock_of_clock))
             .transpose()
     }
 }
 
-impl Reclock for AbsoluteClk {
+impl Reclock for Clk {
     fn reclock(
         self,
         eaccum: &mut EAccum,
         whole: Span,
         lhs_span: Span,
-        new: Sp<&AbsoluteClk>,
-        clock_of_clock: Sp<AbsoluteClk>,
+        new: Sp<&Clk>,
+        clock_of_clock: Sp<Clk>,
     ) -> Option<Self> {
         self.with_span(lhs_span)
             .refine(eaccum, clock_of_clock, whole)?;
@@ -319,12 +253,7 @@ impl Reclock for AbsoluteClk {
 
 impl ClockCheckExpr for expr::Expr {
     type Ctx<'node> = &'node mut ExprClkCtx;
-    fn clockcheck(
-        &self,
-        eaccum: &mut EAccum,
-        span: Span,
-        ctx: Self::Ctx<'_>,
-    ) -> Option<AbsoluteClk> {
+    fn clockcheck(&self, eaccum: &mut EAccum, span: Span, ctx: Self::Ctx<'_>) -> Option<Clk> {
         match self {
             Self::Lit(l) => Some(l.clockcheck(eaccum, ctx)?.t),
             Self::Reference(r) => Some(r.clockcheck(eaccum, ctx)?.t),
@@ -427,24 +356,24 @@ impl ClockCheckExpr for expr::Expr {
 }
 
 impl Sp<Box<expr::Expr>> {
-    fn as_clock(&self, eaccum: &mut EAccum, op: op::Clock) -> Option<Sp<AbsoluteClk>> {
+    fn as_clock(&self, eaccum: &mut EAccum, op: op::Clock) -> Option<Sp<Clk>> {
         match &*self.t {
             expr::Expr::Reference(r) => match &r.t {
                 var::Reference::Var(v) => {
                     if op == op::Clock::When {
                         Some(
-                            AbsoluteClk::OnExplicit(
-                                WithDefSite::without(v.t.var.t.repr.clone())
-                                    .with_def_site(self.span),
-                            )
+                            Clk::OnExplicit(WithDefSite::new_with(
+                                v.t.var.t.repr.clone(),
+                                self.span,
+                            ))
                             .with_span(v.span),
                         )
                     } else {
                         Some(
-                            AbsoluteClk::OffExplicit(
-                                WithDefSite::without(v.t.var.t.repr.clone())
-                                    .with_def_site(self.span),
-                            )
+                            Clk::OffExplicit(WithDefSite::new_with(
+                                v.t.var.t.repr.clone(),
+                                self.span,
+                            ))
                             .with_span(v.span),
                         )
                     }
@@ -456,11 +385,11 @@ impl Sp<Box<expr::Expr>> {
     }
 }
 
-impl Sp<&AbsoluteClk> {
+impl Sp<&Clk> {
     fn is_implicit(self, eaccum: &mut EAccum, help: &'static str) -> Option<()> {
         match &self.t {
-            AbsoluteClk::Implicit | AbsoluteClk::Adaptative => Some(()),
-            AbsoluteClk::OnExplicit(_) | AbsoluteClk::OffExplicit(_) => {
+            Clk::Implicit | Clk::Adaptative => Some(()),
+            Clk::OnExplicit(_) | Clk::OffExplicit(_) => {
                 eaccum.error(err::ClkTooSlowExpectImplicit {
                     slow: self,
                     implicit: None::<Span>,
@@ -474,12 +403,12 @@ impl Sp<&AbsoluteClk> {
     }
 }
 
-impl Sp<AbsoluteClk> {
+impl Sp<Clk> {
     /// Specialize `self` to be at least as precise as `other`.
     /// This will check and accumulate compatibility, so to check that all clocks in a tuple
     /// are compatible you can do something to the effect of
     /// ```skip
-    /// let mut current = AbsoluteClk::Implicit;
+    /// let mut current = Clk::Implicit;
     /// for e in tup {
     ///     current.refine(e)?;
     /// }
@@ -487,7 +416,7 @@ impl Sp<AbsoluteClk> {
     /// The rest is boilerplate for spans and accumulators.
     fn refine(&mut self, eaccum: &mut EAccum, other: Self, whole: Span) -> Option<()> {
         #[expect(clippy::enum_glob_use, reason = "Fine in local scope")]
-        use AbsoluteClk::*;
+        use Clk::*;
         match (&self.t, &other.t) {
             (Adaptative, _) => {
                 self.t = other.t;
@@ -530,13 +459,8 @@ where
     T: for<'node> ClockCheckSpanExpr<Ctx<'node> = &'node mut ExprClkCtx>,
 {
     type Ctx<'i> = &'i mut ExprClkCtx;
-    fn clockcheck(
-        &self,
-        eaccum: &mut EAccum,
-        span: Span,
-        ctx: Self::Ctx<'_>,
-    ) -> Option<AbsoluteClk> {
-        let mut global = AbsoluteClk::Adaptative.with_span(span);
+    fn clockcheck(&self, eaccum: &mut EAccum, span: Span, ctx: Self::Ctx<'_>) -> Option<Clk> {
+        let mut global = Clk::Adaptative.with_span(span);
         for e in self.iter() {
             let clk = e.clockcheck(eaccum, &mut *ctx)?;
             global.refine(eaccum, clk, span)?;
@@ -547,12 +471,7 @@ where
 
 impl ClockCheckExpr for stmt::VarTuple {
     type Ctx<'node> = &'node mut ExprClkCtx;
-    fn clockcheck(
-        &self,
-        eaccum: &mut EAccum,
-        _span: Span,
-        ctx: Self::Ctx<'_>,
-    ) -> Option<AbsoluteClk> {
+    fn clockcheck(&self, eaccum: &mut EAccum, _span: Span, ctx: Self::Ctx<'_>) -> Option<Clk> {
         match self {
             Self::Single(v) => Some(v.clockcheck(eaccum, ctx)?.t),
             Self::Multiple(tup) => Some(tup.clockcheck(eaccum, ctx)?.t),
@@ -586,18 +505,10 @@ impl ClockCheckDecl for decl::Node {
         // First the interface must be homogeneous
         for vs in [&self.inputs.t, &self.outputs.t] {
             for v in vs.iter() {
-                v.t.ty
-                    .t
-                    .ty
-                    .t
-                    .clk
-                    .as_ref()
-                    .into_absolute()
-                    .as_ref()
-                    .is_implicit(
-                        eaccum,
-                        "Node signature should use the implicit clock of the node",
-                    )?;
+                v.t.ty.t.ty.t.clk.as_ref().into_clk().as_ref().is_implicit(
+                    eaccum,
+                    "Node signature should use the implicit clock of the node",
+                )?;
             }
         }
         // Then we can check the body in the context of the interface with added
@@ -609,7 +520,7 @@ impl ClockCheckDecl for decl::Node {
             for v in vs.iter() {
                 ectx.local.insert(
                     v.t.name.t.clone(),
-                    WithDefSite::without(v.t.ty.t.ty.t.clk.clone()).with_def_site(v.span),
+                    WithDefSite::new_with(v.t.ty.t.ty.t.clk.clone(), v.span),
                 );
             }
         }
@@ -626,18 +537,10 @@ impl ClockCheckDecl for decl::ExtNode {
     fn clockcheck(&self, eaccum: &mut EAccum, _: Span, (): ()) -> Option<()> {
         for vs in [&self.inputs.t, &self.outputs.t] {
             for v in vs.iter() {
-                v.t.ty
-                    .t
-                    .ty
-                    .t
-                    .clk
-                    .as_ref()
-                    .into_absolute()
-                    .as_ref()
-                    .is_implicit(
-                        eaccum,
-                        "Node signature should use the implicit clock of the node",
-                    )?;
+                v.t.ty.t.ty.t.clk.as_ref().into_clk().as_ref().is_implicit(
+                    eaccum,
+                    "Node signature should use the implicit clock of the node",
+                )?;
             }
         }
         Some(())
@@ -646,13 +549,14 @@ impl ClockCheckDecl for decl::ExtNode {
 
 impl ClockCheck for Sp<decl::Prog> {
     fn clockcheck(&self, eaccum: &mut EAccum) -> Option<()> {
+        use decl::Decl;
         for decl in &self.t.decls {
             match &decl.t {
-                decl::Decl::Const(_) | decl::Decl::ExtConst(_) => {}
-                decl::Decl::Node(n) => {
+                Decl::Const(_) | Decl::ExtConst(_) => {}
+                Decl::Node(n) => {
                     n.clockcheck(eaccum, ())?;
                 }
-                decl::Decl::ExtNode(n) => {
+                Decl::ExtNode(n) => {
                     n.clockcheck(eaccum, ())?;
                 }
             }

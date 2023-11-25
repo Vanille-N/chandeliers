@@ -32,6 +32,17 @@ use std::hash::{Hash, Hasher};
 ///
 /// It additionally supports creating dummy values and they will also compare
 /// equal to all other and hash identically.
+///
+/// The use of a `Transparent<_>` as a field of a struct should be understood
+/// to convey the following intent: this field is useful only for diagnostics
+/// and is never relevant for decisions.
+/// This makes `Transparent::forge` suitable for use in unit tests where said
+/// diagnostic data may not be available and we still want the computation to
+/// be unaffected.
+///
+/// In fact the computation is guaranteed to be unaffected because `Transparent`
+/// provides no peeking method, and the only way to extract data is `unwrap`
+/// that will panic if the inner value was forged.
 #[derive(Clone, Copy)]
 pub struct Transparent<T> {
     /// Payload.
@@ -67,6 +78,21 @@ impl<T> Transparent<T> {
     #[must_use]
     pub fn forge(loc: &'static str) -> Self {
         Self { inner: Err(loc) }
+    }
+}
+
+impl<T> Transparent<Option<T>> {
+    /// If there is not already data, add it.
+    /// This is a noop if the contents were not forged.
+    pub fn try_override_inner(&mut self, t: T) {
+        match &mut self.inner {
+            Ok(s) => {
+                if s.is_none() {
+                    *s = Some(t);
+                }
+            }
+            Err(_) => self.inner = Ok(Some(t)),
+        }
     }
 }
 

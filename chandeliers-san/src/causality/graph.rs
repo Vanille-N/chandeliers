@@ -45,7 +45,7 @@ use std::hash::Hash;
 use chandeliers_err::{self as err, EAccum, TrySpan};
 
 use crate::causality::depends::Depends;
-use crate::sp::Span;
+use crate::sp::WithDefSite;
 
 /// The manipulations in this file are prone to out-of-bounds accesses,
 /// and because we are in a proc macro we won't get a nice error message
@@ -94,57 +94,6 @@ struct UnitIdx(usize);
 /// indexes provided by `register_new_obj`.
 #[derive(Debug, Clone, Copy)]
 struct ObjIdx(usize);
-
-/// Data that may be accompanied by a span, typically representing the place
-/// that the value was constructed so that the definition site can be shown
-/// in error messages.
-#[derive(Debug, Clone, Copy)]
-struct WithDefSite<Unit> {
-    /// Payload (may itself contain a span, usually the place that it is being used).
-    contents: Unit,
-    /// Where it was defined.
-    def_site: Option<Span>,
-}
-
-impl<Unit> WithDefSite<Unit> {
-    /// Wrap data without span.
-    fn without(o: &Unit) -> Self
-    where
-        Unit: Clone,
-    {
-        Self {
-            contents: o.clone(),
-            def_site: None,
-        }
-    }
-
-    /// Wrap data with something that might be a span.
-    fn try_with(o: &Unit, sp: impl TrySpan) -> Self
-    where
-        Unit: Clone,
-    {
-        Self {
-            contents: o.clone(),
-            def_site: sp.try_span(),
-        }
-    }
-
-    /// Replace the span, but only if there is not already a span
-    /// defined.
-    fn try_override_span(&mut self, o: &Unit)
-    where
-        Unit: TrySpan,
-    {
-        if self.def_site.is_none() {
-            self.def_site = o.try_span();
-        }
-    }
-
-    /// Explode this into the data and the span separately.
-    fn elements(&self) -> (&Unit, Option<Span>) {
-        (&self.contents, self.def_site)
-    }
-}
 
 /// A scheduler to resolve dependency requirements.
 #[derive(Debug, Clone)]
@@ -223,18 +172,18 @@ mod explore {
             // Compare `low_link` to find cycles: because `low_link` is initially
             // the (unique) index, a child with a smaller `low_link` gives a cycle.
             for w in at!(graph, v) {
-                if at!(self.extra, w.contents).index.is_none() {
+                if at!(self.extra, w.data).index.is_none() {
                     // Not explored at all, explore it.
-                    self.run(w.contents, graph);
+                    self.run(w.data, graph);
                     at!(mut self.extra, v).low_link = at!(self.extra, v)
                         .low_link
-                        .min(at!(self.extra, w.contents).low_link);
-                } else if at!(self.extra, w.contents).on_stack {
+                        .min(at!(self.extra, w.data).low_link);
+                } else if at!(self.extra, w.data).on_stack {
                     // Exploration still ongoing, `low_link` has not yet been fully computed,
                     // so use `index` instead.
                     at!(mut self.extra, v).low_link = at!(self.extra, v)
                         .low_link
-                        .min(at!(self.extra, w.contents).index);
+                        .min(at!(self.extra, w.data).index);
                 }
             }
 
@@ -277,7 +226,7 @@ mod explore {
 impl<Obj, Unit> Graph<Obj, Unit>
 where
     Obj: Depends<Output = Unit> + fmt::Debug,
-    Unit: TrySpan,
+    Unit: TrySpan + Clone,
     Obj: TrySpan,
     Unit: Clone + Hash + PartialEq + Eq + fmt::Debug + fmt::Display,
 {
@@ -288,12 +237,12 @@ where
             *uid
         } else {
             let uid = self.atomics.0.len();
-            self.atomics.0.push(WithDefSite::without(o));
+            self.atomics.0.push(WithDefSite::new_without(o.clone()));
             self.atomics.1.insert(o.clone(), uid);
             uid
         };
         if override_span {
-            at!(mut self.atomics.0, uid).try_override_span(o);
+            at!(mut self.atomics.0, uid).try_override_inner(o);
         }
         uid
     }
@@ -307,7 +256,7 @@ where
     pub fn already_provided(&mut self, o: Unit) {
         let uid = self.get_or_insert_atomic(&o, true);
         self.provided_by_ext
-            .insert(uid, WithDefSite::try_with(&(), o));
+            .insert(uid, WithDefSite::new_try_with((), o.try_span()));
     }
 
     /// Verify that a given `Unit` has already been provided by
@@ -338,12 +287,12 @@ where
         t.requires(&mut require_units);
         for prov in provide_units {
             let uid = self.get_or_insert_atomic(&prov, true);
-            provide_uids.push(WithDefSite::try_with(&uid, prov));
+            provide_uids.push(WithDefSite::new_try_with(uid, prov.try_span()));
             self.provided_for_ext.insert(uid);
         }
         for req in require_units {
             let uid = self.get_or_insert_atomic(&req, false);
-            require_uids.push(WithDefSite::try_with(&uid, req));
+            require_uids.push(WithDefSite::new_try_with(uid, req.try_span()));
         }
         err::consistency!(
             self.elements.len() == self.provide.len() && self.elements.len() == self.require.len(),
@@ -380,36 +329,36 @@ where
                     // First we check that the `Unit` is provided only once.
                     // This involves both `provided_by_ext` and `provider`
                     // currently being computed.
-                    if let Some(prior) = self.provided_by_ext.get(&p.contents) {
+                    if let Some(prior) = self.provided_by_ext.get(&p.data) {
                         eaccum.error(err::GraphUnitDeclTwice {
-                            unit: &at!(self.atomics.0, p.contents).contents,
+                            unit: &at!(self.atomics.0, p.data).data,
                             prior: "the context",
                             new_site: &at!(self.elements, id),
                             prior_site: prior.def_site,
                         })?;
                     }
-                    if let Some(prov) = at!(provider, p.contents) {
+                    if let Some(prov) = at!(provider, p.data) {
                         eaccum.error(err::GraphUnitDeclTwice {
-                            unit: &at!(self.atomics.0, p.contents).contents,
+                            unit: &at!(self.atomics.0, p.data).data,
                             prior: "a prior item",
                             new_site: &at!(self.elements, id),
                             prior_site: &at!(self.elements, *prov),
                         })?;
                     }
                     // Constraint is valid, record its provider.
-                    *at!(mut provider, p.contents) = Some(id);
+                    *at!(mut provider, p.data) = Some(id);
                     // Check for cycles of length 1.
                     // This is the best time to do it since the default SCC algorithm
                     // is fine with connected components of size 1.
                     for r in at!(self.require, id) {
-                        if r.contents == p.contents {
+                        if r.data == p.data {
                             eaccum.error(err::GraphUnitDependsOnItself {
-                                unit: &at!(self.atomics.0, p.contents).contents,
+                                unit: &at!(self.atomics.0, p.data).data,
                                 def_site: at!(self.elements, id),
                                 usage: r.def_site,
                             })?;
                         }
-                        at!(mut constraints, p.contents).push(*r);
+                        at!(mut constraints, p.data).push(r.clone());
                     }
                 }
             }
@@ -439,7 +388,10 @@ where
             );
             if c.len() > 1 {
                 // Oops, here's a loop.
-                let looping = c.iter().map(|l| at!(self.atomics.0, *l).elements());
+                let looping = c.iter().map(|l| {
+                    let e = at!(self.atomics.0, *l);
+                    (&e.data, e.def_site.unwrap())
+                });
                 eaccum.error(err::Cycle { items: looping })?;
             }
             // Correctly of size 1, we can use it next.
