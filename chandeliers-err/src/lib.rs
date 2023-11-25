@@ -119,8 +119,7 @@ pub struct EAccumScope<'a> {
 
 impl EAccum {
     /// Push a fatal error to the accumulator.
-    /// # Errors
-    /// Infaillible. Returns a `Result` so that you can do
+    /// Always returns a `None` so that you can use the construct
     /// `acc.error(...)?;`
     pub fn error<T, E: IntoError>(&mut self, e: E) -> Option<T> {
         self.err.push(e.into_err());

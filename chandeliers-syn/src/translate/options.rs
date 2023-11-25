@@ -104,7 +104,7 @@ impl<T> SetOpt<T> {
     /// Assert that this option was not set.
     fn skip(self, eaccum: &mut EAccum, current: &'static str) -> Option<()> {
         if self.value.is_some() {
-            eaccum.error(err::Basic {
+            eaccum.error(err::TmpBasic {
                 msg: format!(
                     "The attribute {} is not valid here (does not apply to {current})",
                     self.message
@@ -232,11 +232,11 @@ impl Decl {
                 $( syn:( $($syntax:tt)* ) )?
                 $( note:( $($suggestion:tt)* ) )?
             ) => {
-                eaccum.error(vec![
+                eaccum.error(err::TmpRaw { es: vec![
                     (format!("Malformed attribute {}: {}", action, format!($($msg)*)), Some(attr.span.into())),
                     $( (format!("Maybe try this syntax: {}", format!($($syntax)*)), None), )?
                     $( (format!($($suggestion)*), None), )?
-                ])?
+                ] })?
             };
         }
 
@@ -244,19 +244,21 @@ impl Decl {
         macro_rules! duplicate {
             ($opt:ident) => {
                 if self.$opt.value.is_some() {
-                    eaccum.warning(vec![
-                        (
-                            format!(
-                                "{} is already set by a previous attribute",
-                                self.$opt.message
+                    eaccum.warning(err::TmpRaw {
+                        es: vec![
+                            (
+                                format!(
+                                    "{} is already set by a previous attribute",
+                                    self.$opt.message
+                                ),
+                                Some(attr.span.into()),
                             ),
-                            Some(attr.span.into()),
-                        ),
-                        (
-                            format!("Previously declared here"),
-                            Some(self.$opt.span.unwrap()),
-                        ),
-                    ])
+                            (
+                                format!("Previously declared here"),
+                                Some(self.$opt.span.unwrap()),
+                            ),
+                        ],
+                    })
                 }
             };
         }
@@ -266,19 +268,21 @@ impl Decl {
         macro_rules! conflicting {
             ($this:ident, $other:ident) => {
                 if self.$other.value.is_some() {
-                    eaccum.warning(vec![
-                        (
-                            format!(
-                                "{} is incompatible with {}",
-                                self.$this.message, self.$other.message,
+                    eaccum.warning(err::TmpRaw {
+                        es: vec![
+                            (
+                                format!(
+                                    "{} is incompatible with {}",
+                                    self.$this.message, self.$other.message,
+                                ),
+                                Some(attr.span.into()),
                             ),
-                            Some(attr.span.into()),
-                        ),
-                        (
-                            format!("A conflicting attribute was set here"),
-                            Some(self.$other.span.unwrap()),
-                        ),
-                    ])
+                            (
+                                format!("A conflicting attribute was set here"),
+                                Some(self.$other.span.unwrap()),
+                            ),
+                        ],
+                    })
                 }
             };
         }

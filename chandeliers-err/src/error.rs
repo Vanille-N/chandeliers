@@ -17,12 +17,6 @@ pub trait IntoError {
     fn into_err(self) -> Error;
 }
 
-impl IntoError for Error {
-    fn into_err(self) -> Error {
-        self
-    }
-}
-
 /// Objects that can be converted to spans.
 pub trait TrySpan {
     /// Try to get a span from the object (by default we don't get any,
@@ -61,16 +55,32 @@ impl<T: TrySpan, E> TrySpan for Result<T, E> {
 }
 
 /// An explicit error message with its span.
-pub struct Basic {
+/// This error construct is meant to be phased out in favor of a prebuilt error
+/// message.
+pub struct TmpBasic {
     /// Error kind.
     pub msg: String,
     /// Error location.
     pub span: Span,
 }
 
-impl IntoError for Basic {
+impl IntoError for TmpBasic {
     fn into_err(self) -> Error {
         vec![(self.msg, Some(self.span))]
+    }
+}
+
+/// An explicit sequence of errors and spans
+/// This error construct is meant to be phased out in favor of a prebuilt error
+/// message.
+pub struct TmpRaw {
+    /// Messages and their spans.
+    pub es: Vec<(String, Option<Span>)>,
+}
+
+impl IntoError for TmpRaw {
+    fn into_err(self) -> Error {
+        self.es
     }
 }
 

@@ -507,7 +507,7 @@ mod test {
     }
 
     fn schedule(pairs: Vec<Triplet>) -> Result<Vec<Triplet>, Vec<String>> {
-        let mut eaccum = EAccum::new();
+        let mut eaccum = EAccum::default();
         let mut g = Graph::default();
         for pair in pairs {
             g.insert(pair);

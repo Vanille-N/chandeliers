@@ -52,8 +52,8 @@ fn new_run_uid() -> usize {
 /// ```
 /// chandeliers_lus::decl! {
 ///     #[trace[stderr]] // This means that every invocation of the node will print
-///              // debug information.
-///     node foo() returns (n : int);
+///                      // debug information.
+///     node count() returns (n : int);
 ///     let n = 0 fby n + 1; tel;
 ///
 ///     #[main(15)] // This means that this is the main function of the program.
@@ -61,8 +61,10 @@ fn new_run_uid() -> usize {
 ///     node system() returns ();
 ///     var n : int;
 ///     let
-///         n = count;
-///         assert n > 0;
+///         n = count();
+///         assert n > 0; // This will of course fail on the first iteration.
+///                       // An assertion error will be printed and `system` will
+///                       // abort.
 ///     tel
 /// }
 /// ```

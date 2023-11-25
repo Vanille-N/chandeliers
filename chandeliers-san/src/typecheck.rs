@@ -668,7 +668,7 @@ impl Sp<ty::Tuple> {
                 ty::Tuple::Single(t) => Some(t.t),
                 ty::Tuple::Multiple(_) => {
                     let s = "expected a scalar type, got a tuple type".to_owned();
-                    eaccum.error(err::Basic {
+                    eaccum.error(err::TmpBasic {
                         span: self.span,
                         msg: s,
                     })
@@ -770,13 +770,13 @@ impl TypeCheckDecl for ast::decl::Node {
         let is_test = self.options.test.fetch::<This>().is_some();
         if is_main || is_test {
             if !self.inputs.t.is_empty() {
-                eaccum.error(err::Basic {
+                eaccum.error(err::TmpBasic {
                     msg: "Node declared as executable (applies to `#[main]` and `#[test]`) should not have any inputs".to_owned(),
                     span: self.inputs.span,
                 })?;
             }
             if !self.outputs.t.is_empty() {
-                eaccum.error(err::Basic {
+                eaccum.error(err::TmpBasic {
                     msg: "Node declared as executable (applies to `#[main]` and `#[test]`) should not have any outputs".to_owned(),
                     span: self.inputs.span,
                 })?;
@@ -812,7 +812,7 @@ impl TypeCheckDecl for ast::decl::Node {
         for (id, blk) in self.blocks.iter().enumerate() {
             let Some((i, o)) = extfun.get(&blk.t) else {
                 let s = format!("Block {blk} is not defined");
-                return eaccum.error(err::Basic {
+                return eaccum.error(err::TmpBasic {
                     span: blk.span,
                     msg: s,
                 });
@@ -866,13 +866,13 @@ impl TypeCheckDecl for ast::decl::ExtNode {
         // FIXME: prettify
         if self.options.main.fetch::<This>().is_some() {
             if !self.inputs.t.is_empty() {
-                eaccum.error(err::Basic {
+                eaccum.error(err::TmpBasic {
                     msg: "Node declared as main should not have any inputs".to_owned(),
                     span: self.inputs.span,
                 })?;
             }
             if !self.outputs.t.is_empty() {
-                eaccum.error(err::Basic {
+                eaccum.error(err::TmpBasic {
                     msg: "Node declared as main should not have any outputs".to_owned(),
                     span: self.inputs.span,
                 })?;
@@ -1029,7 +1029,7 @@ impl Sp<ast::decl::Prog> {
                         .is_some()
                     {
                         let s = format!("Redefinition of const {name}");
-                        scope.error(err::Basic {
+                        scope.error(err::TmpBasic {
                             span: c.span,
                             msg: s,
                         });
@@ -1040,7 +1040,7 @@ impl Sp<ast::decl::Prog> {
                     let (name, i, o) = n.signature();
                     if functx.insert(name.t, (i, o)).is_some() {
                         let s = format!("Redefinition of node {}", n.t.name);
-                        scope.error(err::Basic {
+                        scope.error(err::TmpBasic {
                             span: n.span,
                             msg: s,
                         });
@@ -1060,7 +1060,7 @@ impl Sp<ast::decl::Prog> {
                         .is_some()
                     {
                         let s = format!("Redefinition of const {name}");
-                        scope.error(err::Basic {
+                        scope.error(err::TmpBasic {
                             span: c.span,
                             msg: s,
                         });
@@ -1071,7 +1071,7 @@ impl Sp<ast::decl::Prog> {
                     let (name, i, o) = n.signature();
                     if functx.insert(name.t, (i, o)).is_some() {
                         let s = format!("Redefinition of node {}", n.t.name);
-                        scope.error(err::Basic {
+                        scope.error(err::TmpBasic {
                             span: n.span,
                             msg: s,
                         });

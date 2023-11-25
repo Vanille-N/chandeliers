@@ -293,19 +293,19 @@ impl Sp<&AbsoluteClk> {
                 Some(())
             }
             _ => {
-                let mut v = vec![(
+                let mut es = vec![(
                     format!("Mismatch between clocks: {self} on the left but {other} on the right",),
                     Some(whole),
                 )];
-                v.push((format!("This is clocked by {self}"), Some(self.span)));
+                es.push((format!("This is clocked by {self}"), Some(self.span)));
                 if let Some(def_site) = self.t.def_site() {
-                    v.push(("due to this".to_owned(), Some(def_site)));
+                    es.push(("due to this".to_owned(), Some(def_site)));
                 }
-                v.push((format!("This is clocked by {other}"), Some(other.span)));
+                es.push((format!("This is clocked by {other}"), Some(other.span)));
                 if let Some(def_site) = other.t.def_site() {
-                    v.push(("due to this".to_owned(), Some(def_site)));
+                    es.push(("due to this".to_owned(), Some(def_site)));
                 }
-                eaccum.error(v)
+                eaccum.error(err::TmpRaw { es })
             }
         }
     }
@@ -492,12 +492,12 @@ impl Sp<Box<expr::Expr>> {
                         )
                     }
                 }
-                var::Reference::Global(_) => eaccum.error(err::Basic {
+                var::Reference::Global(_) => eaccum.error(err::TmpBasic {
                     msg: format!("Expression `{self}` cannot be interpreted as a clock."),
                     span: self.span,
                 }),
             },
-            _ => eaccum.error(err::Basic {
+            _ => eaccum.error(err::TmpBasic {
                 msg: format!("Expression `{self}` cannot be interpreted as a clock."),
                 span: self.span,
             }),
@@ -522,7 +522,7 @@ impl Sp<&AbsoluteClk> {
                 v.push((help.to_owned(), None));
                 // FIXME: better suggestions
                 v.push(("Delete the extra clock definition or put this in a separate node with its own clock".to_owned(), None));
-                eaccum.error(v)
+                eaccum.error(err::TmpRaw { es: v })
             }
         }
     }
@@ -543,11 +543,11 @@ impl Sp<AbsoluteClk> {
         #[expect(clippy::enum_glob_use, reason = "Fine in local scope")]
         use AbsoluteClk::*;
         match (&self.t, &other.t) {
-            (_, Adaptative) => Some(()),
             (Adaptative, _) => {
                 self.t = other.t;
                 Some(())
             }
+            (_, Adaptative) | (Implicit, Implicit) => Some(()),
             (Implicit, OnExplicit(_) | OffExplicit(_)) => {
                 let mut v = vec![(
                     format!("This expression is too slow: expected {self} got {other}",),
@@ -560,21 +560,21 @@ impl Sp<AbsoluteClk> {
                     "Expected because this expression moves at the implicit pace".to_owned(),
                     Some(self.span),
                 ));
-                eaccum.error(v)
+                eaccum.error(err::TmpRaw { es: v })
             }
             (OnExplicit(_) | OffExplicit(_), Implicit) => {
-                let mut v = vec![(
+                let mut es = vec![(
                     format!("This expression is too slow: expected {other} got {self}",),
                     Some(self.span),
                 )];
                 if let Some(def_site) = self.t.def_site() {
-                    v.push((format!("Found {self} here"), Some(def_site)));
+                    es.push((format!("Found {self} here"), Some(def_site)));
                 }
-                v.push((
+                es.push((
                     "Expected because this expression moves at the implicit pace".to_owned(),
                     Some(other.span),
                 ));
-                eaccum.error(v)
+                eaccum.error(err::TmpRaw { es })
             }
             (OnExplicit(l), OnExplicit(r)) if l == r => Some(()),
             (OffExplicit(l), OffExplicit(r)) if l == r => Some(()),
@@ -593,7 +593,7 @@ impl Sp<AbsoluteClk> {
                 if let Some(def_site) = other.t.def_site() {
                     v.push(("due to this".to_owned(), Some(def_site)));
                 }
-                eaccum.error(v)
+                eaccum.error(err::TmpRaw { es: v })
             }
         }
     }
