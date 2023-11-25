@@ -556,34 +556,16 @@ impl Sp<AbsoluteClk> {
             }
             (_, Adaptative) | (Implicit, Implicit) => Some(()),
             (Implicit, OnExplicit(_) | OffExplicit(_)) => {
-                let mut v = vec![(
-                    format!("This expression is too slow: expected {self} got {other}",),
-                    Some(other.span),
-                )];
-                use err::TryDefSite;
-                if let Some(def_site) = other.try_def_site() {
-                    v.push((format!("Found {other} here"), Some(def_site)));
-                }
-                v.push((
-                    "Expected because this expression moves at the implicit pace".to_owned(),
-                    Some(self.span),
-                ));
-                eaccum.error(err::TmpRaw { es: v })
+                eaccum.error(err::ClkTooSlowExpectImplicit {
+                    slow: other,
+                    implicit: &*self,
+                })
             }
             (OnExplicit(_) | OffExplicit(_), Implicit) => {
-                let mut es = vec![(
-                    format!("This expression is too slow: expected {other} got {self}",),
-                    Some(self.span),
-                )];
-                use err::TryDefSite;
-                if let Some(def_site) = self.try_def_site() {
-                    es.push((format!("Found {self} here"), Some(def_site)));
-                }
-                es.push((
-                    "Expected because this expression moves at the implicit pace".to_owned(),
-                    Some(other.span),
-                ));
-                eaccum.error(err::TmpRaw { es })
+                eaccum.error(err::ClkTooSlowExpectImplicit {
+                    slow: &*self,
+                    implicit: other,
+                })
             }
             (OnExplicit(l), OnExplicit(r)) if l == r => Some(()),
             (OffExplicit(l), OffExplicit(r)) if l == r => Some(()),

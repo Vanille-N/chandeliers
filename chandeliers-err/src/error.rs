@@ -632,3 +632,36 @@ where
         es.push(("defined here".to_owned(), Some(def)));
     }
 }
+
+/// Generate an error when due to `implicit` that has the implicit clock,
+/// `slow` was expected to also have the implicit clock but doesn't.
+pub struct ClkTooSlowExpectImplicit<Slow, Implicit> {
+    /// Clocked by something else, should have been `'self`.
+    pub slow: Slow,
+    /// Clocked by `'self`
+    pub implicit: Implicit,
+}
+
+impl<Slow, Implicit> IntoError for ClkTooSlowExpectImplicit<Slow, Implicit>
+where
+    Slow: Display + TrySpan + TryDefSite,
+    Implicit: TrySpan,
+{
+    fn into_err(self) -> Error {
+        let mut es = vec![(
+            format!(
+                "This expression is too slow: expected the implicit clock 'self, found {}",
+                self.slow
+            ),
+            self.slow.try_span(),
+        )];
+        if let Some(def) = self.slow.try_def_site() {
+            es.push((format!("Found {} here", self.slow), Some(def)));
+        }
+        es.push((
+            "Expected because this expression moves at the implicit pace".to_owned(),
+            self.implicit.try_span(),
+        ));
+        es
+    }
+}

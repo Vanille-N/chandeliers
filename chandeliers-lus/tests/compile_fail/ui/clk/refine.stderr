@@ -25,7 +25,7 @@ note: defined here
 9  |         y : int whenot b;
    |                        ^
 
-error: This expression is too slow: expected 'self got 'when b
+error: This expression is too slow: expected the implicit clock 'self, found 'when b
   --> tests/compile_fail/ui/clk/refine.rs:21:21
    |
 21 |         () = ignore(x + z);
@@ -69,7 +69,7 @@ note: defined here
 7  |         x : int when b;
    |                      ^
 
-error: This expression is too slow: expected 'self got 'whenot b
+error: This expression is too slow: expected the implicit clock 'self, found 'whenot b
   --> tests/compile_fail/ui/clk/refine.rs:23:21
    |
 23 |         () = ignore(y + z);
@@ -86,7 +86,7 @@ note: Expected because this expression moves at the implicit pace
 23 |         () = ignore(y + z);
    |                         ^
 
-error: This expression is too slow: expected 'self got 'when b
+error: This expression is too slow: expected the implicit clock 'self, found 'when b
   --> tests/compile_fail/ui/clk/refine.rs:24:25
    |
 24 |         () = ignore(z + x);
@@ -103,7 +103,7 @@ note: Expected because this expression moves at the implicit pace
 24 |         () = ignore(z + x);
    |                     ^
 
-error: This expression is too slow: expected 'self got 'whenot b
+error: This expression is too slow: expected the implicit clock 'self, found 'whenot b
   --> tests/compile_fail/ui/clk/refine.rs:25:25
    |
 25 |         () = ignore(z + y);

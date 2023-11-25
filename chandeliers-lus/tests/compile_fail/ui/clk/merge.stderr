@@ -1,4 +1,4 @@
-error: This expression is too slow: expected 'self got 'when b
+error: This expression is too slow: expected the implicit clock 'self, found 'when b
  --> tests/compile_fail/ui/clk/merge.rs:4:23
   |
 4 |         i = if b then x when b else y whenot b;
