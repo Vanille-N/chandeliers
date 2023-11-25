@@ -54,6 +54,40 @@ impl<T: TrySpan, E> TrySpan for Result<T, E> {
     }
 }
 
+/// Objects that have a different way that they can be seen as a span
+pub trait TryDefSite {
+    /// Try to get a span from the object (by default we don't get any,
+    /// but a wrapper might provide one)
+    fn try_def_site(&self) -> Option<Span> {
+        None
+    }
+}
+
+/// Always [None]: `Span` provides a usage site not a def site.
+/// Put it in a wrapper if you want one.
+impl TryDefSite for Span {}
+
+/// Trivial projection.
+impl<T: TryDefSite> TryDefSite for &T {
+    fn try_def_site(&self) -> Option<Span> {
+        (*self).try_def_site()
+    }
+}
+
+/// Trivial projection.
+impl<T: TryDefSite> TryDefSite for Option<T> {
+    fn try_def_site(&self) -> Option<Span> {
+        self.as_ref().and_then(TryDefSite::try_def_site)
+    }
+}
+
+/// Trivial projection.
+impl<T: TryDefSite, E> TryDefSite for Result<T, E> {
+    fn try_def_site(&self) -> Option<Span> {
+        self.as_ref().ok().and_then(TryDefSite::try_def_site)
+    }
+}
+
 /// An explicit error message with its span.
 /// This error construct is meant to be phased out in favor of a prebuilt error
 /// message.
@@ -584,5 +618,17 @@ where
             format!("Maybe replace `{first} {oper1} {second} {oper2} {third}` with `{first} {oper1} {second} and {second} {oper2} {third}` ?"),
             None,
         )]
+    }
+}
+
+/// To help track clock errors we show the usage site and the definition site if
+/// it exists.
+pub fn clock_and_def_site<Clk>(es: &mut Error, clk: Clk)
+where
+    Clk: Display + TrySpan + TryDefSite,
+{
+    es.push((format!("This is clocked by {clk}"), clk.try_span()));
+    if let Some(def) = clk.try_def_site() {
+        es.push(("defined here".to_owned(), Some(def)));
     }
 }

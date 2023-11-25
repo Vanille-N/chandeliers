@@ -9,7 +9,7 @@ note: This is clocked by 'when b
   |
 7 |         n = if b then 1 else 2;
   |         ^
-note: due to this
+note: defined here
  --> tests/compile_fail/ui/clk/too-fast.rs:4:22
   |
 4 |         n : int when b;

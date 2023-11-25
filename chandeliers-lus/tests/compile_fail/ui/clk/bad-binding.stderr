@@ -9,7 +9,7 @@ note: This is clocked by 'when b1
    |
 10 |         _n = 1 when b2;
    |         ^^
-note: due to this
+note: defined here
   --> tests/compile_fail/ui/clk/bad-binding.rs:6:23
    |
 6  |         _n : int when b1;
@@ -19,7 +19,7 @@ note: This is clocked by 'when b2
    |
 10 |         _n = 1 when b2;
    |              ^^^^^^^^^
-note: due to this
+note: defined here
   --> tests/compile_fail/ui/clk/bad-binding.rs:10:21
    |
 10 |         _n = 1 when b2;

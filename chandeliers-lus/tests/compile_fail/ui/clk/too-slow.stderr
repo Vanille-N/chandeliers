@@ -14,7 +14,7 @@ note: This is clocked by 'when b
   |
 6 |         _n = 1 when b;
   |              ^^^^^^^^
-note: due to this
+note: defined here
  --> tests/compile_fail/ui/clk/too-slow.rs:6:21
   |
 6 |         _n = 1 when b;

@@ -55,6 +55,12 @@ impl<T> err::TrySpan for Sp<T> {
     }
 }
 
+impl<T: err::TryDefSite> err::TryDefSite for Sp<T> {
+    fn try_def_site(&self) -> Option<Span> {
+        self.t.try_def_site()
+    }
+}
+
 impl<T> Sp<T> {
     /// Convert a `&Sp<T>` into a `Sp<&T>`.
     /// Mostly useful because `map` consumes Self and

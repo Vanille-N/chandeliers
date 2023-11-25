@@ -9,7 +9,7 @@ note: This is clocked by 'when b0
    |
 11 |         b1b = true when b1a; // Error
    |         ^^^
-note: due to this
+note: defined here
   --> tests/compile_fail/ui/clk/reclock.rs:4:35
    |
 4  |         b1a, b1b, b1c : bool when b0;
@@ -19,7 +19,7 @@ note: This is clocked by 'when b1a
    |
 11 |         b1b = true when b1a; // Error
    |               ^^^^^^^^^^^^^
-note: due to this
+note: defined here
   --> tests/compile_fail/ui/clk/reclock.rs:11:25
    |
 11 |         b1b = true when b1a; // Error
@@ -41,7 +41,7 @@ note: This is clocked by 'when b0
    |
 16 |         b2c = (not b0) when b1a; // Error
    |                             ^^^
-note: due to this
+note: defined here
   --> tests/compile_fail/ui/clk/reclock.rs:4:35
    |
 4  |         b1a, b1b, b1c : bool when b0;

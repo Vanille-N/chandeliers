@@ -61,6 +61,18 @@ impl<T> WithDefSite<T> {
     }
 }
 
+impl<T> err::TrySpan for WithDefSite<T> {
+    fn try_span(&self) -> Option<Span> {
+        self.data.try_span()
+    }
+}
+
+impl<T> err::TryDefSite for WithDefSite<T> {
+    fn try_def_site(&self) -> Option<Span> {
+        Some(self.def_site.flatten()?.flatten())
+    }
+}
+
 crate::sp::derive_with_span!(AbsoluteClk);
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum AbsoluteClk {
@@ -92,11 +104,11 @@ impl fmt::Display for AbsoluteClk {
     }
 }
 
-impl AbsoluteClk {
-    fn def_site(&self) -> Option<Span> {
+impl err::TryDefSite for AbsoluteClk {
+    fn try_def_site(&self) -> Option<Span> {
         match self {
             Self::Implicit | Self::Adaptative => None,
-            Self::OnExplicit(c) | Self::OffExplicit(c) => Some(c.def_site.flatten()?.flatten()),
+            Self::OnExplicit(c) | Self::OffExplicit(c) => c.try_def_site(),
         }
     }
 }
@@ -297,14 +309,8 @@ impl Sp<&AbsoluteClk> {
                     format!("Mismatch between clocks: {self} on the left but {other} on the right",),
                     Some(whole),
                 )];
-                es.push((format!("This is clocked by {self}"), Some(self.span)));
-                if let Some(def_site) = self.t.def_site() {
-                    es.push(("due to this".to_owned(), Some(def_site)));
-                }
-                es.push((format!("This is clocked by {other}"), Some(other.span)));
-                if let Some(def_site) = other.t.def_site() {
-                    es.push(("due to this".to_owned(), Some(def_site)));
-                }
+                err::clock_and_def_site(&mut es, &self);
+                err::clock_and_def_site(&mut es, &other);
                 eaccum.error(err::TmpRaw { es })
             }
         }
@@ -516,7 +522,8 @@ impl Sp<&AbsoluteClk> {
                     ),
                     Some(self.span),
                 )];
-                if let Some(def_site) = self.t.def_site() {
+                use err::TryDefSite;
+                if let Some(def_site) = self.try_def_site() {
                     v.push(("due to this".to_owned(), Some(def_site)));
                 }
                 v.push((help.to_owned(), None));
@@ -553,7 +560,8 @@ impl Sp<AbsoluteClk> {
                     format!("This expression is too slow: expected {self} got {other}",),
                     Some(other.span),
                 )];
-                if let Some(def_site) = other.t.def_site() {
+                use err::TryDefSite;
+                if let Some(def_site) = other.try_def_site() {
                     v.push((format!("Found {other} here"), Some(def_site)));
                 }
                 v.push((
@@ -567,7 +575,8 @@ impl Sp<AbsoluteClk> {
                     format!("This expression is too slow: expected {other} got {self}",),
                     Some(self.span),
                 )];
-                if let Some(def_site) = self.t.def_site() {
+                use err::TryDefSite;
+                if let Some(def_site) = self.try_def_site() {
                     es.push((format!("Found {self} here"), Some(def_site)));
                 }
                 es.push((
@@ -585,14 +594,8 @@ impl Sp<AbsoluteClk> {
                     ),
                     Some(whole),
                 )];
-                v.push((format!("found {self} here"), Some(self.span)));
-                if let Some(def_site) = self.t.def_site() {
-                    v.push(("due to this".to_owned(), Some(def_site)));
-                }
-                v.push((format!("Meanwhile found {other} here"), Some(other.span)));
-                if let Some(def_site) = other.t.def_site() {
-                    v.push(("due to this".to_owned(), Some(def_site)));
-                }
+                err::clock_and_def_site(&mut v, &*self);
+                err::clock_and_def_site(&mut v, &other);
                 eaccum.error(err::TmpRaw { es: v })
             }
         }
