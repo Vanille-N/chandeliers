@@ -516,6 +516,14 @@ impl Sp<&AbsoluteClk> {
         match &self.t {
             AbsoluteClk::Implicit | AbsoluteClk::Adaptative => Some(()),
             AbsoluteClk::OnExplicit(_) | AbsoluteClk::OffExplicit(_) => {
+                eaccum.error(err::ClkTooSlowExpectImplicit {
+                    slow: self,
+                    implicit: None::<Span>,
+                    extra: &[help.to_owned(),
+                        "Delete the extra clock definition or put this in a separate node with its own clock".to_owned(),
+                    ],
+                })
+                /*
                 let mut v = vec![(
                     format!(
                         "This clock is too slow: found {self}, expected the implicit clock 'self",
@@ -526,10 +534,9 @@ impl Sp<&AbsoluteClk> {
                 if let Some(def_site) = self.try_def_site() {
                     v.push(("due to this".to_owned(), Some(def_site)));
                 }
-                v.push((help.to_owned(), None));
                 // FIXME: better suggestions
-                v.push(("Delete the extra clock definition or put this in a separate node with its own clock".to_owned(), None));
                 eaccum.error(err::TmpRaw { es: v })
+                */
             }
         }
     }
@@ -559,12 +566,14 @@ impl Sp<AbsoluteClk> {
                 eaccum.error(err::ClkTooSlowExpectImplicit {
                     slow: other,
                     implicit: &*self,
+                    extra: None::<&str>,
                 })
             }
             (OnExplicit(_) | OffExplicit(_), Implicit) => {
                 eaccum.error(err::ClkTooSlowExpectImplicit {
                     slow: &*self,
                     implicit: other,
+                    extra: None::<&str>,
                 })
             }
             (OnExplicit(l), OnExplicit(r)) if l == r => Some(()),

@@ -635,17 +635,21 @@ where
 
 /// Generate an error when due to `implicit` that has the implicit clock,
 /// `slow` was expected to also have the implicit clock but doesn't.
-pub struct ClkTooSlowExpectImplicit<Slow, Implicit> {
+pub struct ClkTooSlowExpectImplicit<Slow, Implicit, Extra> {
     /// Clocked by something else, should have been `'self`.
     pub slow: Slow,
     /// Clocked by `'self`
     pub implicit: Implicit,
+    /// Extra help messages, optionally.
+    pub extra: Extra,
 }
 
-impl<Slow, Implicit> IntoError for ClkTooSlowExpectImplicit<Slow, Implicit>
+impl<Slow, Implicit, Extra, Help> IntoError for ClkTooSlowExpectImplicit<Slow, Implicit, Extra>
 where
     Slow: Display + TrySpan + TryDefSite,
     Implicit: TrySpan,
+    Extra: IntoIterator<Item = Help>,
+    Help: Display,
 {
     fn into_err(self) -> Error {
         let mut es = vec![(
@@ -658,10 +662,15 @@ where
         if let Some(def) = self.slow.try_def_site() {
             es.push((format!("Found {} here", self.slow), Some(def)));
         }
-        es.push((
-            "Expected because this expression moves at the implicit pace".to_owned(),
-            self.implicit.try_span(),
-        ));
+        if let Some(reason) = self.implicit.try_span() {
+            es.push((
+                "Expected because this expression moves at the implicit pace".to_owned(),
+                Some(reason),
+            ));
+        }
+        for h in self.extra.into_iter() {
+            es.push((h.to_string(), None));
+        }
         es
     }
 }

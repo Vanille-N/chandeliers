@@ -1,10 +1,10 @@
-error: This clock is too slow: found 'when b, expected the implicit clock 'self
+error: This expression is too slow: expected the implicit clock 'self, found 'when b
  --> tests/compile_fail/ui/clk/pre-clocked.rs:6:17
   |
 6 |         w = pre v;
   |                 ^
   |
-note: due to this
+note: Found 'when b here
  --> tests/compile_fail/ui/clk/pre-clocked.rs:3:28
   |
 3 |     var v, w, x : int when b;
@@ -12,13 +12,13 @@ note: due to this
   = note: The pre operator operates under the nodes's implicit clock
   = note: Delete the extra clock definition or put this in a separate node with its own clock
 
-error: This clock is too slow: found 'when b, expected the implicit clock 'self
+error: This expression is too slow: expected the implicit clock 'self, found 'when b
  --> tests/compile_fail/ui/clk/pre-clocked.rs:7:18
   |
 7 |         x = 0 -> v;
   |                  ^
   |
-note: due to this
+note: Found 'when b here
  --> tests/compile_fail/ui/clk/pre-clocked.rs:3:28
   |
 3 |     var v, w, x : int when b;
