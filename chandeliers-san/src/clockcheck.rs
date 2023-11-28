@@ -439,17 +439,11 @@ impl Sp<Clk> {
             }
             (OnExplicit(l), OnExplicit(r)) if l == r => Some(()),
             (OffExplicit(l), OffExplicit(r)) if l == r => Some(()),
-            _ => {
-                let mut v = vec![(
-                    format!(
-                        "Two subexpressions have incomparable clocks: {other} and {self} are incompatible",
-                    ),
-                    Some(whole),
-                )];
-                err::clock_and_def_site(&mut v, &*self);
-                err::clock_and_def_site(&mut v, &other);
-                eaccum.error(err::TmpRaw { es: v })
-            }
+            _ => eaccum.error(err::ClkNotComparable {
+                first: &*self,
+                second: &other,
+                whole,
+            }),
         }
     }
 }

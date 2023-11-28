@@ -692,3 +692,33 @@ where
         )]
     }
 }
+
+/// When two clocks are both non-implicit but different.
+pub struct ClkNotComparable<First, Second, Whole> {
+    /// First clock.
+    pub first: First,
+    /// Second clock.
+    pub second: Second,
+    /// Span of the whole expression that contains both.
+    pub whole: Whole,
+}
+
+impl<First, Second, Whole> IntoError for ClkNotComparable<First, Second, Whole>
+where
+    First: Display + TrySpan + TryDefSite,
+    Second: Display + TrySpan + TryDefSite,
+    Whole: TrySpan,
+{
+    fn into_err(self) -> Error {
+        let mut v = vec![(
+            format!(
+                "Two subexpressions have incomparable clocks: {} and {} are incompatible",
+                self.first, self.second,
+            ),
+            self.whole.try_span(),
+        )];
+        clock_and_def_site(&mut v, self.first);
+        clock_and_def_site(&mut v, self.second);
+        v
+    }
+}

@@ -351,7 +351,7 @@ macro_rules! selection_aux_decl {
                 pub impl_trait: UseOpt<bool, Sites<Codegen, Over>>,
         ) ++ ( $($rest)* ) ); };
     ( $struct:ident ( $($done:tt)* ) ++ ( main , $($rest:tt)* ) )
-        // `#[main]` is of type `Option<usize>` and is useful only during both
+        // `#[main]` is of type `Option<usize>` and is useful during both
         // typechecking (verify that the inputs and outputs are `()`) and codegen
         // (write the actual function).
         => { selection_aux_decl!($struct ( $($done)*
