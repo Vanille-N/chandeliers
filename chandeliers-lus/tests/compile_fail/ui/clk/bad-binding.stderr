@@ -1,4 +1,4 @@
-error: Two subexpressions have incomparable clocks: 'when b2 and 'when b1 are incompatible
+error: Two subexpressions have incomparable clocks: 'when b1 and 'when b2 are incompatible
   --> tests/compile_fail/ui/clk/bad-binding.rs:10:9
    |
 10 |         _n = 1 when b2;

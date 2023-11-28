@@ -1,4 +1,4 @@
-error: Two subexpressions have incomparable clocks: 'whenot b and 'when b are incompatible
+error: Two subexpressions have incomparable clocks: 'when b and 'whenot b are incompatible
   --> tests/compile_fail/ui/clk/refine.rs:20:20
    |
 20 |         () = ignore(x + y);
@@ -42,7 +42,7 @@ note: Expected because this expression moves at the implicit pace
 21 |         () = ignore(x + z);
    |                         ^
 
-error: Two subexpressions have incomparable clocks: 'when b and 'whenot b are incompatible
+error: Two subexpressions have incomparable clocks: 'whenot b and 'when b are incompatible
   --> tests/compile_fail/ui/clk/refine.rs:22:20
    |
 22 |         () = ignore(y + x);
@@ -120,7 +120,7 @@ note: Expected because this expression moves at the implicit pace
 25 |         () = ignore(z + y);
    |                     ^
 
-error: Two subexpressions have incomparable clocks: 'when d and 'when b are incompatible
+error: Two subexpressions have incomparable clocks: 'when b and 'when d are incompatible
   --> tests/compile_fail/ui/clk/refine.rs:26:20
    |
 26 |         () = ignore(x + xd);
@@ -147,7 +147,7 @@ note: defined here
 8  |         xd : int when d;
    |                       ^
 
-error: Two subexpressions have incomparable clocks: 'whenot d and 'whenot b are incompatible
+error: Two subexpressions have incomparable clocks: 'whenot b and 'whenot d are incompatible
   --> tests/compile_fail/ui/clk/refine.rs:27:20
    |
 27 |         () = ignore(y + yd);
