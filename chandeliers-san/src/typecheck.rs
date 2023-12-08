@@ -142,12 +142,12 @@ impl TyCtx<'_> {
     fn instantiate(&mut self, node: Sp<&var::Node>, unifier: &TyUnifier) {
         let gen = self.nodes_generics.get_mut(node.t).unwrap();
         match unifier {
-            TyUnifier::Mapping { idx, subst } => {
+            TyUnifier::Mapping { idx: _, subst } => {
                 gen.1 = Some(subst.iter().map(|v| v.clone().unwrap()).collect());
             }
             _ => {
                 gen.1 = Some(vec![]);
-            },
+            }
         }
     }
 }
@@ -603,7 +603,7 @@ enum TyUnifier {
 }
 
 impl TyUnifier {
-    fn from_generics(eaccum: &mut EAccum, generics: Vec<Sp<String>>) -> Option<Self> {
+    fn from_generics(_eaccum: &mut EAccum, generics: Vec<Sp<String>>) -> Option<Self> {
         let mut idx = HashMap::new();
         let len = generics.len();
         for (i, gen) in generics.into_iter().enumerate() {
@@ -642,11 +642,13 @@ impl TyUnifier {
         source: Span,
     ) -> Option<()> {
         use ty::Base::*;
-        match (&left.t, &right.t) {
-            (l @ (Int | Float | Bool), r @ (Int | Float | Bool)) if l == r => {
-                return Some(());
+        match &left.t {
+            l @ (Int | Float | Bool) => {
+                if l == &right.t {
+                    return Some(());
+                }
             }
-            (Other(l), r) => match self {
+            Other(l) => match self {
                 Self::Mapping { idx, subst } => {
                     if let Some(i) = idx.get(&l) {
                         if subst[*i].as_ref() == Some(right) {
@@ -667,7 +669,6 @@ impl TyUnifier {
                     }
                 }
             },
-            _ => {}
         }
         let msg = format!("Base types should be unifiable: expected {left}, got {right}");
         eaccum.error(err::TypeMismatch {
@@ -730,9 +731,7 @@ impl Sp<ty::Tuple> {
     ) -> Option<()> {
         use ty::Tuple::{Multiple, Single};
         match (&self.t, &other.t) {
-            (Single(left), Single(right)) => {
-                unifier.require_identical(eaccum, left, right, source)
-            }
+            (Single(left), Single(right)) => unifier.require_identical(eaccum, left, right, source),
             (Multiple(ts), Multiple(us)) => {
                 if ts.t.len() != us.t.len() {
                     let msg = format!(

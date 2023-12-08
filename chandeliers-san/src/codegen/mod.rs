@@ -595,7 +595,7 @@ impl ToTokens for decl::ExtNode {
 
             #[allow(clippy::let_and_return)] // In case there is no trace.
             #( #rustc_allow_2 )* // User-provided.
-            impl #generics #uid_name #generics {
+            impl #generics #uid_name #generics #bounds {
                 #[allow(unused_imports)] // Using sem::traits::* just in case.
                 #[allow(non_snake_case)] // Lustre naming conventions.
                 #[allow(unused_variables)] // Unpacked but not used.
@@ -812,14 +812,13 @@ impl ty::Base {
     /// Pass a type through `ty_mapping` to get `i64`/`f64`/`bool`.
     fn as_defined_ty(&self, span: Span) -> TokenStream {
         match self {
-            Self::Int => quote!( i64 ),
-            Self::Float => quote!( f64 ),
-            Self::Bool => quote!( bool ),
+            Self::Int => quote!(i64),
+            Self::Float => quote!(f64),
+            Self::Bool => quote!(bool),
             Self::Other(t) => {
-                let id = Ident::new(&format!("{self}"), span.unwrap());
+                let id = Ident::new(&format!("{t}"), span.unwrap());
                 quote!( #id )
             }
-
         }
     }
 

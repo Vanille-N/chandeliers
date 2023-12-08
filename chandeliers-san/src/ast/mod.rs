@@ -704,9 +704,12 @@ pub mod decl {
         }
     }
 
+    /// Node template instantiated with concrete types.
     #[derive(Debug, Clone)]
     pub struct NodeInstance {
+        /// Node name.
         pub name: Sp<NodeName>,
+        /// Instantiations of the generic type arguments.
         pub generics: Option<Vec<Sp<ty::Base>>>,
     }
 
