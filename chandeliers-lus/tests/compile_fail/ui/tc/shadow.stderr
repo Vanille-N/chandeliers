@@ -1,14 +1,14 @@
-error: Type mismatch between the left and right sides: Base types should be identical: expected bool, got int
+error: Type mismatch between the left and right sides: Base types should be unifiable: expected bool, got int
  --> tests/compile_fail/ui/tc/shadow.rs:4:9
   |
 4 |     let X = 0; tel
   |         ^^^^^
   |
 note: This element has type bool
- --> tests/compile_fail/ui/tc/shadow.rs:4:9
+ --> tests/compile_fail/ui/tc/shadow.rs:3:30
   |
-4 |     let X = 0; tel
-  |         ^
+3 |     node test() returns (X : bool);
+  |                              ^^^^
 note: While this element has type int
  --> tests/compile_fail/ui/tc/shadow.rs:4:13
   |
