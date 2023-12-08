@@ -1,0 +1,33 @@
+error: Binary operator `=` expects arguments of a concrete type, found type variable T
+ --> tests/compile_fail/ui/tc/poly/equality.rs:4:14
+  |
+4 |     let b = (t = u); tel;
+  |              ^^^^^
+  |
+note: The left-hand-side is found to be of type T
+ --> tests/compile_fail/ui/tc/poly/equality.rs:4:14
+  |
+4 |     let b = (t = u); tel;
+  |              ^
+note: The right-hand-side is found to be of type T
+ --> tests/compile_fail/ui/tc/poly/equality.rs:4:18
+  |
+4 |     let b = (t = u); tel;
+  |                  ^
+
+error: Binary operator `+` expects arguments of a concrete type, found type variable T
+  --> tests/compile_fail/ui/tc/poly/equality.rs:10:15
+   |
+10 |     let out = t + u; tel;
+   |               ^^^^^
+   |
+note: The left-hand-side is found to be of type T
+  --> tests/compile_fail/ui/tc/poly/equality.rs:10:15
+   |
+10 |     let out = t + u; tel;
+   |               ^
+note: The right-hand-side is found to be of type T
+  --> tests/compile_fail/ui/tc/poly/equality.rs:10:19
+   |
+10 |     let out = t + u; tel;
+   |                   ^

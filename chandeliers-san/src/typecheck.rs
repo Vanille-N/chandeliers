@@ -664,8 +664,8 @@ impl TyUnifier {
     fn require_identical(
         &mut self,
         eaccum: &mut EAccum,
-        left: &Sp<ty::Base>,
-        right: &Sp<ty::Base>,
+        left: Sp<&ty::Base>,
+        right: Sp<&ty::Base>,
         source: Span,
     ) -> Option<()> {
         use ty::Base::*;
@@ -678,10 +678,10 @@ impl TyUnifier {
             Other(l) => match self {
                 Self::Mapping { idx, subst } => {
                     if let Some(i) = idx.get(&l) {
-                        if subst[*i].as_ref() == Some(right) {
+                        if subst[*i].as_ref().map(|v| v.as_ref()) == Some(right) {
                             return Some(());
                         } else if subst[*i] == None {
-                            subst[*i] = Some(right.clone());
+                            subst[*i] = Some(right.cloned());
                             return Some(());
                         } else {
                             eaccum.error(err::TmpBasic {
@@ -761,7 +761,7 @@ impl Sp<ty::Tuple> {
     ) -> Option<()> {
         use ty::Tuple::{Multiple, Single};
         match (&self.t, &other.t) {
-            (Single(left), Single(right)) => unifier.require_identical(eaccum, left, right, source),
+            (Single(left), Single(right)) => unifier.require_identical(eaccum, left.as_ref().with_span(self.span), right.as_ref().with_span(other.span), source),
             (Multiple(ts), Multiple(us)) => {
                 if ts.t.len() != us.t.len() {
                     let msg = format!(

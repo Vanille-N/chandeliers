@@ -568,7 +568,7 @@ chandeliers_lus::decl! {
 
 mod generic {
     chandeliers_lus::decl! {
-        #[generics[T, U]]
+        #[generic[T, U]]
         node swap(t0: T; u0: U) returns (u1: U; t1: T);
         let t1 = t0; u1 = u0; tel;
 
@@ -584,7 +584,7 @@ mod generic {
 
 mod generic_pre {
     chandeliers_lus::decl! {
-        #[generics[T]]
+        #[generic[T]]
         node ipre(t, i: T) returns (o: T);
         let o = i -> pre t; tel;
 
