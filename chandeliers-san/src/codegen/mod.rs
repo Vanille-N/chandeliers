@@ -11,7 +11,7 @@ mod constexpr;
 pub mod options;
 
 use constexpr::ConstExprSpanTokens;
-use options::{Docs, FnMain, FnTest, PubQualifier, Traces};
+use options::{Docs, FnMain, FnTest, PubQualifier, Traces, GenericParams};
 
 /// Generate a program simply by generating all declarations.
 impl ToTokens for decl::Prog {
@@ -57,7 +57,7 @@ impl ToTokens for decl::Const {
         let ext_name = name.as_raw_ident();
         let glob = name.as_sanitized_ident();
         let value = value.const_expr_tokens();
-        let rs_ty = ty.as_defined_ty();
+        let rs_ty = ty.as_ref().as_defined_ty();
         let pub_qualifier = options.pub_qualifier(/*trait*/ false);
         let rustc_allow_1 = options.rustc_allow.fetch::<This>().iter();
         let rustc_allow_2 = options.rustc_allow.fetch::<This>().iter();
@@ -117,7 +117,7 @@ impl ToTokens for decl::ExtConst {
     fn to_tokens(&self, toks: &mut TokenStream) {
         let Self { name, ty, options } = self;
         let ext_name = name.as_raw_ident();
-        let expected = ty.as_defined_ty();
+        let expected = ty.as_ref().as_defined_ty();
         let glob = name.as_sanitized_ident();
         let real = quote_spanned!(name.span.unwrap()=> real );
         let expected_wrapped = quote_spanned!(ty.span.unwrap()=> Type<#expected> );
@@ -249,6 +249,7 @@ impl decl::Node {
         let (trace_pre, trace_post) = options.traces("      ", name, inputs, locals, outputs);
         let rustc_allow_1 = options.rustc_allow.fetch::<This>().iter();
         let rustc_allow_2 = options.rustc_allow.fetch::<This>().iter();
+        let generics = options.generic_params();
 
         let cfg_test = if self.options.test.fetch::<This>().is_some() {
             quote!( #[cfg(test)] )
@@ -264,7 +265,7 @@ impl decl::Node {
             #[allow(non_snake_case)] // Lustre naming conventions.
             #[allow(dead_code)] // Trigger only for impl step.
             #( #rustc_allow_1 )* // User-provided.
-            #pub_qualifier struct #uid_name {
+            #pub_qualifier struct #uid_name #generics {
                 __clock: usize,
                 #[doc = " Strictly positive variables of"]
                 #[doc = #doc_name]
@@ -285,7 +286,7 @@ impl decl::Node {
             #[allow(clippy::unreadable_literal, clippy::zero_prefixed_literal)]
             #( #rustc_allow_2 )* // User-provided.
             #cfg_test
-            impl #uid_name {
+            impl #generics #uid_name #generics {
                 fn step(
                     &mut self,
                     inputs: #expected_input_tys_impl,
@@ -362,10 +363,11 @@ impl decl::Node {
 
         let rustc_allow_1 = options.rustc_allow.fetch::<This>().iter();
         let rustc_allow_2 = options.rustc_allow.fetch::<This>().iter();
+        let generics = options.generic_params();
 
         let doc_name = format!(" `{name}` ");
         let ext_declaration = quote_spanned! {name.span.unwrap()=>
-            #pub_qualifier struct #ext_name { inner: #uid_name }
+            #pub_qualifier struct #ext_name #generics { inner: #uid_name #generics }
         };
 
         let ext_annotated_declaration = quote_spanned! {name.span.unwrap()=>
@@ -380,7 +382,7 @@ impl decl::Node {
 
         let ext_step_impl = quote_spanned! {name.span.unwrap()=>
             #( #rustc_allow_2 )* // User-provided.
-            impl #impl_trait #ext_name {
+            impl #generics #impl_trait #ext_name #generics {
                 #trait_input
                 #trait_output
                 #[doc = #doc_name]
@@ -409,7 +411,7 @@ impl decl::Node {
 impl Sp<&Tuple<Sp<decl::TyVar>>> {
     /// Get the type tuple pre-embedding (no `Nillable`s).
     fn as_defined_tys(&self) -> TokenStream {
-        let mut tup = self.t.iter().map(|sv| sv.base_type_of().as_defined_ty());
+        let mut tup = self.t.iter().map(|sv| sv.base_type_of().as_ref().as_defined_ty());
         if self.t.len() == 1 {
             tup.next().unwrap_or_else(|| chandeliers_err::malformed!())
         } else {
@@ -519,20 +521,22 @@ impl ToTokens for decl::ExtNode {
         let (trace_pre, trace_post) =
             options.traces("[ext] ", name, inputs, locals.as_ref(), outputs);
 
+        let generics = options.generic_params();
+
         toks.extend(quote_spanned! {name.span.unwrap()=>
             #[doc(hidden)] // Internal only.
             #[derive(Debug, Default)]
             #[allow(non_camel_case_types)] // Lustre naming conventions.
             #[allow(dead_code)] // Only trigger on impl step.
             #( #rustc_allow_1 )* // User-provided.
-            struct #uid_name {
-                inner: #ext_name,
+            struct #uid_name #generics {
+                inner: #ext_name #generics,
                 __clock: usize,
             }
 
             #[allow(clippy::let_and_return)] // In case there is no trace.
             #( #rustc_allow_2 )* // User-provided.
-            impl #uid_name {
+            impl #generics #uid_name #generics {
                 #[allow(unused_imports)] // Using sem::traits::* just in case.
                 #[allow(non_snake_case)] // Lustre naming conventions.
                 #[allow(unused_variables)] // Unpacked but not used.
@@ -712,7 +716,7 @@ crate::sp::transparent_impl!(fn name_of return var::Local where decl::TyVar);
 impl decl::TyVar {
     /// A `TyVar` is a pair of a name and a type. This extracts the type.
     fn base_type_of(&self, _: Span) -> ty::Base {
-        self.ty.t.ty.t.inner.t
+        self.ty.t.ty.t.inner.t.clone()
     }
 
     /// A `TyVar` is a pair of a name and a type. This extracts the name.
@@ -732,7 +736,7 @@ impl decl::TyVar {
 /// This is the type that it has in function arguments and return values.
 impl ToTokens for ty::Stream {
     fn to_tokens(&self, toks: &mut TokenStream) {
-        let ty = self.ty.t.inner.as_lustre_ty();
+        let ty = self.ty.t.inner.as_ref().as_lustre_ty();
         let mut pluses = Vec::new();
         for _ in 0..self.depth.t.dt {
             pluses.push(quote!( + ));
@@ -743,11 +747,11 @@ impl ToTokens for ty::Stream {
     }
 }
 
-crate::sp::transparent_impl!(fn as_defined_ty return TokenStream where ty::Base);
-crate::sp::transparent_impl!(fn as_lustre_ty return TokenStream where ty::Base);
+crate::sp::transparent_impl!(fn as_defined_ty return TokenStream where &ty::Base);
+crate::sp::transparent_impl!(fn as_lustre_ty return TokenStream where &ty::Base);
 impl ty::Base {
     /// Pass a type through `ty_mapping` to get `i64`/`f64`/`bool`.
-    fn as_defined_ty(self, span: Span) -> TokenStream {
+    fn as_defined_ty(&self, span: Span) -> TokenStream {
         let ty = self.as_lustre_ty(span);
         quote! {
             ::chandeliers_sem::ty_mapping!(#ty)
@@ -755,7 +759,7 @@ impl ty::Base {
     }
 
     /// Print a type as the `ty_mapping` macro would expect it: `int`/`float`/`bool`.
-    fn as_lustre_ty(self, span: Span) -> TokenStream {
+    fn as_lustre_ty(&self, span: Span) -> TokenStream {
         let id = Ident::new(&format!("{self}"), span.unwrap());
         quote!( #id )
     }

@@ -226,12 +226,15 @@ pub mod ty {
         Bool(kw::bool),
         #[parse(peek = kw::float)]
         Float(kw::float),
+        #[parse(peek_func = LusIdent::peek)]
+        Other(Sp<LusIdent>),
     }
     span_end_by_match! {
         Base.
             Int(i) => i;
             Bool(b) => b;
             Float(f) => f;
+            Other(t) => t;
     }
 
     #[derive(syn_derive::Parse)]
@@ -1153,7 +1156,7 @@ pub struct AttrParams {
     brack: Bracket,
     #[syn(in = brack)]
     #[parse(Punctuated::parse_terminated)]
-    params: Punctuated<LusIdent, Token![,]>,
+    params: Punctuated<Sp<LusIdent>, Token![,]>,
 }
 span_end_on_field!(AttrParams.brack);
 impl Hint for AttrParams {
@@ -1180,10 +1183,10 @@ span_end_by_match! {
 }
 
 impl OptionAttrParams {
-    pub fn flatten(self) -> Vec<String> {
+    pub fn flatten(self) -> Vec<Sp<String>> {
         match self {
             Self::None => vec![],
-            Self::Params(ps) => ps.params.into_iter().map(|i| i.inner.to_string()).collect(),
+            Self::Params(ps) => ps.params.into_iter().map(|i| i.map(|_, t| t.inner.to_string())).collect(),
         }
     }
 }

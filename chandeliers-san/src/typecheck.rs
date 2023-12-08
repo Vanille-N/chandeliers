@@ -54,7 +54,7 @@ impl TyCtx<'_> {
             Some(vardef) => Some(
                 vardef
                     .as_sp_ref()
-                    .sp_map(|span, ty| ty::Tuple::Single(ty.with_span(span))),
+                    .sp_map(|span, ty| ty::Tuple::Single(ty.clone().with_span(span))),
             ),
             None => eaccum.error(err::VarNotFound {
                 var: &var,
@@ -76,7 +76,7 @@ impl TyCtx<'_> {
             Some(vardef) => Some(
                 vardef
                     .as_sp_ref()
-                    .sp_map(|span, ty| ty::Tuple::Single(ty.with_span(span))),
+                    .sp_map(|span, ty| ty::Tuple::Single(ty.clone().with_span(span))),
             ),
             None => eaccum.error(err::TyVarNotFound {
                 var: &var,
@@ -95,7 +95,7 @@ impl TyCtx<'_> {
             Some(vardef) => Some(
                 vardef
                     .as_sp_ref()
-                    .sp_map(|span, ty| ty::Tuple::Single(ty.with_span(span))),
+                    .sp_map(|span, ty| ty::Tuple::Single(ty.clone().with_span(span))),
             ),
             None => eaccum.error(err::VarNotFound {
                 var: &var,
@@ -227,7 +227,7 @@ impl TypeCheckStmt for ast::stmt::Statement {
             Self::Assert(e) => {
                 // Assert requires exactly one bool.
                 let t = e.typecheck(eaccum, ctx)?.is_primitive(eaccum)?;
-                t.is_bool(eaccum, "The argument of assert", span)?;
+                t.as_ref().is_bool(eaccum, "The argument of assert", span)?;
                 Some(())
             }
         }
@@ -260,12 +260,12 @@ impl TypeCheckExpr for ast::expr::Expr {
                     .typecheck(eaccum, ctx)
                     .and_then(|ty| ty.is_primitive(eaccum));
                 let left = left?;
-                op.accepts(eaccum, left, right?)?;
+                op.accepts(eaccum, left.as_ref(), right?.as_ref())?;
                 Some(ty::Tuple::Single(left))
             }
             Self::Un { op, inner } => {
                 let inner = inner.typecheck(eaccum, ctx)?.is_primitive(eaccum)?;
-                op.accepts(eaccum, span, inner)?;
+                op.accepts(eaccum, span, inner.as_ref())?;
                 Some(ty::Tuple::Single(inner))
             }
             Self::Cmp { op, lhs, rhs } => {
@@ -295,7 +295,9 @@ impl TypeCheckExpr for ast::expr::Expr {
                     .and_then(|ty| ty.is_primitive(eaccum));
                 let yes = yes.typecheck(eaccum, ctx);
                 let no = no.typecheck(eaccum, ctx);
-                cond?.is_bool(eaccum, "The condition of if", span)?;
+                cond?
+                    .as_ref()
+                    .is_bool(eaccum, "The condition of if", span)?;
                 let yes = yes?;
                 yes.identical(eaccum, &no?, span)?;
                 Some(yes.t)
@@ -315,7 +317,7 @@ impl TypeCheckExpr for ast::expr::Expr {
                     .typecheck(eaccum, ctx)
                     .and_then(|ty| ty.is_primitive(eaccum));
                 let inner = inner.typecheck(eaccum, ctx)?;
-                activate?.is_bool(eaccum, "A clock", span)?;
+                activate?.as_ref().is_bool(eaccum, "A clock", span)?;
                 Some(inner.t)
             }
             Self::Merge { switch, on, off } => {
@@ -323,7 +325,7 @@ impl TypeCheckExpr for ast::expr::Expr {
                 let on = on.typecheck(eaccum, ctx)?;
                 let off = off.typecheck(eaccum, ctx)?;
                 let switch = switch.is_primitive(eaccum)?;
-                switch.is_bool(eaccum, "A clock", span)?;
+                switch.as_ref().is_bool(eaccum, "A clock", span)?;
                 on.identical(eaccum, &off, span)?;
                 Some(on.t)
             }
@@ -450,7 +452,7 @@ impl TypeCheckExpr for ast::stmt::VarTuple {
 
 impl ast::op::Bin {
     /// Determines if the binary operator can be applied to these arguments.
-    fn accepts(self, eaccum: &mut EAccum, left: Sp<ty::Base>, right: Sp<ty::Base>) -> Option<()> {
+    fn accepts(self, eaccum: &mut EAccum, left: Sp<&ty::Base>, right: Sp<&ty::Base>) -> Option<()> {
         use ast::op::Bin;
         let span = left
             .span
@@ -465,7 +467,7 @@ impl ast::op::Bin {
                 right: &right,
             })?;
         }
-        match (self, left.t) {
+        match (self, &left.t) {
             (Bin::Add | Bin::Mul | Bin::Div | Bin::Sub, ty::Base::Bool) => {
                 eaccum.error(err::BinopMismatch {
                     oper: self,
@@ -498,9 +500,9 @@ impl ast::op::Bin {
 
 impl ast::op::Un {
     /// Determines if the unary operator can be applied to this argument.
-    fn accepts(self, eaccum: &mut EAccum, span: Span, inner: Sp<ty::Base>) -> Option<()> {
+    fn accepts(self, eaccum: &mut EAccum, span: Span, inner: Sp<&ty::Base>) -> Option<()> {
         use ast::op::Un;
-        match (self, inner.t) {
+        match (self, &inner.t) {
             (Un::Neg, ty::Base::Bool) => eaccum.error(err::UnopMismatch {
                 oper: self,
                 site: span,
@@ -535,7 +537,7 @@ impl ast::op::Cmp {
                 right: &right,
             })?;
         }
-        match (self, left.t) {
+        match (self, &left.t) {
             (Cmp::Ne | Cmp::Eq, ty::Base::Float) => eaccum.error(err::BinopMismatch {
                 oper: self,
                 site: span,
@@ -548,7 +550,7 @@ impl ast::op::Cmp {
     }
 }
 
-impl Sp<ty::Base> {
+impl Sp<&ty::Base> {
     /// Verify that this is a boolean
     fn is_bool(self, eaccum: &mut EAccum, req: &str, span: Span) -> Option<()> {
         match self.t {
@@ -633,7 +635,7 @@ impl Sp<ty::Tuple> {
     fn is_primitive(&self, eaccum: &mut EAccum) -> Option<Sp<ty::Base>> {
         self.as_ref()
             .map(|_, t| match t {
-                ty::Tuple::Single(t) => Some(t.t),
+                ty::Tuple::Single(t) => Some(t.t.clone()),
                 ty::Tuple::Multiple(_) => {
                     let s = "expected a scalar type, got a tuple type".to_owned();
                     eaccum.error(err::TmpBasic {
@@ -656,11 +658,12 @@ impl SpTyBaseTuple {
                         .last()
                         .unwrap_or_else(|| err::malformed!())
                         .t
+                        .clone()
                         .with_span(span),
                 )
             } else {
                 ty::Tuple::Multiple(
-                    tup.map_ref(|t| t.map(|span, t| ty::Tuple::Single(t.with_span(span))))
+                    tup.map_ref(|t| t.clone().map(|span, t| ty::Tuple::Single(t.with_span(span))))
                         .with_span(span),
                 )
             }
@@ -770,7 +773,7 @@ impl TypeCheckDecl for ast::decl::Node {
                     v.t.name.t.clone(),
                     WithDefSite {
                         def_site: Transparent::from(Some(v.span)),
-                        data: v.t.ty.as_ref().map(|_, t| t.ty.t.inner.t),
+                        data: v.t.ty.as_ref().map(|_, t| t.ty.t.inner.t.clone()),
                     },
                 );
             }
@@ -802,14 +805,15 @@ impl TypeCheckDecl for ast::decl::Node {
     /// Fetch the input and output tuple types of this node.
     #[must_use]
     fn signature(&self) -> (Sp<ast::decl::NodeName>, SpTyBaseTuple, SpTyBaseTuple) {
+        let _ = self.options.generics.fetch::<This>();
         let inputs = self
             .inputs
             .t
-            .map_ref(|v| v.t.ty.as_ref().map(|_, t| t.ty.t.inner.t));
+            .map_ref(|v| v.t.ty.as_ref().map(|_, t| t.ty.t.inner.t.clone()));
         let outputs = self
             .outputs
             .t
-            .map_ref(|v| v.t.ty.as_ref().map(|_, t| t.ty.t.inner.t));
+            .map_ref(|v| v.t.ty.as_ref().map(|_, t| t.ty.t.inner.t.clone()));
         (
             self.name.clone(),
             inputs.with_span(self.inputs.span),
@@ -866,7 +870,7 @@ impl TypeCheckDecl for ast::decl::ExtNode {
                     v.t.name.t.clone(),
                     WithDefSite {
                         def_site: Transparent::from(Some(v.span)),
-                        data: v.t.ty.as_ref().map(|_, t| t.ty.t.inner.t),
+                        data: v.t.ty.as_ref().map(|_, t| t.ty.t.inner.t.clone()),
                     },
                 );
             }
@@ -878,14 +882,15 @@ impl TypeCheckDecl for ast::decl::ExtNode {
     /// they have already been checked to be internally consistent.
     #[must_use]
     fn signature(&self) -> (Sp<ast::decl::NodeName>, SpTyBaseTuple, SpTyBaseTuple) {
+        let _ = self.options.generics.fetch::<This>();
         let inputs = self
             .inputs
             .t
-            .map_ref(|v| v.t.ty.as_ref().map(|_, t| t.ty.t.inner.t));
+            .map_ref(|v| v.t.ty.as_ref().map(|_, t| t.ty.t.inner.t.clone()));
         let outputs = self
             .outputs
             .t
-            .map_ref(|v| v.t.ty.as_ref().map(|_, t| t.ty.t.inner.t));
+            .map_ref(|v| v.t.ty.as_ref().map(|_, t| t.ty.t.inner.t.clone()));
         (
             self.name.clone(),
             inputs.with_span(self.inputs.span),
@@ -915,7 +920,7 @@ impl TypeCheckExpr for ty::Clock {
                         .as_ref(),
                 )?;
                 let ty = ty.data.is_primitive(eaccum)?;
-                ty.is_bool(eaccum, "Clock", span)?;
+                ty.as_ref().is_bool(eaccum, "Clock", span)?;
                 Some(ty::Tuple::Single(ty))
             }
         }
@@ -938,6 +943,7 @@ impl TypeCheckDecl for ast::decl::Const {
         self.value.is_const(eaccum)?;
         let e = self.value.typecheck(eaccum, &TyCtx::from_ext(varctx))?;
         self.ty
+            .clone()
             .map(|span, t| ty::Tuple::Single(t.with_span(span)))
             .identical(eaccum, &e, span)?;
         Some(())
@@ -946,7 +952,7 @@ impl TypeCheckDecl for ast::decl::Const {
     /// The (name, type) pair that we need to add to the context.
     #[must_use]
     fn signature(&self) -> (Sp<var::Global>, Sp<ty::Base>) {
-        (self.name.clone(), self.ty)
+        (self.name.clone(), self.ty.clone())
     }
 }
 
@@ -965,7 +971,7 @@ impl TypeCheckDecl for ast::decl::ExtConst {
     /// The (name, type) pair that we need to add to the context.
     #[must_use]
     fn signature(&self) -> (Sp<var::Global>, Sp<ty::Base>) {
-        (self.name.clone(), self.ty)
+        (self.name.clone(), self.ty.clone())
     }
 }
 

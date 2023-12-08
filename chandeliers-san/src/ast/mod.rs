@@ -150,7 +150,7 @@ pub mod ty {
 
     crate::sp::derive_with_span!(Base);
     /// A basic scalar type.
-    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+    #[derive(Debug, Clone, PartialEq, Eq, Hash)]
     pub enum Base {
         /// Integer type (parsed from `int`, represented by `i64`)
         Int,
@@ -158,6 +158,8 @@ pub mod ty {
         Float,
         /// Bool type (parsed from `bool` represented by `bool`)
         Bool,
+        /// Generic type variables
+        Other(Sp<String>),
     }
 
     crate::sp::derive_with_span!(Clock);
@@ -183,6 +185,7 @@ pub mod ty {
                 Self::Int => write!(f, "int"),
                 Self::Float => write!(f, "float"),
                 Self::Bool => write!(f, "bool"),
+                Self::Other(t) => write!(f, "?{t}"),
             }
         }
     }

@@ -230,7 +230,7 @@ generic_option! {
 }
 
 generic_option! {
-    #[doc = "`[doc(\"Message\")]`: insert documentation in the generated code."]
+    #[doc = "`#[doc(\"Message\")]`: insert documentation in the generated code."]
     trait Docs for { Const, Node }
     impl {
         from doc return &Vec<Sp<String>>;
@@ -243,6 +243,24 @@ generic_option! {
             } else {
                 quote! {
                     #( #[doc = #docs] )*
+                }
+            }
+        }
+    }
+}
+
+generic_option! {
+    #[doc = "`#[generics[T, U, V]]`: declare type variables."]
+    trait GenericParams for { Node, ExtNode }
+    impl {
+        from generics return &Vec<Sp<String>>;
+        fn generic_params(&self) -> TokenStream {
+            let generics = self.fetch().iter().map(|t| syn::Ident::new_raw(&t.t, t.span.unwrap())).collect::<Vec<_>>();
+            if generics.is_empty() {
+                quote! {}
+            } else {
+                quote! {
+                    < #( #generics ),* >
                 }
             }
         }

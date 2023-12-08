@@ -678,6 +678,7 @@ impl Translate for src::ty::Base {
             Self::Int(_) => tgt::ty::Base::Int,
             Self::Float(_) => tgt::ty::Base::Float,
             Self::Bool(_) => tgt::ty::Base::Bool,
+            Self::Other(t) => tgt::ty::Base::Other(t.as_ref().map(|_, c| format!("{c}"))),
         })
     }
 }
