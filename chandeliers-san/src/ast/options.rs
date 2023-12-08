@@ -381,7 +381,7 @@ macro_rules! selection_aux_decl {
     ( $struct:ident ( $($done:tt)* ) ++ ( generics , $($rest:tt)* ) )
         // #[doc] is of type `Vec<Sp<String>>` and is useful only during codegen.
         => { selection_aux_decl!($struct ( $($done)*
-                #[doc = "`#[generics[T, U, V]]`: declare type variables.`"]
+                #[doc = "`#[generic[T, U, V]]`: declare type variables.`"]
                 pub generics: UseOpt<Vec<Sp<String>>, Sites<Typecheck, Sites<Codegen, Over>>>,
             ) ++ ( $($rest)* ) ); };
     // Base case: generate the struct definition from all the accumulated tokens in `<handled>`

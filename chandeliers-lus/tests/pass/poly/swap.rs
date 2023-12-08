@@ -1,13 +1,14 @@
 chandeliers_lus::decl! {
-    #[generics[T, U]]
+    #[generic[T, U]]
+    #[trace("{t0} <-> {u0}\n")]
     node swap(t0: T; u0: U) returns (u1: U; t1: T);
     let t1 = t0; u1 = u0; tel;
 
-    #[main]
+    #[main(1)]
     node main() returns ();
-    var x: int;
-        y: float;
+    var _x: int;
+        _y: float;
     let
-        (x, y) = swap(swap(1, 0.5));
+        (_x, _y) = swap(swap(1, 0.5));
     tel;
 }

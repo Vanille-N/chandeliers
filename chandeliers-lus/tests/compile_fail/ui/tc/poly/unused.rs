@@ -1,5 +1,5 @@
 chandeliers_lus::decl! {
-    #[generics[T]]
+    #[generic[T]]
     node id(t0: int) returns (t1: int);
     let t1 = t0; tel;
 }

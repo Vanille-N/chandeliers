@@ -496,7 +496,7 @@ impl ast::op::Bin {
                 right: &right,
             })?;
         }
-        match (self, &left.t) {
+        match (self, left.t) {
             (Bin::Add | Bin::Mul | Bin::Div | Bin::Sub, ty::Base::Bool) => {
                 eaccum.error(err::BinopMismatch {
                     oper: self,
@@ -517,12 +517,22 @@ impl ast::op::Bin {
                 eaccum.error(err::BinopMismatch {
                     oper: self,
                     site: span,
-                    expect: "type int or bool, found float".to_owned(),
+                    expect: "type int or bool, found float",
                     left: &left,
                     right: &right,
                 })
             }
-            _ => Some(()),
+            (Bin::Add | Bin::Mul | Bin::Sub | Bin::Div, ty::Base::Int | ty::Base::Float) => Some(()),
+            (Bin::Rem, ty::Base::Int) => Some(()),
+            (Bin::BitAnd | Bin::BitOr | Bin::BitXor, ty::Base::Int | ty::Base::Bool) => Some(()),
+            (_, ty::Base::Other(t)) => eaccum.error(err::BinopMismatch {
+                    oper: self,
+                    site: span,
+                    expect: format!("a concrete type, found type variable {t}"),
+                    left: &left,
+                    right: &right,
+                })
+
         }
     }
 }
@@ -544,7 +554,15 @@ impl ast::op::Un {
                 expect: "type bool or int, found float",
                 inner: &inner,
             }),
-            _ => Some(()),
+            (Un::Neg, ty::Base::Int | ty::Base::Float) => Some(()),
+            (Un::Not, ty::Base::Int | ty::Base::Bool) => Some(()),
+            (_, ty::Base::Other(t)) => eaccum.error(err::UnopMismatch {
+                oper: self,
+                site: span,
+                expect: format!("a concrete type, found type variable {t}"),
+                inner: &inner,
+            }),
+
         }
     }
 }
@@ -567,6 +585,8 @@ impl ast::op::Cmp {
             })?;
         }
         match (self, &left.t) {
+            (Cmp::Le | Cmp::Ge | Cmp::Lt | Cmp::Gt, ty::Base::Int | ty::Base::Bool | ty::Base::Float)
+                | (Cmp::Ne | Cmp::Eq, ty::Base::Int | ty::Base::Bool) => Some(()),
             (Cmp::Ne | Cmp::Eq, ty::Base::Float) => eaccum.error(err::BinopMismatch {
                 oper: self,
                 site: span,
@@ -574,7 +594,14 @@ impl ast::op::Cmp {
                 left: &left,
                 right: &right,
             }),
-            _ => Some(()),
+            (_, ty::Base::Other(t)) => eaccum.error(err::BinopMismatch {
+                oper: self,
+                site: span,
+                expect: format!("a concrete type, found type variable {t}"),
+                left: &left,
+                right: &right,
+            }),
+
         }
     }
 }
@@ -657,7 +684,10 @@ impl TyUnifier {
                             subst[*i] = Some(right.clone());
                             return Some(());
                         } else {
-                            panic!("Bad.")
+                            eaccum.error(err::TmpBasic {
+                                msg: format!("A previous argument requires {} := {}, it cannot also equal {}", &l, subst[*i].as_ref().unwrap(), right),
+                                span: right.span,
+                            })?;
                         }
                     } else {
                         unreachable!()

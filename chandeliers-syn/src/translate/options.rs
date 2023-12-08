@@ -163,7 +163,7 @@ impl Default for Decl {
             rustc_allow: SetOpt::create("#[rustc_allow[attr]]", vec![]),
             doc: SetOpt::create("#[doc(\"Message\")]", vec![]),
             impl_trait: SetOpt::create("`#[trait]`", false),
-            generics: SetOpt::create("#[generics[T, U, V]]", vec![]),
+            generics: SetOpt::create("#[generic[T, U, V]]", vec![]),
         }
     }
 }
@@ -440,14 +440,14 @@ impl Decl {
                     syn:("`#[doc(\"Message\")]`")
                 ),
             },
-            "generics" => match args {
+            "generic" => match args {
                 (types, []) => {
                     let types = types.to_owned();
                     register!(generics <- extend types);
                 }
                 _ => malformed!(
                     msg:("expects only identifiers")
-                    syn:("`#[generics[T, U, V]]`")
+                    syn:("`#[generic[T, U, V]]`")
                 ),
             },
             _ => malformed!(

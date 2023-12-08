@@ -250,7 +250,7 @@ generic_option! {
 }
 
 generic_option! {
-    #[doc = "`#[generics[T, U, V]]`: declare type variables. Returns (1) the variable declarations, (2) the phantom data to use, and (3) the trait bounds."]
+    #[doc = "`#[generic[T, U, V]]`: declare type variables. Returns (1) the variable declarations, (2) the phantom data to use, and (3) the trait bounds."]
     trait GenericParams for { Node, ExtNode }
     impl {
         from generics return &Vec<Sp<String>>;
@@ -269,7 +269,8 @@ generic_option! {
                             ::chandeliers_sem::stepping::Embed<Target = ::chandeliers_sem::nillable::Nillable<#generics>>
                             + ::chandeliers_sem::time_travel::SealedVisible
                             + Default // FIXME: absolute path
-                            + Copy,
+                            + Copy
+                            + std::fmt::Display,
 
                     )*
                 })

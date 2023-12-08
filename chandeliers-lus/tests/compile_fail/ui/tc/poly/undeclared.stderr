@@ -1,0 +1,11 @@
+error[E0412]: cannot find type `T` in this scope
+ --> tests/compile_fail/ui/tc/poly/undeclared.rs:2:13
+  |
+2 |     node id(t0: T) returns (t1: T);
+  |             ^^ not found in this scope
+
+error[E0412]: cannot find type `T` in this scope
+ --> tests/compile_fail/ui/tc/poly/undeclared.rs:2:29
+  |
+2 |     node id(t0: T) returns (t1: T);
+  |                             ^^ not found in this scope

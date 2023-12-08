@@ -1,0 +1,16 @@
+error: Type mismatch between the left and right sides: Base types should be unifiable: expected int, got T
+ --> tests/compile_fail/ui/tc/poly/narrowing.rs:6:14
+  |
+6 |     let t1 = id_int(t0); tel;
+  |              ^^^^^^^^^^
+  |
+note: This element has type int
+ --> tests/compile_fail/ui/tc/poly/narrowing.rs:2:17
+  |
+2 |     node id_int(i0: int) returns (i1: int);
+  |                 ^^^^^^^^
+note: While this element has type T
+ --> tests/compile_fail/ui/tc/poly/narrowing.rs:5:17
+  |
+5 |     node id(t0: T) returns (t1: T);
+  |                 ^
