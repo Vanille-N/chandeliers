@@ -13,6 +13,9 @@ use ast::options::usage::Typecheck as This;
 /// lets' give it a less confusing alias.
 type SpTyBaseTuple = Sp<Tuple<Sp<ty::Base>>>;
 
+type GenericParams = Vec<Sp<String>>;
+type GenericInstances = Vec<Sp<ty::Base>>;
+
 /// Context that the typechecking is done in.
 #[derive(Debug)]
 struct TyCtx<'i> {
@@ -28,6 +31,7 @@ struct TyCtx<'i> {
     nodes_in: HashMap<var::Node, SpTyBaseTuple>,
     /// Outputs, same as the inputs above.
     nodes_out: HashMap<var::Node, SpTyBaseTuple>,
+    nodes_generics: HashMap<var::Node, (GenericParams, Option<GenericInstances>)>,
 }
 
 impl<'i> TyCtx<'i> {
@@ -39,6 +43,7 @@ impl<'i> TyCtx<'i> {
             vars: HashMap::default(),
             nodes_in: HashMap::default(),
             nodes_out: HashMap::default(),
+            nodes_generics: HashMap::default(),
         }
     }
 }
@@ -124,6 +129,27 @@ impl TyCtx<'_> {
             }
         }
     }
+
+    fn get_node_generics(&self, node: Sp<&var::Node>) -> GenericParams {
+        match self.nodes_generics.get(node.t) {
+            Some(tup) => tup.0.clone(),
+            None => {
+                err::abort!("The typing context is improperly initialized: either {node} is missing and it should have been caught during the causality check, or it was not added to the map.");
+            }
+        }
+    }
+
+    fn instantiate(&mut self, node: Sp<&var::Node>, unifier: &TyUnifier) {
+        let gen = self.nodes_generics.get_mut(node.t).unwrap();
+        match unifier {
+            TyUnifier::Mapping { idx, subst } => {
+                gen.1 = Some(subst.iter().map(|v| v.clone().unwrap()).collect());
+            }
+            _ => {
+                gen.1 = Some(vec![]);
+            },
+        }
+    }
 }
 
 /// Typechecking a statement is only a yes-or-no problem, as statements
@@ -132,7 +158,7 @@ trait TypeCheckStmt {
     /// Verify internal consistency.
     /// # Errors
     /// Fails if one of the elements of the statement cannot be typed.
-    fn typecheck(&mut self, eaccum: &mut EAccum, span: Span, ctx: &TyCtx) -> Option<()>;
+    fn typecheck(&mut self, eaccum: &mut EAccum, span: Span, ctx: &mut TyCtx) -> Option<()>;
 }
 
 /// Helper trait for `Sp<T>` to project `TypeCheckStmt` to its contents.
@@ -140,11 +166,11 @@ trait TypeCheckSpanStmt {
     /// Verify that the inner content is consistent.
     /// # Errors
     /// Fails if one of the elements of the statement cannot be typed.
-    fn typecheck(&mut self, eaccum: &mut EAccum, ctx: &TyCtx) -> Option<Sp<()>>;
+    fn typecheck(&mut self, eaccum: &mut EAccum, ctx: &mut TyCtx) -> Option<Sp<()>>;
 }
 
 impl<T: TypeCheckStmt> TypeCheckSpanStmt for Sp<T> {
-    fn typecheck(&mut self, eaccum: &mut EAccum, ctx: &TyCtx) -> Option<Sp<()>> {
+    fn typecheck(&mut self, eaccum: &mut EAccum, ctx: &mut TyCtx) -> Option<Sp<()>> {
         self.as_ref_mut()
             .map(|span, t| t.typecheck(eaccum, span, ctx))
             .transpose()
@@ -162,7 +188,7 @@ trait TypeCheckExpr {
     /// Fails if the expression is not internally consistent
     /// (e.g. operators applied to the wrong type, incompatible left- and right-
     /// hand side, ...)
-    fn typecheck(&self, eaccum: &mut EAccum, span: Span, ctx: &TyCtx) -> Option<ty::Tuple>;
+    fn typecheck(&self, eaccum: &mut EAccum, span: Span, ctx: &mut TyCtx) -> Option<ty::Tuple>;
     /// Verify that the expression is valid as a `const`.
     ///
     /// # Errors
@@ -179,7 +205,7 @@ trait TypeCheckSpanExpr {
     /// Fails if the expression is not internally consistent
     /// (e.g. operators applied to the wrong type, incompatible left- and right-
     /// hand side, ...)
-    fn typecheck(&self, eaccum: &mut EAccum, ctx: &TyCtx) -> Option<Sp<ty::Tuple>>;
+    fn typecheck(&self, eaccum: &mut EAccum, ctx: &mut TyCtx) -> Option<Sp<ty::Tuple>>;
     /// Verify that the inner contents are const computable.
     ///
     /// # Errors
@@ -189,7 +215,7 @@ trait TypeCheckSpanExpr {
 }
 
 impl<T: TypeCheckExpr> TypeCheckSpanExpr for Sp<T> {
-    fn typecheck(&self, eaccum: &mut EAccum, ctx: &TyCtx) -> Option<Sp<ty::Tuple>> {
+    fn typecheck(&self, eaccum: &mut EAccum, ctx: &mut TyCtx) -> Option<Sp<ty::Tuple>> {
         self.as_ref()
             .map(|span, t| t.typecheck(eaccum, span, ctx))
             .transpose()
@@ -202,7 +228,7 @@ impl<T: TypeCheckExpr> TypeCheckSpanExpr for Sp<T> {
 }
 
 impl<T: TypeCheckExpr> TypeCheckExpr for Box<T> {
-    fn typecheck(&self, eaccum: &mut EAccum, span: Span, ctx: &TyCtx) -> Option<ty::Tuple> {
+    fn typecheck(&self, eaccum: &mut EAccum, span: Span, ctx: &mut TyCtx) -> Option<ty::Tuple> {
         self.as_ref().typecheck(eaccum, span, ctx)
     }
     fn is_const(&self, eaccum: &mut EAccum, span: Span) -> Option<()> {
@@ -216,13 +242,13 @@ impl<T: TypeCheckExpr> TypeCheckExpr for Box<T> {
 /// the method may modify the statement in-place to update it with information
 /// that was not available at translation time such as output types.
 impl TypeCheckStmt for ast::stmt::Statement {
-    fn typecheck(&mut self, eaccum: &mut EAccum, span: Span, ctx: &TyCtx) -> Option<()> {
+    fn typecheck(&mut self, eaccum: &mut EAccum, span: Span, ctx: &mut TyCtx) -> Option<()> {
         match self {
             Self::Let { target, source } => {
                 // Let needs the target to have the same type as the source.
                 let target_ty = target.typecheck(eaccum, ctx);
                 let source_ty = source.typecheck(eaccum, ctx);
-                Some(target_ty?.identical(eaccum, &source_ty?, span)?)
+                Some(target_ty?.identical(eaccum, &mut TyUnifier::Identity, &source_ty?, span)?)
             }
             Self::Assert(e) => {
                 // Assert requires exactly one bool.
@@ -237,7 +263,7 @@ impl TypeCheckStmt for ast::stmt::Statement {
 /// Most Expr cases are exactly recursing into all Expr fields
 /// and checking that they are identical or in some other way compatible.
 impl TypeCheckExpr for ast::expr::Expr {
-    fn typecheck(&self, eaccum: &mut EAccum, span: Span, ctx: &TyCtx) -> Option<ty::Tuple> {
+    fn typecheck(&self, eaccum: &mut EAccum, span: Span, ctx: &mut TyCtx) -> Option<ty::Tuple> {
         match self {
             Self::Lit(l) => Some(l.typecheck(eaccum, ctx)?.t),
             Self::Reference(r) => Some(r.typecheck(eaccum, ctx)?.t),
@@ -286,7 +312,7 @@ impl TypeCheckExpr for ast::expr::Expr {
                 let left = before.typecheck(eaccum, ctx);
                 let right = after.typecheck(eaccum, ctx);
                 let left = left?;
-                left.identical(eaccum, &right?, span)?;
+                left.identical(eaccum, &mut TyUnifier::Identity, &right?, span)?;
                 Some(left.t)
             }
             Self::Ifx { cond, yes, no } => {
@@ -299,14 +325,17 @@ impl TypeCheckExpr for ast::expr::Expr {
                     .as_ref()
                     .is_bool(eaccum, "The condition of if", span)?;
                 let yes = yes?;
-                yes.identical(eaccum, &no?, span)?;
+                yes.identical(eaccum, &mut TyUnifier::Identity, &no?, span)?;
                 Some(yes.t)
             }
             Self::Substep { delay: _, id, args } => {
                 let expected_tys = ctx.get_node_in(id.as_ref());
+                let generics = ctx.get_node_generics(id.as_ref());
                 let actual_tys = args.typecheck(eaccum, ctx)?;
-                expected_tys.identical(eaccum, &actual_tys, span)?;
-                Some(ctx.get_node_out(id.as_ref()).t)
+                let mut unifier = TyUnifier::from_generics(eaccum, generics)?;
+                expected_tys.identical(eaccum, &mut unifier, &actual_tys, span)?;
+                ctx.instantiate(id.as_ref(), &unifier);
+                Some(ctx.get_node_out(id.as_ref()).t.substitute(&unifier))
             }
             Self::Clock {
                 op: _,
@@ -326,7 +355,7 @@ impl TypeCheckExpr for ast::expr::Expr {
                 let off = off.typecheck(eaccum, ctx)?;
                 let switch = switch.is_primitive(eaccum)?;
                 switch.as_ref().is_bool(eaccum, "A clock", span)?;
-                on.identical(eaccum, &off, span)?;
+                on.identical(eaccum, &mut TyUnifier::Identity, &off, span)?;
                 Some(on.t)
             }
         }
@@ -388,7 +417,7 @@ impl TypeCheckExpr for ast::expr::Expr {
 
 /// No surprises here: an Int has type int, a Bool has type bool, and a Float has type float.
 impl TypeCheckExpr for ast::expr::Lit {
-    fn typecheck(&self, _eaccum: &mut EAccum, span: Span, _ctx: &TyCtx) -> Option<ty::Tuple> {
+    fn typecheck(&self, _eaccum: &mut EAccum, span: Span, _ctx: &mut TyCtx) -> Option<ty::Tuple> {
         Some(ty::Tuple::Single(
             match self {
                 Self::Int(_) => ty::Base::Int,
@@ -408,7 +437,7 @@ impl TypeCheckExpr for ast::expr::Lit {
 /// This is not modifiable after generation and this function will only check
 /// for one of the two.
 impl TypeCheckExpr for var::Reference {
-    fn typecheck(&self, eaccum: &mut EAccum, _span: Span, ctx: &TyCtx) -> Option<ty::Tuple> {
+    fn typecheck(&self, eaccum: &mut EAccum, _span: Span, ctx: &mut TyCtx) -> Option<ty::Tuple> {
         Some(match self {
             Self::Var(v) => ctx.get_var(eaccum, v.as_ref().map(|_, v| &v.var.t))?.data.t,
             Self::Global(v) => ctx.get_global(eaccum, v.as_ref())?.data.t,
@@ -421,14 +450,14 @@ impl TypeCheckExpr for var::Reference {
 }
 
 impl TypeCheckExpr for ast::stmt::VarTuple {
-    fn typecheck(&self, eaccum: &mut EAccum, _span: Span, ctx: &TyCtx) -> Option<ty::Tuple> {
+    fn typecheck(&self, eaccum: &mut EAccum, _span: Span, ctx: &mut TyCtx) -> Option<ty::Tuple> {
         use ast::stmt::VarTuple;
         /// Recursion helper: applies `typecheck` to every element of the tuple.
         fn aux_multiple(
             eaccum: &mut EAccum,
             span: Span,
             vs: &Tuple<Sp<VarTuple>>,
-            ctx: &TyCtx,
+            ctx: &mut TyCtx,
         ) -> Option<ty::Tuple> {
             let ts = vs.try_map(&mut *eaccum, |eaccum, v: &Sp<VarTuple>| {
                 v.typecheck(eaccum, ctx)
@@ -564,6 +593,126 @@ impl Sp<&ty::Base> {
     }
 }
 
+enum TyUnifier {
+    Null,
+    Identity,
+    Mapping {
+        idx: HashMap<Sp<String>, usize>,
+        subst: Vec<Option<Sp<ty::Base>>>,
+    },
+}
+
+impl TyUnifier {
+    fn from_generics(eaccum: &mut EAccum, generics: Vec<Sp<String>>) -> Option<Self> {
+        let mut idx = HashMap::new();
+        let len = generics.len();
+        for (i, gen) in generics.into_iter().enumerate() {
+            if idx.insert(gen, i).is_some() {
+                err::abort!("Failed to catch duplicate type variable.")
+            }
+        }
+        Some(Self::Mapping {
+            idx,
+            subst: vec![None; len],
+        })
+    }
+}
+
+impl TyUnifier {
+    fn image(&self, s: Sp<String>) -> ty::Base {
+        match self {
+            Self::Mapping { idx, subst } => {
+                if let Some(i) = idx.get(&s) {
+                    subst[*i]
+                        .clone()
+                        .unwrap_or_else(|| err::abort!("Mapping has the wrong length"))
+                        .t
+                } else {
+                    ty::Base::Other(s)
+                }
+            }
+            _ => ty::Base::Other(s),
+        }
+    }
+    fn require_identical(
+        &mut self,
+        eaccum: &mut EAccum,
+        left: &Sp<ty::Base>,
+        right: &Sp<ty::Base>,
+        source: Span,
+    ) -> Option<()> {
+        use ty::Base::*;
+        match (&left.t, &right.t) {
+            (l @ (Int | Float | Bool), r @ (Int | Float | Bool)) if l == r => {
+                return Some(());
+            }
+            (Other(l), r) => match self {
+                Self::Mapping { idx, subst } => {
+                    if let Some(i) = idx.get(&l) {
+                        if subst[*i].as_ref() == Some(right) {
+                            return Some(());
+                        } else if subst[*i] == None {
+                            subst[*i] = Some(right.clone());
+                            return Some(());
+                        } else {
+                            panic!("Bad.")
+                        }
+                    } else {
+                        unreachable!()
+                    }
+                }
+                _ => {
+                    if left == right {
+                        return Some(());
+                    }
+                }
+            },
+            _ => {}
+        }
+        let msg = format!("Base types should be unifiable: expected {left}, got {right}");
+        eaccum.error(err::TypeMismatch {
+            source,
+            left,
+            right,
+            msg,
+        })
+    }
+}
+
+trait TySubstitute {
+    fn substitute(self, unifier: &TyUnifier) -> Self;
+}
+
+impl TySubstitute for ty::Base {
+    fn substitute(self, unifier: &TyUnifier) -> Self {
+        match self {
+            Self::Other(s) => unifier.image(s),
+            _ => self,
+        }
+    }
+}
+
+impl<T: TySubstitute> TySubstitute for ast::Tuple<T> {
+    fn substitute(self, unifier: &TyUnifier) -> Self {
+        self.map(|t| t.substitute(unifier))
+    }
+}
+
+impl<T: TySubstitute> TySubstitute for Sp<T> {
+    fn substitute(self, unifier: &TyUnifier) -> Self {
+        self.map(|_, t| t.substitute(unifier))
+    }
+}
+
+impl TySubstitute for ty::Tuple {
+    fn substitute(self, unifier: &TyUnifier) -> Self {
+        match self {
+            Self::Single(t) => Self::Single(t.substitute(unifier)),
+            Self::Multiple(t) => Self::Multiple(t.substitute(unifier)),
+        }
+    }
+}
+
 impl Sp<ty::Tuple> {
     /// Check that two tuple types are identical:
     /// both tuples of the same length, or both scalars.
@@ -572,22 +721,17 @@ impl Sp<ty::Tuple> {
     /// size-1 `Multiple` while the other is a `Single`. If your language
     /// is such that `(T,)` and `T` are known to be isomorphic, you should
     /// compress `Multiple`s of size 1 earlier in the AST generation.
-    fn identical(&self, eaccum: &mut EAccum, other: &Self, source: Span) -> Option<()> {
+    fn identical(
+        &self,
+        eaccum: &mut EAccum,
+        unifier: &mut TyUnifier,
+        other: &Self,
+        source: Span,
+    ) -> Option<()> {
         use ty::Tuple::{Multiple, Single};
         match (&self.t, &other.t) {
             (Single(left), Single(right)) => {
-                if left.t == right.t {
-                    Some(())
-                } else {
-                    let msg =
-                        format!("Base types should be identical: expected {left}, got {right}");
-                    eaccum.error(err::TypeMismatch {
-                        source,
-                        left: self,
-                        right: other,
-                        msg,
-                    })
-                }
+                unifier.require_identical(eaccum, left, right, source)
             }
             (Multiple(ts), Multiple(us)) => {
                 if ts.t.len() != us.t.len() {
@@ -603,7 +747,7 @@ impl Sp<ty::Tuple> {
                 }
                 let mut scope = eaccum.scope();
                 for (t, u) in ts.t.iter().zip(us.t.iter()) {
-                    scope.compute(|eaccum| t.identical(eaccum, u, source));
+                    scope.compute(|eaccum| t.identical(eaccum, unifier, u, source));
                 }
                 scope.close()
             }
@@ -663,8 +807,11 @@ impl SpTyBaseTuple {
                 )
             } else {
                 ty::Tuple::Multiple(
-                    tup.map_ref(|t| t.clone().map(|span, t| ty::Tuple::Single(t.with_span(span))))
-                        .with_span(span),
+                    tup.map_ref(|t| {
+                        t.clone()
+                            .map(|span, t| ty::Tuple::Single(t.with_span(span)))
+                    })
+                    .with_span(span),
                 )
             }
         })
@@ -684,7 +831,7 @@ trait TypeCheckDecl {
         &mut self,
         eaccum: &mut EAccum,
         span: Span,
-        extfun: &HashMap<ast::decl::NodeName, (SpTyBaseTuple, SpTyBaseTuple)>,
+        extfun: &HashMap<ast::decl::NodeName, (GenericParams, SpTyBaseTuple, SpTyBaseTuple)>,
         extvar: &HashMap<var::Global, WithDefSite<Sp<ty::Base>>>,
     ) -> Option<()>;
 
@@ -701,7 +848,7 @@ trait TypeCheckSpanDecl {
     fn typecheck(
         &mut self,
         eaccum: &mut EAccum,
-        extfun: &HashMap<ast::decl::NodeName, (SpTyBaseTuple, SpTyBaseTuple)>,
+        extfun: &HashMap<ast::decl::NodeName, (GenericParams, SpTyBaseTuple, SpTyBaseTuple)>,
         extvar: &HashMap<var::Global, WithDefSite<Sp<ty::Base>>>,
     ) -> Option<()>;
     /// Projection to the inner `signature`.
@@ -713,7 +860,7 @@ impl<T: TypeCheckDecl> TypeCheckSpanDecl for Sp<T> {
     fn typecheck(
         &mut self,
         eaccum: &mut EAccum,
-        extfun: &HashMap<ast::decl::NodeName, (SpTyBaseTuple, SpTyBaseTuple)>,
+        extfun: &HashMap<ast::decl::NodeName, (GenericParams, SpTyBaseTuple, SpTyBaseTuple)>,
         extvar: &HashMap<var::Global, WithDefSite<Sp<ty::Base>>>,
     ) -> Option<()> {
         self.t.typecheck(eaccum, self.span, extfun, extvar)
@@ -726,13 +873,18 @@ impl<T: TypeCheckDecl> TypeCheckSpanDecl for Sp<T> {
 /// Typechecking a node involves first building the context that it makes available
 /// to its statements, and then checking those.
 impl TypeCheckDecl for ast::decl::Node {
-    type Signature = (Sp<ast::decl::NodeName>, SpTyBaseTuple, SpTyBaseTuple);
+    type Signature = (
+        Sp<ast::decl::NodeName>,
+        GenericParams,
+        SpTyBaseTuple,
+        SpTyBaseTuple,
+    );
     /// Verify inner consistency.
     fn typecheck(
         &mut self,
         eaccum: &mut EAccum,
         _span: Span,
-        extfun: &HashMap<ast::decl::NodeName, (SpTyBaseTuple, SpTyBaseTuple)>,
+        extfun: &HashMap<ast::decl::NodeName, (GenericParams, SpTyBaseTuple, SpTyBaseTuple)>,
         extvar: &HashMap<var::Global, WithDefSite<Sp<ty::Base>>>,
     ) -> Option<()> {
         let mut ctx = TyCtx::from_ext(extvar);
@@ -768,7 +920,7 @@ impl TypeCheckDecl for ast::decl::Node {
                     });
                 }
                 // Don't forget to typecheck the type.
-                scope.compute(|eaccum| v.t.ty.t.ty.t.clk.typecheck(eaccum, &ctx).map(|_| ()));
+                scope.compute(|eaccum| v.t.ty.t.ty.t.clk.typecheck(eaccum, &mut ctx).map(|_| ()));
                 ctx.vars.insert(
                     v.t.name.t.clone(),
                     WithDefSite {
@@ -781,31 +933,43 @@ impl TypeCheckDecl for ast::decl::Node {
         scope.close()?;
         // Then also register the per-var::Node types of the blocks.
         for (id, blk) in self.blocks.iter().enumerate() {
-            let Some((i, o)) = extfun.get(&blk.t) else {
-                let s = format!("Block {blk} is not defined");
+            let Some((gen, i, o)) = extfun.get(&blk.name.t) else {
+                let s = format!("Block {} is not defined", &blk.name);
                 return eaccum.error(err::TmpBasic {
-                    span: blk.span,
+                    span: blk.name.span,
                     msg: s,
                 });
             };
             let id = var::Node {
-                id: id.with_span(blk.span),
-                repr: blk.t.repr.clone(),
+                id: id.with_span(blk.name.span),
+                repr: blk.name.t.repr.clone(),
             };
             ctx.nodes_in.insert(id.clone(), i.clone());
-            ctx.nodes_out.insert(id, o.clone());
+            ctx.nodes_out.insert(id.clone(), o.clone());
+            ctx.nodes_generics.insert(id, (gen.clone(), None));
         }
         let mut scope = eaccum.scope();
         for st in &mut self.stmts {
-            scope.compute(|eaccum| st.typecheck(eaccum, &ctx).map(|_| ()));
+            scope.compute(|eaccum| st.typecheck(eaccum, &mut ctx).map(|_| ()));
+        }
+        // Finally instanciate the learned generic parameters
+        for (id, gens) in ctx.nodes_generics.into_iter() {
+            self.blocks[id.id.t].generics = gens.1;
         }
         scope.close()
     }
 
     /// Fetch the input and output tuple types of this node.
     #[must_use]
-    fn signature(&self) -> (Sp<ast::decl::NodeName>, SpTyBaseTuple, SpTyBaseTuple) {
-        let _ = self.options.generics.fetch::<This>();
+    fn signature(
+        &self,
+    ) -> (
+        Sp<ast::decl::NodeName>,
+        GenericParams,
+        SpTyBaseTuple,
+        SpTyBaseTuple,
+    ) {
+        let generics = self.options.generics.fetch::<This>();
         let inputs = self
             .inputs
             .t
@@ -816,6 +980,7 @@ impl TypeCheckDecl for ast::decl::Node {
             .map_ref(|v| v.t.ty.as_ref().map(|_, t| t.ty.t.inner.t.clone()));
         (
             self.name.clone(),
+            generics.clone(),
             inputs.with_span(self.inputs.span),
             outputs.with_span(self.outputs.span),
         )
@@ -823,14 +988,19 @@ impl TypeCheckDecl for ast::decl::Node {
 }
 
 impl TypeCheckDecl for ast::decl::ExtNode {
-    type Signature = (Sp<ast::decl::NodeName>, SpTyBaseTuple, SpTyBaseTuple);
+    type Signature = (
+        Sp<ast::decl::NodeName>,
+        GenericParams,
+        SpTyBaseTuple,
+        SpTyBaseTuple,
+    );
     /// Same signature as `Node` but we trust its type as there are no contents to check.
     /// We still check that there are no duplicate declarations of variables.
     fn typecheck(
         &mut self,
         eaccum: &mut EAccum,
         _span: Span,
-        _extfun: &HashMap<ast::decl::NodeName, (SpTyBaseTuple, SpTyBaseTuple)>,
+        _extfun: &HashMap<ast::decl::NodeName, (GenericParams, SpTyBaseTuple, SpTyBaseTuple)>,
         _extvar: &HashMap<var::Global, WithDefSite<Sp<ty::Base>>>,
     ) -> Option<()> {
         let extvar = HashMap::default();
@@ -865,7 +1035,7 @@ impl TypeCheckDecl for ast::decl::ExtNode {
                     });
                 }
                 // Don't forget to typecheck the type.
-                scope.compute(|eaccum| v.t.ty.t.ty.t.clk.typecheck(eaccum, &ctx).map(|_| ()));
+                scope.compute(|eaccum| v.t.ty.t.ty.t.clk.typecheck(eaccum, &mut ctx).map(|_| ()));
                 ctx.vars.insert(
                     v.t.name.t.clone(),
                     WithDefSite {
@@ -881,8 +1051,15 @@ impl TypeCheckDecl for ast::decl::ExtNode {
     /// Get the declared inputs and outputs of this node, assuming that
     /// they have already been checked to be internally consistent.
     #[must_use]
-    fn signature(&self) -> (Sp<ast::decl::NodeName>, SpTyBaseTuple, SpTyBaseTuple) {
-        let _ = self.options.generics.fetch::<This>();
+    fn signature(
+        &self,
+    ) -> (
+        Sp<ast::decl::NodeName>,
+        GenericParams,
+        SpTyBaseTuple,
+        SpTyBaseTuple,
+    ) {
+        let generics = self.options.generics.fetch::<This>();
         let inputs = self
             .inputs
             .t
@@ -893,6 +1070,7 @@ impl TypeCheckDecl for ast::decl::ExtNode {
             .map_ref(|v| v.t.ty.as_ref().map(|_, t| t.ty.t.inner.t.clone()));
         (
             self.name.clone(),
+            generics.clone(),
             inputs.with_span(self.inputs.span),
             outputs.with_span(self.outputs.span),
         )
@@ -900,7 +1078,7 @@ impl TypeCheckDecl for ast::decl::ExtNode {
 }
 
 impl TypeCheckExpr for ty::Clock {
-    fn typecheck(&self, eaccum: &mut EAccum, span: Span, ctx: &TyCtx) -> Option<ty::Tuple> {
+    fn typecheck(&self, eaccum: &mut EAccum, span: Span, ctx: &mut TyCtx) -> Option<ty::Tuple> {
         match self {
             Self::Implicit | Self::Adaptative => {
                 Some(ty::Tuple::Multiple(Tuple::default().with_span(span)))
@@ -937,15 +1115,16 @@ impl TypeCheckDecl for ast::decl::Const {
         &mut self,
         eaccum: &mut EAccum,
         span: Span,
-        _functx: &HashMap<ast::decl::NodeName, (SpTyBaseTuple, SpTyBaseTuple)>,
+        _functx: &HashMap<ast::decl::NodeName, (GenericParams, SpTyBaseTuple, SpTyBaseTuple)>,
         varctx: &HashMap<var::Global, WithDefSite<Sp<ty::Base>>>,
     ) -> Option<()> {
         self.value.is_const(eaccum)?;
-        let e = self.value.typecheck(eaccum, &TyCtx::from_ext(varctx))?;
+        let mut unifier = TyUnifier::Null;
+        let e = self.value.typecheck(eaccum, &mut TyCtx::from_ext(varctx))?;
         self.ty
             .clone()
             .map(|span, t| ty::Tuple::Single(t.with_span(span)))
-            .identical(eaccum, &e, span)?;
+            .identical(eaccum, &mut unifier, &e, span)?;
         Some(())
     }
 
@@ -962,7 +1141,7 @@ impl TypeCheckDecl for ast::decl::ExtConst {
         &mut self,
         _eaccum: &mut EAccum,
         _span: Span,
-        _functx: &HashMap<ast::decl::NodeName, (SpTyBaseTuple, SpTyBaseTuple)>,
+        _functx: &HashMap<ast::decl::NodeName, (GenericParams, SpTyBaseTuple, SpTyBaseTuple)>,
         _varctx: &HashMap<var::Global, WithDefSite<Sp<ty::Base>>>,
     ) -> Option<()> {
         Some(())
@@ -1011,8 +1190,8 @@ impl Sp<ast::decl::Prog> {
                 }
                 ast::decl::Decl::Node(n) => {
                     scope.compute(|eaccum| n.typecheck(eaccum, &functx, &varctx));
-                    let (name, i, o) = n.signature();
-                    if functx.insert(name.t, (i, o)).is_some() {
+                    let (name, g, i, o) = n.signature();
+                    if functx.insert(name.t, (g, i, o)).is_some() {
                         let s = format!("Redefinition of node {}", n.t.name);
                         scope.error(err::TmpBasic {
                             span: n.span,
@@ -1042,8 +1221,8 @@ impl Sp<ast::decl::Prog> {
                 }
                 ast::decl::Decl::ExtNode(n) => {
                     scope.compute(|eaccum| n.typecheck(eaccum, &functx, &varctx));
-                    let (name, i, o) = n.signature();
-                    if functx.insert(name.t, (i, o)).is_some() {
+                    let (name, g, i, o) = n.signature();
+                    if functx.insert(name.t, (g, i, o)).is_some() {
                         let s = format!("Redefinition of node {}", n.t.name);
                         scope.error(err::TmpBasic {
                             span: n.span,

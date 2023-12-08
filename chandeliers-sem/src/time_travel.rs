@@ -59,6 +59,9 @@ impl Sealed for f64 {}
 impl Sealed for bool {}
 impl Sealed for () {}
 
+pub trait SealedVisible: Sealed {}
+impl<T> SealedVisible for T where T: Sealed {}
+
 /// This trait guarantees that you cannot construct an `S<_, _>` that
 /// isn't usable.
 trait Counting<T>: Sized {}

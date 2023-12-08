@@ -164,7 +164,6 @@ impl Default for Decl {
             doc: SetOpt::create("#[doc(\"Message\")]", vec![]),
             impl_trait: SetOpt::create("`#[trait]`", false),
             generics: SetOpt::create("#[generics[T, U, V]]", vec![]),
-
         }
     }
 }

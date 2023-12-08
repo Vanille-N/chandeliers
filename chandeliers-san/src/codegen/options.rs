@@ -250,18 +250,29 @@ generic_option! {
 }
 
 generic_option! {
-    #[doc = "`#[generics[T, U, V]]`: declare type variables."]
+    #[doc = "`#[generics[T, U, V]]`: declare type variables. Returns (1) the variable declarations, (2) the phantom data to use, and (3) the trait bounds."]
     trait GenericParams for { Node, ExtNode }
     impl {
         from generics return &Vec<Sp<String>>;
-        fn generic_params(&self) -> TokenStream {
+        fn generic_params(&self) -> (TokenStream, TokenStream, TokenStream) {
             let generics = self.fetch().iter().map(|t| syn::Ident::new_raw(&t.t, t.span.unwrap())).collect::<Vec<_>>();
             if generics.is_empty() {
-                quote! {}
+                (quote!(), quote!( () ), quote!())
             } else {
-                quote! {
+                (quote! {
                     < #( #generics ),* >
-                }
+                }, quote! {
+                    ::std::marker::PhantomData<( #( #generics ),* )>
+                }, quote! {
+                    where #(
+                        #generics:
+                            ::chandeliers_sem::stepping::Embed<Target = ::chandeliers_sem::nillable::Nillable<#generics>>
+                            + ::chandeliers_sem::time_travel::SealedVisible
+                            + Default // FIXME: absolute path
+                            + Copy,
+
+                    )*
+                })
             }
         }
     }

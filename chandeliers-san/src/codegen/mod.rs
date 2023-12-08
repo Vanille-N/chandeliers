@@ -11,7 +11,7 @@ mod constexpr;
 pub mod options;
 
 use constexpr::ConstExprSpanTokens;
-use options::{Docs, FnMain, FnTest, PubQualifier, Traces, GenericParams};
+use options::{Docs, FnMain, FnTest, GenericParams, PubQualifier, Traces};
 
 /// Generate a program simply by generating all declarations.
 impl ToTokens for decl::Prog {
@@ -193,6 +193,25 @@ impl ToTokens for decl::Node {
     }
 }
 
+impl ToTokens for decl::NodeInstance {
+    fn to_tokens(&self, toks: &mut TokenStream) {
+        let Self { name, generics } = self;
+        let name = name.as_sanitized_ident();
+        let generics = generics.as_ref().expect("Improperly initialized");
+        let generics = if generics.is_empty() {
+            quote!()
+        } else {
+            let generics = generics.iter().map(|t| t.t.as_defined_ty(t.span));
+            quote! {
+                < #( #generics ),* >
+            }
+        };
+        toks.extend(quote! {
+            #name #generics
+        })
+    }
+}
+
 impl decl::Node {
     /// Generate the node declaration and implementation
     /// with the sanitized name for internal use only.
@@ -224,7 +243,6 @@ impl decl::Node {
         let pos_inputs_decl = inputs.strictly_positive();
         let pos_outputs_decl = outputs.strictly_positive();
         let pos_locals_decl = locals.strictly_positive();
-        let blocks = blocks.iter().map(|n| n.as_sanitized_ident());
 
         let pos_inputs_use = inputs
             .strictly_positive()
@@ -235,6 +253,16 @@ impl decl::Node {
         let pos_locals_use = locals
             .strictly_positive()
             .map(|v| v.name_of().as_sanitized_ident());
+        let pos_inputs_default = inputs
+            .strictly_positive()
+            .map(|v| v.name_of().as_sanitized_ident());
+        let pos_outputs_default = outputs
+            .strictly_positive()
+            .map(|v| v.name_of().as_sanitized_ident());
+        let pos_locals_default = locals
+            .strictly_positive()
+            .map(|v| v.name_of().as_sanitized_ident());
+
         //let inputs_ty_3 = inputs.as_defined_tys();
         let expected_input_tys_impl = inputs.as_embedded_tys();
         let expected_output_tys_impl = outputs.as_embedded_tys();
@@ -249,7 +277,7 @@ impl decl::Node {
         let (trace_pre, trace_post) = options.traces("      ", name, inputs, locals, outputs);
         let rustc_allow_1 = options.rustc_allow.fetch::<This>().iter();
         let rustc_allow_2 = options.rustc_allow.fetch::<This>().iter();
-        let generics = options.generic_params();
+        let (generics, phantom, bounds) = options.generic_params();
 
         let cfg_test = if self.options.test.fetch::<This>().is_some() {
             quote!( #[cfg(test)] )
@@ -260,13 +288,13 @@ impl decl::Node {
         let doc_name = format!(" `{name}` ");
         let declaration = quote_spanned! {name.span.unwrap()=>
             #[doc(hidden)] // Inner declaration only.
-            #[derive(Debug, Default)]
             #[allow(non_camel_case_types)] // Lustre naming conventions.
             #[allow(non_snake_case)] // Lustre naming conventions.
             #[allow(dead_code)] // Trigger only for impl step.
             #( #rustc_allow_1 )* // User-provided.
             #pub_qualifier struct #uid_name #generics {
                 __clock: usize,
+                __phantom: #phantom,
                 #[doc = " Strictly positive variables of"]
                 #[doc = #doc_name]
                 #( #pos_inputs_decl , )*
@@ -279,6 +307,19 @@ impl decl::Node {
         };
 
         let implementation = quote_spanned! {name.span.unwrap()=>
+            impl #generics Default for #uid_name #generics #bounds {
+                fn default() -> Self {
+                    Self {
+                        __clock: Default::default(),
+                        __phantom: Default::default(),
+                        #( #pos_inputs_default: Default::default() , )*
+                        #( #pos_outputs_default: Default::default() , )*
+                        #( #pos_locals_default: Default::default() , )*
+                        __nodes: Default::default(),
+                    }
+                }
+            }
+
             #[allow(non_snake_case)] // Lustre naming conventions.
             #[allow(unused_imports)] // Using sem::traits::* just in case.
             #[allow(clippy::no_effect)] // We are inserting "comments" as strings.
@@ -286,7 +327,7 @@ impl decl::Node {
             #[allow(clippy::unreadable_literal, clippy::zero_prefixed_literal)]
             #( #rustc_allow_2 )* // User-provided.
             #cfg_test
-            impl #generics #uid_name #generics {
+            impl #generics #uid_name #generics #bounds {
                 fn step(
                     &mut self,
                     inputs: #expected_input_tys_impl,
@@ -363,7 +404,7 @@ impl decl::Node {
 
         let rustc_allow_1 = options.rustc_allow.fetch::<This>().iter();
         let rustc_allow_2 = options.rustc_allow.fetch::<This>().iter();
-        let generics = options.generic_params();
+        let (generics, _phantom, bounds) = options.generic_params();
 
         let doc_name = format!(" `{name}` ");
         let ext_declaration = quote_spanned! {name.span.unwrap()=>
@@ -373,7 +414,6 @@ impl decl::Node {
         let ext_annotated_declaration = quote_spanned! {name.span.unwrap()=>
             #docs
             #[doc = "\n"]
-            #[derive(Debug, Default)]
             #[allow(non_camel_case_types)] // Lustre naming conventions.
             #[allow(dead_code)] // Only trigger on impl.
             #( #rustc_allow_1 )* // User-provided.
@@ -381,8 +421,16 @@ impl decl::Node {
         };
 
         let ext_step_impl = quote_spanned! {name.span.unwrap()=>
+            impl #generics Default for #ext_name #generics {
+                fn default() -> Self {
+                    Self {
+                        inner: Default::default(),
+                    }
+                }
+            }
+
             #( #rustc_allow_2 )* // User-provided.
-            impl #generics #impl_trait #ext_name #generics {
+            impl #generics #impl_trait #ext_name #generics #bounds {
                 #trait_input
                 #trait_output
                 #[doc = #doc_name]
@@ -411,7 +459,10 @@ impl decl::Node {
 impl Sp<&Tuple<Sp<decl::TyVar>>> {
     /// Get the type tuple pre-embedding (no `Nillable`s).
     fn as_defined_tys(&self) -> TokenStream {
-        let mut tup = self.t.iter().map(|sv| sv.base_type_of().as_ref().as_defined_ty());
+        let mut tup = self
+            .t
+            .iter()
+            .map(|sv| sv.base_type_of().as_ref().as_defined_ty());
         if self.t.len() == 1 {
             tup.next().unwrap_or_else(|| chandeliers_err::malformed!())
         } else {
@@ -521,17 +572,25 @@ impl ToTokens for decl::ExtNode {
         let (trace_pre, trace_post) =
             options.traces("[ext] ", name, inputs, locals.as_ref(), outputs);
 
-        let generics = options.generic_params();
+        let (generics, _phantom, bounds) = options.generic_params();
 
         toks.extend(quote_spanned! {name.span.unwrap()=>
             #[doc(hidden)] // Internal only.
-            #[derive(Debug, Default)]
             #[allow(non_camel_case_types)] // Lustre naming conventions.
             #[allow(dead_code)] // Only trigger on impl step.
             #( #rustc_allow_1 )* // User-provided.
             struct #uid_name #generics {
                 inner: #ext_name #generics,
                 __clock: usize,
+            }
+
+            impl #generics Default for #uid_name #generics {
+                fn default() -> Self {
+                    Self {
+                        inner: Default::default(),
+                        __clock: Default::default(),
+                    }
+                }
             }
 
             #[allow(clippy::let_and_return)] // In case there is no trace.
@@ -752,9 +811,15 @@ crate::sp::transparent_impl!(fn as_lustre_ty return TokenStream where &ty::Base)
 impl ty::Base {
     /// Pass a type through `ty_mapping` to get `i64`/`f64`/`bool`.
     fn as_defined_ty(&self, span: Span) -> TokenStream {
-        let ty = self.as_lustre_ty(span);
-        quote! {
-            ::chandeliers_sem::ty_mapping!(#ty)
+        match self {
+            Self::Int => quote!( i64 ),
+            Self::Float => quote!( f64 ),
+            Self::Bool => quote!( bool ),
+            Self::Other(t) => {
+                let id = Ident::new(&format!("{self}"), span.unwrap());
+                quote!( #id )
+            }
+
         }
     }
 

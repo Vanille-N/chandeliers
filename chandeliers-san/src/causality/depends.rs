@@ -225,6 +225,14 @@ impl Depends for decl::Node {
     require_in_fields!(blocks, stmts);
 }
 
+/// Straightforward projection to only the name, since the generic
+/// instances cannot introduce dependencies.
+impl Depends for decl::NodeInstance {
+    type Output = Reference;
+    provide_in_fields!(name);
+    require_in_fields!(name);
+}
+
 /// Node definition `extern node foo(...) returns (...)`
 /// provides `foo`.
 /// Warning: `extern` declarations across different parse invocations

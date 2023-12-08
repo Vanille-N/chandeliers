@@ -1186,7 +1186,11 @@ impl OptionAttrParams {
     pub fn flatten(self) -> Vec<Sp<String>> {
         match self {
             Self::None => vec![],
-            Self::Params(ps) => ps.params.into_iter().map(|i| i.map(|_, t| t.inner.to_string())).collect(),
+            Self::Params(ps) => ps
+                .params
+                .into_iter()
+                .map(|i| i.map(|_, t| t.inner.to_string()))
+                .collect(),
         }
     }
 }

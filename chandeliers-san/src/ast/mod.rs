@@ -34,6 +34,16 @@ impl<T> Default for Tuple<T> {
 }
 
 impl<T> Tuple<T> {
+    /// Map a function to a tuple.
+    pub fn map<F, U>(self, f: F) -> Tuple<U>
+    where
+        F: Fn(T) -> U,
+    {
+        Tuple {
+            elems: self.elems.into_iter().map(f).collect(),
+        }
+    }
+
     /// Map a function by reference to a tuple.
     pub fn map_ref<F, U>(&self, f: F) -> Tuple<U>
     where
@@ -47,9 +57,9 @@ impl<T> Tuple<T> {
     /// Map a faillible funciton by reference to a tuple.
     /// # Errors
     /// Fails if the function fails on any of the elements.
-    pub fn try_map<F, U>(&self, eaccum: &mut EAccum, f: F) -> Option<Tuple<U>>
+    pub fn try_map<F, U>(&self, eaccum: &mut EAccum, mut f: F) -> Option<Tuple<U>>
     where
-        F: Fn(&mut EAccum, &T) -> Option<U>,
+        F: FnMut(&mut EAccum, &T) -> Option<U>,
     {
         let mut elems = Vec::new();
         for e in &self.elems {
@@ -185,7 +195,7 @@ pub mod ty {
                 Self::Int => write!(f, "int"),
                 Self::Float => write!(f, "float"),
                 Self::Bool => write!(f, "bool"),
-                Self::Other(t) => write!(f, "?{t}"),
+                Self::Other(t) => write!(f, "{t}"),
             }
         }
     }
@@ -597,9 +607,9 @@ pub mod expr {
                 }
                 Self::Substep { delay, id, args } => {
                     if *delay > 0 {
-                        write!(f, "{id}@{delay}{args}")
+                        write!(f, "{id}@{delay} {args}")
                     } else {
-                        write!(f, "{id}{args}")
+                        write!(f, "{id} {args}")
                     }
                 }
                 Self::Clock {
@@ -694,6 +704,12 @@ pub mod decl {
         }
     }
 
+    #[derive(Debug, Clone)]
+    pub struct NodeInstance {
+        pub name: Sp<NodeName>,
+        pub generics: Option<Vec<Sp<ty::Base>>>,
+    }
+
     /// A node declaration `node foo(x) returns (y); var z; let <body> tel`.
     #[derive(Debug, Clone)]
     pub struct Node {
@@ -708,7 +724,7 @@ pub mod decl {
         /// Local variables and types (`z`).
         pub locals: Sp<Tuple<Sp<TyVar>>>,
         /// Other nodes that are used by this one (function calls in `<body>`).
-        pub blocks: Vec<Sp<NodeName>>,
+        pub blocks: Vec<NodeInstance>,
         /// Dependent types (useful for dead code analysis).
         pub deptys: Vec<Sp<var::Local>>,
         /// Body of the node declaration (`<body>`).
