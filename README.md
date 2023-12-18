@@ -51,9 +51,21 @@ It is not recommended to have different version numbers for the crates, as they
 are only tested thoroughly with the same version number everywhere.
 
 
-## Features
+## Language features
 
-TODO
+Chandeliers implements a representative subset of Lustre, among which the
+following constructs:
+
+- base types `int`, `float`, `bool`, extensible with the generic types
+  declared for the node.
+- assertions `assert b`
+- boolean connectives `b1 and b2`, `b1 or b2`, `not b`
+- conditional expressions `if b then e1 else e2`
+- temporal operators `e1 -> e2`, `pre e`, `e1 fby e2`
+- limited support for clocked expressions `e when b`, `e whenot b`, and
+  `merge b e1 e2`.
+
+See syntax examples and notable limitations in `chandeliers-lus/README.md`.
 
 
 ## Compilation options

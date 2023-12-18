@@ -24,10 +24,10 @@
     clippy::use_debug
 )]
 
-use std::sync::atomic::{AtomicUsize, Ordering};
+mod pipeline;
 
-use chandeliers_err::{self as err, EAccum, Error, Transparent};
-use chandeliers_san::{self as sanitizer, sp::Sp};
+use chandeliers_err::{self as err, EAccum, Error};
+use chandeliers_san::sp::Sp;
 use chandeliers_syn as syntax;
 
 // Dependencies for integration tests: silence the "unused dependencies" warning.
@@ -36,14 +36,6 @@ mod integration_deps {
     use chandeliers_sem as _;
     use chandeliers_std as _;
     use rand as _;
-}
-
-/// Generate unique identifiers for each macro invocation. We need this to avoid
-/// name collisions in `extern node` and `extern const` declarations.
-fn new_run_uid() -> usize {
-    /// Mutable state to generate unique identifiers.
-    static RUN_UID: AtomicUsize = AtomicUsize::new(0);
-    RUN_UID.fetch_add(1, Ordering::SeqCst)
 }
 
 /// Frontend of `chandeliers_lus`.
@@ -70,10 +62,10 @@ fn new_run_uid() -> usize {
 /// ```
 #[proc_macro]
 pub fn decl(i: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    use quote::ToTokens;
     use syn::parse_macro_input;
     let prog = parse_macro_input!(i as Sp<syntax::Prog>);
     let mut eaccum = EAccum::default();
+
     let prog = prog_pipeline(&mut eaccum, prog);
     let fatal = eaccum.is_fatal();
     let (es, ws) = eaccum.fetch();
@@ -85,31 +77,24 @@ pub fn decl(i: proc_macro::TokenStream) -> proc_macro::TokenStream {
         return proc_macro2::TokenStream::new().into();
     };
     for w in ws {
+        // FIXME: this could be a Warning
         emit(w, proc_macro::Level::Error);
     }
-    let mut toks = proc_macro2::TokenStream::new();
-    prog.to_tokens(&mut toks);
-    toks.into()
+    prog
 }
 
-/// Run the entire process on the program: translation + causality check + typechecking +
-/// positivity + clockchecking.
-fn prog_pipeline(
-    eaccum: &mut EAccum,
-    prog: Sp<syntax::Prog>,
-) -> Option<Sp<sanitizer::ast::decl::Prog>> {
-    use sanitizer::causality::Causality;
-    use sanitizer::clockcheck::ClockCheck;
-    use sanitizer::positivity::MakePositive;
-    use syntax::translate::SpanTranslate;
-    let run_uid = new_run_uid();
-    let prog = prog.translate(eaccum, Transparent::from(run_uid), ())?;
-    let mut prog = prog.causality(eaccum)?;
-    // FIXME: trait for this
-    prog.typecheck(eaccum)?;
-    prog.clockcheck(eaccum)?;
-    prog.make_positive(eaccum)?;
-    Some(prog)
+fn prog_pipeline(eaccum: &mut EAccum, prog: Sp<syntax::Prog>) -> Option<proc_macro::TokenStream> {
+    pipeline::CompilerPass::new(eaccum, prog)?
+        .finish()
+        .apply(eaccum)?
+        .finish()
+        .apply(eaccum)?
+        .finish()
+        .apply(eaccum)?
+        .finish()
+        .apply(eaccum)?
+        .finish()
+        .codegen()
 }
 
 /// Generate a run of trybuild test cases.

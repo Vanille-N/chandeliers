@@ -657,7 +657,6 @@ impl Translate for src::ty::Type {
         _span: Span,
         ctx: Self::Ctx<'_>,
     ) -> Option<Self::Output> {
-        // FIXME: translate the clock
         let inner = self.base.translate(eaccum, run_uid, ())?;
         let clk = self.clock.translate(eaccum, run_uid, ctx)?;
         Some(tgt::ty::Clocked { inner, clk })

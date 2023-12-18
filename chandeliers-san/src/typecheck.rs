@@ -733,7 +733,8 @@ impl TypeCheckDecl for ast::decl::Node {
         extvar: &HashMap<var::Global, WithDefSite<Sp<ty::Base>>>,
     ) -> Option<()> {
         let mut ctx = TyCtx::from_ext(extvar);
-        // FIXME: prettify
+        // Special case for functions declared as toplevel executables:
+        // they must have empty inputs and outputs.
         let is_main = self.options.main.fetch::<This>().is_some();
         let is_test = self.options.test.fetch::<This>().is_some();
         if is_main || is_test {
