@@ -4,7 +4,6 @@ error[E0277]: the trait bound `no_default: Default` is not satisfied
 5 |     extern node no_default() returns ();
   |                 ^^^^^^^^^^ the trait `Default` is not implemented for `no_default`
   |
-  = note: this error originates in the derive macro `Default` (in Nightly builds, run with -Z macro-backtrace for more info)
 help: consider annotating `no_default` with `#[derive(Default)]`
   |
 3 + #[derive(Default)]

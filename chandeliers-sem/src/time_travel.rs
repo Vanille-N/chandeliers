@@ -59,6 +59,14 @@ impl Sealed for f64 {}
 impl Sealed for bool {}
 impl Sealed for () {}
 
+/// Public trait bound for the sealed trait `Sealed`.
+#[expect(
+    private_bounds,
+    reason = "Allowing user functions to have `Sealed` as a trait bound."
+)]
+pub trait SealedVisible: Sealed {}
+impl<T> SealedVisible for T where T: Sealed {}
+
 /// This trait guarantees that you cannot construct an `S<_, _>` that
 /// isn't usable.
 trait Counting<T>: Sized {}

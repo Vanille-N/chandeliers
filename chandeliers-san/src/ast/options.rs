@@ -359,7 +359,7 @@ macro_rules! selection_aux_decl {
                 pub main: UseOpt<Option<usize>, Sites<Typecheck, Sites<Codegen, Over>>>,
             ) ++ ( $($rest)* ) ); };
     ( $struct:ident ( $($done:tt)* ) ++ ( test , $($rest:tt)* ) )
-        // `#[test]` is of type `Option<usize>` and is useful only during both
+        // `#[test]` is of type `Option<usize>` and is useful during both
         // typechecking (verify that the inputs and outputs are `()`) and codegen
         // (write the actual function).
         => { selection_aux_decl!($struct ( $($done)*
@@ -377,6 +377,12 @@ macro_rules! selection_aux_decl {
         => { selection_aux_decl!($struct ( $($done)*
                 #[doc = "`#[doc(\"Message\")]`: forward the attribute to Rustc for documentation purposes`"]
                 pub doc: UseOpt<Vec<Sp<String>>, Sites<Codegen, Over>>,
+            ) ++ ( $($rest)* ) ); };
+    ( $struct:ident ( $($done:tt)* ) ++ ( generics , $($rest:tt)* ) )
+        // #[doc] is of type `Vec<Sp<String>>` and is useful only during codegen.
+        => { selection_aux_decl!($struct ( $($done)*
+                #[doc = "`#[generic[T, U, V]]`: declare type variables.`"]
+                pub generics: UseOpt<Vec<Sp<String>>, Sites<Typecheck, Sites<Codegen, Over>>>,
             ) ++ ( $($rest)* ) ); };
     // Base case: generate the struct definition from all the accumulated tokens in `<handled>`
     // (by now `<unhandled>` is empty).
@@ -422,7 +428,7 @@ macro_rules! selection {
     };
 }
 
-selection! { pub struct Node { trace, export, public, main, rustc_allow, doc, impl_trait, test } }
-selection! { pub struct ExtNode { trace, main, rustc_allow } }
+selection! { pub struct Node { trace, export, public, main, rustc_allow, doc, impl_trait, test, generics } }
+selection! { pub struct ExtNode { trace, main, rustc_allow, generics } }
 selection! { pub struct Const { export, public, rustc_allow, doc } }
 selection! { pub struct ExtConst { rustc_allow } }

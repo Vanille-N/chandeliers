@@ -122,6 +122,7 @@ compiling!(pass_std with pass in pass/std/);
 compiling!(pass_fromslides with pass in pass/fromslides/);
 compiling!(pass_given with pass in pass/given/);
 compiling!(pass_options with pass in pass/options/);
+compiling!(pass_poly with pass in pass/poly/);
 
 compiling!(warn_dead_code with compile_fail in warn/dead_code/);
 compiling!(warn_options with compile_fail in warn/options/);

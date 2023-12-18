@@ -1,0 +1,5 @@
+error: A previous argument requires T := int, it cannot also equal bool
+  --> tests/compile_fail/ui/tc/poly/rebind.rs:11:26
+   |
+11 |     let v = alternate(1, true); tel;
+   |                          ^^^^

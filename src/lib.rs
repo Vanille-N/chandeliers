@@ -565,3 +565,35 @@ chandeliers_lus::decl! {
         assert 1 + 1 = 2;
     tel
 }
+
+mod generic {
+    chandeliers_lus::decl! {
+        #[generic[T, U]]
+        node swap(t0: T; u0: U) returns (u1: U; t1: T);
+        let t1 = t0; u1 = u0; tel;
+
+        #[main]
+        node main() returns ();
+        var x: int;
+            y: float;
+        let
+            (x, y) = swap(swap(1, 0.5));
+        tel;
+    }
+}
+
+mod generic_pre {
+    chandeliers_lus::decl! {
+        #[generic[T]]
+        node ipre(t, i: T) returns (o: T);
+        let o = i -> pre t; tel;
+
+        #[main]
+        node main() returns ();
+        var n : int;
+        let
+            n = 0 fby n + 1;
+            assert ipre(n, -1) = (-1 fby n);
+        tel;
+    }
+}

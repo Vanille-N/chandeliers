@@ -438,7 +438,7 @@ impl Translate for src::ExtNode {
 #[derive(Default)]
 struct ExprCtx {
     /// List of blocks to append to whenever there is a function call.
-    blocks: Vec<Sp<tgt::decl::NodeName>>,
+    blocks: Vec<tgt::decl::NodeInstance>,
     /// List of statements to append to whenever a new statement is complete.
     stmts: Vec<Sp<tgt::stmt::Statement>>,
     /// Local variable names that might shadow global variables.
@@ -450,7 +450,7 @@ struct ExprCtx {
 /// you should use the `fork!` macro that will reborrow a fresh copy.
 pub struct ExprCtxView<'i> {
     /// List of blocks to append to whenever there is a function call.
-    blocks: &'i mut Vec<Sp<tgt::decl::NodeName>>,
+    blocks: &'i mut Vec<tgt::decl::NodeInstance>,
     /// List of statements to append to whenever a new statement is complete.
     stmts: &'i mut Vec<Sp<tgt::stmt::Statement>>,
     /// Local variable names that might shadow global variables.
@@ -677,6 +677,7 @@ impl Translate for src::ty::Base {
             Self::Int(_) => tgt::ty::Base::Int,
             Self::Float(_) => tgt::ty::Base::Float,
             Self::Bool(_) => tgt::ty::Base::Bool,
+            Self::Other(t) => tgt::ty::Base::Other(t.as_ref().map(|_, c| format!("{c}"))),
         })
     }
 }
@@ -1483,8 +1484,10 @@ impl Translate for src::expr::Call {
             repr: repr.clone(),
         }
         .with_span(span);
-        ctx.blocks
-            .push(tgt::decl::NodeName { repr, run_uid }.with_span(span));
+        ctx.blocks.push(tgt::decl::NodeInstance {
+            name: tgt::decl::NodeName { repr, run_uid }.with_span(span),
+            generics: None,
+        });
         Some(tgt::expr::Expr::Substep {
             delay: ctx.depth,
             id: id.clone(),

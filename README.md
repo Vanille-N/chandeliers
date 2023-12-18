@@ -102,6 +102,8 @@ The following options are available:
   negatives.
 - `#[doc("Message")]` (non-`extern`): insert documentation in the generated code.
   Can be specified multiple times and all messages will be concatenated in order.
+- `#[generic[T, U]]` (any `node`): declare new opaque type variables.
+    See: [#generics](#generics)
 
 ### Formatting
 
@@ -197,6 +199,30 @@ mod bar {
 If you face name collisions between nodes you should circumvent them by
 means of Rust techniques like enclosing them in modules and renaming them
 by `use bar::foo as bar_foo;`.
+
+
+### Generics
+
+Chandeliers implements _System F_-style polymorphism with per-node type variables.
+Values of a generic type cannot be inspected, but they can be manipulated by
+any construct that is oblivious to type (`let _ = _`, `if b then _ else _`,
+`pre _`, `_ -> _`, `_ fby _`), and nodes declared with generic types can be
+instantiated with arbitrary concrete or generic types.
+
+A standard example is `swap`:
+```rs
+#[generic[T, U]]
+node swap(t0: T; u0: U) returns (u1: U; t1: T);
+let
+    t1 = t0;
+    u1 = u0;
+tel;
+```
+And you are then free to use `swap` with arguments of any type:
+`swap(1, 0.5) ~> (0.5, 1)`, `swap(swap(true, false)) ~> (true, false)`.
+
+
+
 
 
 ## Examples

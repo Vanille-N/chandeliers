@@ -1,4 +1,4 @@
-error: Type mismatch between the left and right sides: Base types should be identical: expected bool, got int
+error: Type mismatch between the left and right sides: Base types should be unifiable: expected bool, got int
  --> tests/compile_fail/ui/tc/shadow.rs:4:9
   |
 4 |     let X = 0; tel

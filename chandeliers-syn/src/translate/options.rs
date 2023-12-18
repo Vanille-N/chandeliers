@@ -92,6 +92,16 @@ impl<T> SetOpt<Vec<T>> {
             self.span = Some(span);
         }
     }
+
+    /// Append a vector.
+    fn extend(&mut self, ts: Vec<T>, span: Span) {
+        if let Some(values) = &mut self.value {
+            values.extend(ts);
+        } else {
+            self.value = Some(ts);
+            self.span = Some(span);
+        }
+    }
 }
 
 impl<T> SetOpt<T> {
@@ -138,6 +148,8 @@ pub struct Decl {
     doc: SetOpt<Vec<Sp<String>>>,
     /// `#[trait]`: implement `Step` for this node rather than just an inherent impl.
     impl_trait: SetOpt<bool>,
+    /// `#[generic[T, U, V]]`: type variables.
+    generics: SetOpt<Vec<Sp<String>>>,
 }
 
 impl Default for Decl {
@@ -148,9 +160,10 @@ impl Default for Decl {
             public: SetOpt::create("#[pub]", false),
             main: SetOpt::create("#[main(nb_iter)]", None),
             test: SetOpt::create("#[test(nb_iter)]", None),
-            rustc_allow: SetOpt::create("#[rustc_allow(attr)]", vec![]),
+            rustc_allow: SetOpt::create("#[rustc_allow[attr]]", vec![]),
             doc: SetOpt::create("#[doc(\"Message\")]", vec![]),
             impl_trait: SetOpt::create("`#[trait]`", false),
+            generics: SetOpt::create("#[generic[T, U, V]]", vec![]),
         }
     }
 }
@@ -184,7 +197,7 @@ impl Decl {
         project! {
             ?eaccum => self: Decl => Const {
                 take { export, rustc_allow, doc, public, }
-                skip { trace, main, impl_trait, test, }
+                skip { trace, main, impl_trait, test, generics, }
             }
         }
     }
@@ -192,8 +205,8 @@ impl Decl {
     /// Project to the options that are valid on a `node`.
     pub fn for_node(self, _eaccum: &mut EAccum) -> Option<Node> {
         project! {
-            ?_acc => self: Decl => Node {
-                take { trace, export, main, rustc_allow, doc, public, impl_trait, test, }
+            ?_eaccum => self: Decl => Node {
+                take { trace, export, main, rustc_allow, doc, public, impl_trait, test, generics, }
                 skip {}
             }
         }
@@ -204,7 +217,7 @@ impl Decl {
         project! {
             ?eaccum => self: Decl => ExtConst {
                 take { rustc_allow, }
-                skip { trace, export, main, doc, public, impl_trait, test, }
+                skip { trace, export, main, doc, public, impl_trait, test, generics, }
             }
         }
     }
@@ -213,7 +226,7 @@ impl Decl {
     pub fn for_ext_node(self, eaccum: &mut EAccum) -> Option<ExtNode> {
         project! {
             ?eaccum => self: Decl => ExtNode {
-                take { trace, main, rustc_allow, }
+                take { trace, main, rustc_allow, generics, }
                 skip { export, doc, public, impl_trait, test, }
             }
         }
@@ -302,8 +315,8 @@ impl Decl {
             "trace" => {
                 let destination = match &params.t[..] {
                     [] => TraceFile::StdOut,
-                    [ident] if ident.as_str() == "stdout" => TraceFile::StdOut,
-                    [ident] if ident.as_str() == "stderr" => TraceFile::StdErr,
+                    [ident] if ident.t.as_str() == "stdout" => TraceFile::StdOut,
+                    [ident] if ident.t.as_str() == "stderr" => TraceFile::StdErr,
                     _ => malformed!(
                         msg:("expects either no arguments or one of `stderr`/`stdout`")
                         syn:("`#[trace]`")
@@ -399,7 +412,7 @@ impl Decl {
             },
             "rustc_allow" => match args {
                 ([inner], []) => {
-                    let id = Allow::Rustc(syn::Ident::new(inner, params.span.unwrap()));
+                    let id = Allow::Rustc(syn::Ident::new(&inner.t, inner.span.unwrap()));
                     register!(rustc_allow <- push id);
                 }
                 _ => malformed!(
@@ -409,7 +422,7 @@ impl Decl {
             },
             "clippy_allow" => match args {
                 ([inner], []) => {
-                    let id = Allow::Clippy(syn::Ident::new(inner, params.span.unwrap()));
+                    let id = Allow::Clippy(syn::Ident::new(&inner.t, inner.span.unwrap()));
                     register!(rustc_allow <- push id);
                 }
                 _ => malformed!(
@@ -425,6 +438,16 @@ impl Decl {
                 _ => malformed!(
                     msg:("expects exactly one string")
                     syn:("`#[doc(\"Message\")]`")
+                ),
+            },
+            "generic" => match args {
+                (types, []) => {
+                    let types = types.to_owned();
+                    register!(generics <- extend types);
+                }
+                _ => malformed!(
+                    msg:("expects only identifiers")
+                    syn:("`#[generic[T, U, V]]`")
                 ),
             },
             _ => malformed!(
