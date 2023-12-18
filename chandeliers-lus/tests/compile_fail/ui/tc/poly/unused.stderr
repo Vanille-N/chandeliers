@@ -1,0 +1,11 @@
+error: Type variable T cannot be inferred from the inputs of this node
+ --> tests/compile_fail/ui/tc/poly/unused.rs:2:15
+  |
+2 |     #[generic[T]]
+  |               ^
+  |
+note: None of these arguments are of type T
+ --> tests/compile_fail/ui/tc/poly/unused.rs:3:13
+  |
+3 |     node id(t0: int) returns (t1: int);
+  |             ^^^^^^^^

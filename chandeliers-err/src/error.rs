@@ -722,3 +722,104 @@ where
         v
     }
 }
+
+/// When a generic type variable is unused and thus not inferrable
+pub struct UnusedGeneric<Unused, Inputs> {
+    /// Type variable that is absent from the inputs declaration.
+    pub unused: Unused,
+    /// Declaration of said inputs.
+    pub inputs: Inputs,
+}
+
+impl<Unused, Inputs> IntoError for UnusedGeneric<Unused, Inputs>
+where
+    Unused: Display + TrySpan,
+    Inputs: TrySpan,
+{
+    fn into_err(self) -> Error {
+        vec![
+            (
+                format!(
+                    "Type variable {} cannot be inferred from the inputs of this node",
+                    self.unused
+                ),
+                self.unused.try_span(),
+            ),
+            (
+                format!("None of these arguments are of type {}", self.unused),
+                self.inputs.try_span(),
+            ),
+        ]
+    }
+}
+
+/// Impossible to satisfy generic constraints introduced by bounds.
+pub struct UnsatGenericConstraint<Variable, Previous, New, Context> {
+    /// Type variable.
+    pub variable: Variable,
+    /// Already equal to.
+    pub previous: Previous,
+    /// Now additionally required to be equal to.
+    pub new: New,
+    /// Bound introduced by this node declaration.
+    pub context: Context,
+}
+
+impl<Variable, Previous, New, Context> IntoError
+    for UnsatGenericConstraint<Variable, Previous, New, Context>
+where
+    Variable: Display,
+    Previous: Display + TrySpan,
+    New: Display + TrySpan,
+    Context: TrySpan,
+{
+    fn into_err(self) -> Error {
+        vec![
+            (
+                format!(
+                    "Cannot satisfy constraint {} = {} introduced here...",
+                    self.variable, self.new
+                ),
+                self.new.try_span(),
+            ),
+            (
+                format!(
+                    "...because a previous bound already enforces {} = {}",
+                    self.variable, self.previous
+                ),
+                self.previous.try_span(),
+            ),
+            (
+                format!("Unable to satisfy the generic bounds on {}", self.variable,),
+                self.context.try_span(),
+            ),
+        ]
+    }
+}
+
+/// When a generic type variable is unused and thus not inferrable
+pub struct UndeclaredGeneric<Undeclared> {
+    /// Type variable that is absent from the generics declaration.
+    pub undeclared: Undeclared,
+}
+
+impl<Undeclared> IntoError for UndeclaredGeneric<Undeclared>
+where
+    Undeclared: Display + TrySpan,
+{
+    fn into_err(self) -> Error {
+        vec![
+            (
+                format!("Type variable {} was not declared", self.undeclared),
+                self.undeclared.try_span(),
+            ),
+            (
+                format!(
+                    "Maybe add a `#[generic[{}]]` annotation to the node ?",
+                    self.undeclared
+                ),
+                None,
+            ),
+        ]
+    }
+}

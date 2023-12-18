@@ -421,7 +421,7 @@ impl decl::Node {
         };
 
         let ext_step_impl = quote_spanned! {name.span.unwrap()=>
-            impl #generics Default for #ext_name #generics {
+            impl #generics Default for #ext_name #generics #bounds {
                 fn default() -> Self {
                     Self {
                         inner: Default::default(),
@@ -579,12 +579,12 @@ impl ToTokens for decl::ExtNode {
             #[allow(non_camel_case_types)] // Lustre naming conventions.
             #[allow(dead_code)] // Only trigger on impl step.
             #( #rustc_allow_1 )* // User-provided.
-            struct #uid_name #generics {
+            struct #uid_name #generics #bounds {
                 inner: #ext_name #generics,
                 __clock: usize,
             }
 
-            impl #generics Default for #uid_name #generics {
+            impl #generics Default for #uid_name #generics #bounds {
                 fn default() -> Self {
                     Self {
                         inner: Default::default(),

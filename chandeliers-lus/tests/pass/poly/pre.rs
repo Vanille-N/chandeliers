@@ -1,5 +1,5 @@
 chandeliers_lus::decl! {
-    #[generics[T]]
+    #[generic[T]]
     node ipre(t, i: T) returns (o: T);
     let o = i -> pre t; tel;
 

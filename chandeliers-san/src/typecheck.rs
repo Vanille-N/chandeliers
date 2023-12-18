@@ -142,7 +142,11 @@ impl TyCtx<'_> {
     fn instantiate(&mut self, node: Sp<&var::Node>, unifier: &TyUnifier) {
         let gen = self.nodes_generics.get_mut(node.t).unwrap();
         match unifier {
-            TyUnifier::Mapping { idx: _, subst } => {
+            TyUnifier::Mapping {
+                site: _,
+                idx: _,
+                subst,
+            } => {
                 gen.1 = Some(subst.iter().map(|v| v.clone().unwrap()).collect());
             }
             _ => {
@@ -332,7 +336,7 @@ impl TypeCheckExpr for ast::expr::Expr {
                 let expected_tys = ctx.get_node_in(id.as_ref());
                 let generics = ctx.get_node_generics(id.as_ref());
                 let actual_tys = args.typecheck(eaccum, ctx)?;
-                let mut unifier = TyUnifier::from_generics(eaccum, generics)?;
+                let mut unifier = TyUnifier::from_generics(eaccum, generics, expected_tys.span)?;
                 expected_tys.identical(eaccum, &mut unifier, &actual_tys, span)?;
                 ctx.instantiate(id.as_ref(), &unifier);
                 Some(ctx.get_node_out(id.as_ref()).t.substitute(&unifier))
@@ -522,17 +526,18 @@ impl ast::op::Bin {
                     right: &right,
                 })
             }
-            (Bin::Add | Bin::Mul | Bin::Sub | Bin::Div, ty::Base::Int | ty::Base::Float) => Some(()),
+            (Bin::Add | Bin::Mul | Bin::Sub | Bin::Div, ty::Base::Int | ty::Base::Float) => {
+                Some(())
+            }
             (Bin::Rem, ty::Base::Int) => Some(()),
             (Bin::BitAnd | Bin::BitOr | Bin::BitXor, ty::Base::Int | ty::Base::Bool) => Some(()),
             (_, ty::Base::Other(t)) => eaccum.error(err::BinopMismatch {
-                    oper: self,
-                    site: span,
-                    expect: format!("a concrete type, found type variable {t}"),
-                    left: &left,
-                    right: &right,
-                })
-
+                oper: self,
+                site: span,
+                expect: format!("a concrete type, found type variable {t}"),
+                left: &left,
+                right: &right,
+            }),
         }
     }
 }
@@ -562,7 +567,6 @@ impl ast::op::Un {
                 expect: format!("a concrete type, found type variable {t}"),
                 inner: &inner,
             }),
-
         }
     }
 }
@@ -585,8 +589,11 @@ impl ast::op::Cmp {
             })?;
         }
         match (self, &left.t) {
-            (Cmp::Le | Cmp::Ge | Cmp::Lt | Cmp::Gt, ty::Base::Int | ty::Base::Bool | ty::Base::Float)
-                | (Cmp::Ne | Cmp::Eq, ty::Base::Int | ty::Base::Bool) => Some(()),
+            (
+                Cmp::Le | Cmp::Ge | Cmp::Lt | Cmp::Gt,
+                ty::Base::Int | ty::Base::Bool | ty::Base::Float,
+            )
+            | (Cmp::Ne | Cmp::Eq, ty::Base::Int | ty::Base::Bool) => Some(()),
             (Cmp::Ne | Cmp::Eq, ty::Base::Float) => eaccum.error(err::BinopMismatch {
                 oper: self,
                 site: span,
@@ -601,7 +608,6 @@ impl ast::op::Cmp {
                 left: &left,
                 right: &right,
             }),
-
         }
     }
 }
@@ -620,17 +626,19 @@ impl Sp<&ty::Base> {
     }
 }
 
+#[derive(Debug)]
 enum TyUnifier {
     Null,
     Identity,
     Mapping {
+        site: Span,
         idx: HashMap<Sp<String>, usize>,
         subst: Vec<Option<Sp<ty::Base>>>,
     },
 }
 
 impl TyUnifier {
-    fn from_generics(_eaccum: &mut EAccum, generics: Vec<Sp<String>>) -> Option<Self> {
+    fn from_generics(_eaccum: &mut EAccum, generics: Vec<Sp<String>>, site: Span) -> Option<Self> {
         let mut idx = HashMap::new();
         let len = generics.len();
         for (i, gen) in generics.into_iter().enumerate() {
@@ -639,6 +647,7 @@ impl TyUnifier {
             }
         }
         Some(Self::Mapping {
+            site,
             idx,
             subst: vec![None; len],
         })
@@ -648,7 +657,11 @@ impl TyUnifier {
 impl TyUnifier {
     fn image(&self, s: Sp<String>) -> ty::Base {
         match self {
-            Self::Mapping { idx, subst } => {
+            Self::Mapping {
+                site: _,
+                idx,
+                subst,
+            } => {
                 if let Some(i) = idx.get(&s) {
                     subst[*i]
                         .clone()
@@ -676,7 +689,7 @@ impl TyUnifier {
                 }
             }
             Other(l) => match self {
-                Self::Mapping { idx, subst } => {
+                Self::Mapping { site, idx, subst } => {
                     if let Some(i) = idx.get(&l) {
                         if subst[*i].as_ref().map(|v| v.as_ref()) == Some(right) {
                             return Some(());
@@ -684,13 +697,21 @@ impl TyUnifier {
                             subst[*i] = Some(right.cloned());
                             return Some(());
                         } else {
-                            eaccum.error(err::TmpBasic {
-                                msg: format!("A previous argument requires {} := {}, it cannot also equal {}", &l, subst[*i].as_ref().unwrap(), right),
-                                span: right.span,
+                            eaccum.error(err::UnsatGenericConstraint {
+                                variable: &l,
+                                previous: subst[*i].as_ref().unwrap(),
+                                new: right,
+                                context: &*site,
                             })?;
                         }
                     } else {
-                        unreachable!()
+                        // We get here if we try to use a malformed signature.
+                        // This occurs when the signature contains an undeclared
+                        // generic argument.
+                        // We can just let this one go and the error will be
+                        // caught by someone else.
+                        // This will also probably produce other errors as a side
+                        // effect, but whatever.
                     }
                 }
                 _ => {
@@ -761,7 +782,12 @@ impl Sp<ty::Tuple> {
     ) -> Option<()> {
         use ty::Tuple::{Multiple, Single};
         match (&self.t, &other.t) {
-            (Single(left), Single(right)) => unifier.require_identical(eaccum, left.as_ref().with_span(self.span), right.as_ref().with_span(other.span), source),
+            (Single(left), Single(right)) => unifier.require_identical(
+                eaccum,
+                left.as_ref().with_span(self.span),
+                right.as_ref().with_span(other.span),
+                source,
+            ),
             (Multiple(ts), Multiple(us)) => {
                 if ts.t.len() != us.t.len() {
                     let msg = format!(
@@ -936,6 +962,48 @@ impl TypeCheckDecl for ast::decl::Node {
             }
         }
 
+        // Check that the generic parameters are all inferrable from the inputs only.
+        // That is
+        // - all type variables of the declaration appear in the inputs, and
+        // - all type variables in the inputs, outputs, or locals are declared.
+        {
+            let mut declared_generics = std::collections::HashSet::new();
+            for g in self.options.generics.fetch::<This>() {
+                declared_generics.insert(g);
+            }
+
+            let mut unused_generics = declared_generics.clone();
+            for i in self.inputs.t.iter() {
+                if let ty::Base::Other(t) = &i.t.ty.t.ty.t.inner.t {
+                    if !declared_generics.contains(&t) {
+                        eaccum.error(err::UndeclaredGeneric {
+                            undeclared: &i.t.ty.t.ty.t.inner,
+                        })?;
+                    }
+                    // Inputs count towards being used
+                    unused_generics.remove(&t);
+                }
+            }
+            for i in self.outputs.t.iter().chain(self.locals.t.iter()) {
+                if let ty::Base::Other(t) = &i.t.ty.t.ty.t.inner.t {
+                    // Outputs and locals don't count towards usage
+                    // and only need to be declared.
+                    if !declared_generics.contains(&t) {
+                        eaccum.error(err::UndeclaredGeneric {
+                            undeclared: &i.t.ty.t.ty.t.inner,
+                        })?;
+                    }
+                }
+            }
+
+            for unused in unused_generics.into_iter() {
+                eaccum.error(err::UnusedGeneric {
+                    unused,
+                    inputs: &self.inputs,
+                })?;
+            }
+        }
+
         // These are all the extra variables that we provide in addition
         // to `extvar`.
         let mut scope = eaccum.scope();
@@ -1035,7 +1103,9 @@ impl TypeCheckDecl for ast::decl::ExtNode {
     ) -> Option<()> {
         let extvar = HashMap::default();
         let mut ctx = TyCtx::from_ext(&extvar);
-        // FIXME: prettify
+        // Special case for functions declared as toplevel executables:
+        // they must have empty inputs and outputs.
+        // Extern nodes cannot be marked #[test] so we don't need to handle that.
         if self.options.main.fetch::<This>().is_some() {
             if !self.inputs.t.is_empty() {
                 eaccum.error(err::TmpBasic {
@@ -1050,9 +1120,51 @@ impl TypeCheckDecl for ast::decl::ExtNode {
                 })?;
             }
         }
+
+        // Check that the generic parameters are all inferrable from the inputs only.
+        // That is
+        // - all type variables of the declaration appear in the inputs, and
+        // - all type variables in the inputs, outputs, or locals are declared.
+        {
+            let mut declared_generics = std::collections::HashSet::new();
+            for g in self.options.generics.fetch::<This>() {
+                declared_generics.insert(g);
+            }
+
+            let mut unused_generics = declared_generics.clone();
+            for i in self.inputs.t.iter() {
+                if let ty::Base::Other(t) = &i.t.ty.t.ty.t.inner.t {
+                    if !declared_generics.contains(&t) {
+                        eaccum.error(err::UndeclaredGeneric {
+                            undeclared: &i.t.ty.t.ty.t.inner,
+                        })?;
+                    }
+                    // Inputs count towards being used
+                    unused_generics.remove(&t);
+                }
+            }
+            for i in self.outputs.t.iter() {
+                if let ty::Base::Other(t) = &i.t.ty.t.ty.t.inner.t {
+                    // Outputs and locals don't count towards usage
+                    // and only need to be declared.
+                    if !declared_generics.contains(&t) {
+                        eaccum.error(err::UndeclaredGeneric {
+                            undeclared: &i.t.ty.t.ty.t.inner,
+                        })?;
+                    }
+                }
+            }
+
+            for unused in unused_generics.into_iter() {
+                eaccum.error(err::UnusedGeneric {
+                    unused,
+                    inputs: &self.inputs,
+                })?;
+            }
+        }
+
         // These are all the extra variables that we provide in addition
         // to `extvar`.
-        // The order in which we handle them is relevant for the clocks.
         let mut scope = eaccum.scope();
         for vs in &[&self.inputs, &self.outputs] {
             for v in vs.t.iter() {

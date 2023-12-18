@@ -442,6 +442,23 @@ impl Decl {
             },
             "generic" => match args {
                 (types, []) => {
+                    let mut already = std::collections::HashSet::new();
+                    for t in types {
+                        match t.t.as_str() {
+                            "int" | "float" | "bool" => malformed!(
+                                msg:("This generic parameter would override the builtin type {t}")
+                                note:("Use a type variable that does not conflict with existing names")
+                            ),
+                            other => {
+                                if !already.insert(other) {
+                                    malformed!(
+                                        msg:("Gereric parameter `{other}` is declared twice")
+                                        note:("Type variables must have mutually distinct names")
+                                    )
+                                }
+                            }
+                        }
+                    }
                     let types = types.to_owned();
                     register!(generics <- extend types);
                 }

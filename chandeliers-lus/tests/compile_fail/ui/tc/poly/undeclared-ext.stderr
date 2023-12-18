@@ -1,0 +1,7 @@
+error: Type variable T was not declared
+ --> tests/compile_fail/ui/tc/poly/undeclared-ext.rs:2:24
+  |
+2 |     extern node id(t0: T) returns (t1: T);
+  |                        ^
+  |
+  = note: Maybe add a `#[generic[T]]` annotation to the node ?

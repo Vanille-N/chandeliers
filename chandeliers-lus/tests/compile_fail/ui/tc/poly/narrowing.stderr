@@ -1,7 +1,7 @@
 error: Type mismatch between the left and right sides: Base types should be unifiable: expected int, got T
- --> tests/compile_fail/ui/tc/poly/narrowing.rs:6:14
+ --> tests/compile_fail/ui/tc/poly/narrowing.rs:7:14
   |
-6 |     let t1 = id_int(t0); tel;
+7 |     let t1 = id_int(t0); tel;
   |              ^^^^^^^^^^
   |
 note: This element has type int
@@ -10,7 +10,7 @@ note: This element has type int
 2 |     node id_int(i0: int) returns (i1: int);
   |                 ^^^^^^^^
 note: While this element has type T
- --> tests/compile_fail/ui/tc/poly/narrowing.rs:6:20
+ --> tests/compile_fail/ui/tc/poly/narrowing.rs:7:20
   |
-6 |     let t1 = id_int(t0); tel;
+7 |     let t1 = id_int(t0); tel;
   |                    ^^^^

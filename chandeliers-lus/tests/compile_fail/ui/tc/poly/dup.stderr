@@ -1,5 +1,7 @@
-error: expected `node`
- --> tests/compile_fail/ui/tc/poly/dup.rs:3:5
+error: Malformed attribute generic: Gereric parameter `T` is declared twice
+ --> tests/compile_fail/ui/tc/poly/dup.rs:2:5
   |
-3 |     fn id(t0: T) returns (t1: T);
-  |     ^^
+2 |     #[generic[T, T]]
+  |     ^^^^^^^^^^^^^^^^
+  |
+  = note: Type variables must have mutually distinct names
