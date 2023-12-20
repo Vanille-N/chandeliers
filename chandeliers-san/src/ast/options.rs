@@ -138,8 +138,9 @@ pub mod usage {
     }
     site!("code generation": Codegen);
     site!("typechecking": Typecheck);
+    site!("parsing": Parsing);
 }
-use usage::{Codegen, Typecheck};
+use usage::{Codegen, Parsing, Typecheck};
 
 /// An option that records whether it was used somewhere.
 #[derive(Debug, Clone)]
@@ -278,6 +279,7 @@ macro_rules! matching_head {
 matching_head! {
     Codegen,
     Typecheck,
+    Parsing,
 }
 
 /// Where to write debug trace to.
@@ -419,7 +421,7 @@ macro_rules! selection {
     };
 }
 
-selection! { pub struct Node { trace, export, public, main, rustc_allow, doc, impl_trait, test, generics } }
+selection! { pub struct Node { trace, export, public, main, rustc_allow, doc, impl_trait, test, generics, universal_pre } }
 selection! { pub struct ExtNode { trace, main, rustc_allow, generics } }
 selection! { pub struct Const { export, public, rustc_allow, doc } }
 selection! { pub struct ExtConst { rustc_allow } }

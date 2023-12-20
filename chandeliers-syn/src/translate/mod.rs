@@ -174,6 +174,8 @@ use crate::ast as src;
 
 mod options;
 
+type This = tgt::options::usage::Parsing;
+
 /// Trait to translate from the parsing AST to the analysis AST.
 pub trait Translate {
     /// Corresponding item in the analysis AST.
@@ -443,6 +445,8 @@ struct ExprCtx {
     stmts: Vec<Sp<tgt::stmt::Statement>>,
     /// Local variable names that might shadow global variables.
     shadow_glob: HashSet<String>,
+    /// Are we using the temporal operators with buffers or registers ?
+    use_registers: bool,
 }
 
 /// Accessor for `ExprCtx`.
@@ -458,6 +462,8 @@ pub struct ExprCtxView<'i> {
     /// Current depth of the translation (i.e. number of `pre` in front),
     /// influences the production of `var::Past` with the current value.
     depth: usize,
+    /// Are we using the temporal operators with buffers or registers ?
+    use_registers: bool,
 }
 
 impl ExprCtx {
@@ -468,6 +474,7 @@ impl ExprCtx {
             stmts: &mut self.stmts,
             shadow_glob: &self.shadow_glob,
             depth: 0,
+            use_registers: self.use_registers,
         }
     }
 }
@@ -496,6 +503,7 @@ macro_rules! fork {
             stmts: &mut *$this.stmts,
             shadow_glob: &$this.shadow_glob,
             depth: $this.depth,
+            use_registers: $this.use_registers,
         }
     };
 }
@@ -519,6 +527,7 @@ impl Translate for src::Node {
         let outputs = self.outputs.translate(eaccum, run_uid, &mut deptys)?;
         let locals = self.locals.translate(eaccum, run_uid, &mut deptys)?;
         let mut ectx = ExprCtx::default();
+        ectx.use_registers = *options.universal_pre.fetch::<This>();
         for shadows in &[&inputs, &outputs, &locals] {
             for s in shadows.t.iter() {
                 ectx.shadow_glob.insert(s.t.name.t.repr.t.clone());
@@ -1233,25 +1242,44 @@ impl Translate for src::expr::Fby {
         _span: Span,
         ctx: Self::Ctx<'_>,
     ) -> Option<tgt::expr::Expr> {
-        assoc::Descr {
-            label: "FbyExpr",
-            convert: |elem: Sp<src::expr::Then>, depth| {
-                elem.translate(eaccum, run_uid, fork!(ctx).bump(depth))
-            },
-            compose: |before: Sp<tgt::expr::Expr>, _op, depth, after: Sp<tgt::expr::Expr>| {
-                tgt::expr::Expr::Later {
-                    delay: tgt::past::Depth {
-                        dt: ctx.depth + depth,
+        if ctx.use_registers {
+            assoc::Descr {
+                label: "FbyExpr",
+                convert: |elem: Sp<src::expr::Then>, _depth| {
+                    elem.translate(eaccum, run_uid, fork!(ctx) /* DO NOT BUMP */)
+                },
+                compose: |before: Sp<tgt::expr::Expr>, _op, _depth, after: Sp<tgt::expr::Expr>| {
+                    tgt::expr::Expr::Register {
+                        initial: Some(before.boxed()),
+                        followed_by: after.boxed(),
+                        step_immediately: false,
                     }
-                    .with_span(before.span.join(after.span).unwrap_or_else(|| {
-                        err::abort!("Malformed span between {before:?} and {after:?}")
-                    })),
-                    before: before.boxed(),
-                    after: after.boxed(),
-                }
-            },
+                },
+            }
+            .right_associative(self.items)
+        } else {
+            assoc::Descr {
+                label: "FbyExpr",
+                convert: |elem: Sp<src::expr::Then>, depth| {
+                    elem.translate(eaccum, run_uid, fork!(ctx).bump(depth) /* BUMP */)
+                },
+                compose: |before: Sp<tgt::expr::Expr>, _op, depth, after: Sp<tgt::expr::Expr>| {
+                    tgt::expr::Expr::Later {
+                        delay: tgt::past::Depth {
+                            dt: ctx.depth + depth, /* INCREASE DEPTH */
+                        }
+                        .with_span(
+                            before.span.join(after.span).unwrap_or_else(|| {
+                                err::abort!("Malformed span between {before:?} and {after:?}")
+                            }),
+                        ),
+                        before: before.boxed(),
+                        after: after.boxed(),
+                    }
+                },
+            }
+            .right_associative(self.items)
         }
-        .right_associative(self.items)
     }
 }
 
@@ -1265,9 +1293,17 @@ impl Translate for src::expr::Pre {
         _span: Span,
         ctx: Self::Ctx<'_>,
     ) -> Option<tgt::expr::Expr> {
-        Some(tgt::expr::Expr::DummyPre(
-            self.inner.translate(eaccum, run_uid, ctx.incr())?.boxed(),
-        ))
+        if ctx.use_registers {
+            Some(tgt::expr::Expr::Register {
+                initial: None,
+                followed_by: self.inner.translate(eaccum, run_uid, ctx.incr())?.boxed(),
+                step_immediately: false,
+            })
+        } else {
+            Some(tgt::expr::Expr::DummyPre(
+                self.inner.translate(eaccum, run_uid, ctx.incr())?.boxed(),
+            ))
+        }
     }
 }
 
@@ -1281,27 +1317,48 @@ impl Translate for src::expr::Then {
         _span: Span,
         ctx: Self::Ctx<'_>,
     ) -> Option<tgt::expr::Expr> {
-        // This looks similar to `FbyExpr`, but notice how we aren't using `depth`
-        // in the same way.
-        assoc::Descr {
-            label: "ThenExpr",
-            convert: |elem: Sp<src::expr::Add>, _depth| {
-                elem.translate(eaccum, run_uid, fork!(ctx) /* DO NOT BUMP */)
-            },
-            compose: |before: Sp<tgt::expr::Expr>, _op, depth, after: Sp<tgt::expr::Expr>| {
-                tgt::expr::Expr::Later {
-                    delay: tgt::past::Depth {
-                        dt: ctx.depth + depth,
+        if ctx.use_registers {
+            assoc::Descr {
+                label: "ThenExpr",
+                convert: |elem: Sp<src::expr::Add>, _depth| {
+                    elem.translate(eaccum, run_uid, fork!(ctx) /* DO NOT BUMP */)
+                },
+                compose: |before: Sp<tgt::expr::Expr>, _op, depth, after: Sp<tgt::expr::Expr>| {
+                    tgt::expr::Expr::Register {
+                        initial: Some(before.boxed()),
+                        followed_by: after.boxed(),
+                        step_immediately: true,
                     }
-                    .with_span(before.span.join(after.span).unwrap_or_else(|| {
-                        chandeliers_err::abort!("Malformed span between {before:?} and {after:?}")
-                    })),
-                    before: before.boxed(),
-                    after: after.boxed(),
-                }
-            },
+                },
+            }
+            .right_associative(self.items)
+        } else {
+            // This looks similar to `FbyExpr`, but notice how we aren't using `depth`
+            // in the same way.
+            assoc::Descr {
+                label: "ThenExpr",
+                convert: |elem: Sp<src::expr::Add>, _depth| {
+                    elem.translate(eaccum, run_uid, fork!(ctx) /* DO NOT BUMP */)
+                },
+                compose: |before: Sp<tgt::expr::Expr>, _op, depth, after: Sp<tgt::expr::Expr>| {
+                    tgt::expr::Expr::Later {
+                        delay: tgt::past::Depth {
+                            dt: ctx.depth + depth,
+                        }
+                        .with_span(
+                            before.span.join(after.span).unwrap_or_else(|| {
+                                chandeliers_err::abort!(
+                                    "Malformed span between {before:?} and {after:?}"
+                                )
+                            }),
+                        ),
+                        before: before.boxed(),
+                        after: after.boxed(),
+                    }
+                },
+            }
+            .right_associative(self.items)
         }
-        .right_associative(self.items)
     }
 }
 

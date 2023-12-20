@@ -562,6 +562,9 @@ pub mod expr {
             /// Value to evaluate after `delay`.
             after: Sp<Box<Expr>>,
         },
+        /// Alternative to `Later` and `Pre`, provides a delay by enabling
+        /// a read before a write.
+        FetchRegister { id: usize },
         /// A conditional expression `if b then x else y`
         Ifx {
             /// Boolean condition.
@@ -667,6 +670,8 @@ pub mod stmt {
         },
         /// Perform an assertion.
         Assert(Sp<expr::Expr>),
+        /// Perform the write to an already read register.
+        PutRegister { id: usize },
     }
 }
 

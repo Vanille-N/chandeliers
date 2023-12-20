@@ -125,6 +125,7 @@ compiling!(pass_fromslides with pass in pass/fromslides/);
 compiling!(pass_given with pass in pass/given/);
 compiling!(pass_options with pass in pass/options/);
 compiling!(pass_poly with pass in pass/poly/);
+compiling!(pass_registers with pass in pass/registers/);
 
 compiling!(warn_dead_code with compile_fail in warn/dead_code/);
 compiling!(warn_options with compile_fail in warn/options/);

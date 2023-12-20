@@ -146,6 +146,8 @@ pub struct Decl {
     impl_trait: SetOpt<bool>,
     /// `#[generic[T, U, V]]`: type variables.
     generics: SetOpt<Vec<Sp<String>>>,
+    /// `#[universal_pre]`: use registers instead of a circular buffer of past values.
+    universal_pre: SetOpt<bool>,
 }
 
 impl Default for Decl {
@@ -158,8 +160,9 @@ impl Default for Decl {
             test: SetOpt::create("#[test(nb_iter)]", None),
             rustc_allow: SetOpt::create("#[rustc_allow[attr]]", vec![]),
             doc: SetOpt::create("#[doc(\"Message\")]", vec![]),
-            impl_trait: SetOpt::create("`#[trait]`", false),
+            impl_trait: SetOpt::create("#[trait]", false),
             generics: SetOpt::create("#[generic[T, U, V]]", vec![]),
+            universal_pre: SetOpt::create("#[universal_pre]", false),
         }
     }
 }
@@ -193,7 +196,7 @@ impl Decl {
         project! {
             ?eaccum => self: Decl => Const {
                 take { export, rustc_allow, doc, public, }
-                skip { trace, main, impl_trait, test, generics, }
+                skip { trace, main, impl_trait, test, generics, universal_pre, }
             }
         }
     }
@@ -202,7 +205,7 @@ impl Decl {
     pub fn for_node(self, _eaccum: &mut EAccum) -> Option<Node> {
         project! {
             ?_eaccum => self: Decl => Node {
-                take { trace, export, main, rustc_allow, doc, public, impl_trait, test, generics, }
+                take { trace, export, main, rustc_allow, doc, public, impl_trait, test, generics, universal_pre, }
                 skip {}
             }
         }
@@ -213,7 +216,7 @@ impl Decl {
         project! {
             ?eaccum => self: Decl => ExtConst {
                 take { rustc_allow, }
-                skip { trace, export, main, doc, public, impl_trait, test, generics, }
+                skip { trace, export, main, doc, public, impl_trait, test, generics, universal_pre, }
             }
         }
     }
@@ -223,7 +226,7 @@ impl Decl {
         project! {
             ?eaccum => self: Decl => ExtNode {
                 take { trace, main, rustc_allow, generics, }
-                skip { export, doc, public, impl_trait, test, }
+                skip { export, doc, public, impl_trait, test, universal_pre, }
             }
         }
     }
@@ -364,6 +367,16 @@ impl Decl {
                 _ => malformed!(
                     msg:("expects no arguments")
                     syn:("`#[trait]`")
+                ),
+            },
+            "universal_pre" => match args {
+                ([], []) => {
+                    duplicate!(universal_pre);
+                    register!(universal_pre <- set true);
+                }
+                _ => malformed!(
+                    msg:("expects no arguments")
+                    syn:("`#[universal_pre]`")
                 ),
             },
             "main" => match args {
