@@ -1140,11 +1140,10 @@ impl TypeCheckDecl for ast::decl::Node {
         // Then also register the per-var::Node types of the blocks.
         for (id, blk) in self.blocks.iter().enumerate() {
             let Some((gen, i, o)) = extfun.get(&blk.name.t) else {
-                let s = format!("Block {} is not defined", &blk.name);
-                return eaccum.error(err::Basic {
-                    span: blk.name.span,
-                    msg: s,
-                });
+                err::abort!(
+                    "Absence of {} should have been caught during causality check",
+                    &blk.name
+                )
             };
             let id = var::Node {
                 id: id.with_span(blk.name.span),
@@ -1206,7 +1205,7 @@ impl TypeCheckDecl for ast::decl::ExtNode {
     fn typecheck(
         &mut self,
         eaccum: &mut EAccum,
-        _span: Span,
+        span: Span,
         _extfun: &HashMap<ast::decl::NodeName, (GenericParams, SpTyBaseTuple, SpTyBaseTuple)>,
         _extvar: &HashMap<var::Global, WithDefSite<Sp<ty::Base>>>,
     ) -> Option<()> {
@@ -1215,19 +1214,17 @@ impl TypeCheckDecl for ast::decl::ExtNode {
         // Special case for functions declared as toplevel executables:
         // they must have empty inputs and outputs.
         // Extern nodes cannot be marked #[test] so we don't need to handle that.
-        if self.options.main.fetch::<This>().is_some() {
-            if !self.inputs.t.is_empty() {
-                eaccum.error(err::Basic {
-                    msg: "Node declared as main should not have any inputs".to_owned(),
-                    span: self.inputs.span,
-                })?;
-            }
-            if !self.outputs.t.is_empty() {
-                eaccum.error(err::Basic {
-                    msg: "Node declared as main should not have any outputs".to_owned(),
-                    span: self.inputs.span,
-                })?;
-            }
+        let inputs_nonempty = !self.inputs.t.is_empty();
+        let outputs_nonempty = !self.outputs.t.is_empty();
+        if inputs_nonempty || outputs_nonempty {
+            eaccum.error(err::ExecutableNodeSig {
+                reason: "annotation #[main]",
+                inputs_nonempty,
+                outputs_nonempty,
+                site: span,
+                inputs: &self.inputs,
+                outputs: &self.outputs,
+            })?;
         }
 
         // Check that the generic parameters are all inferrable from the inputs only.
