@@ -6,6 +6,7 @@ use quote::{quote, quote_spanned, ToTokens};
 use crate::ast::options::usage::Codegen as This;
 use crate::ast::{decl, expr, op, past, stmt, ty, var, Tuple};
 use crate::sp::{Sp, Span, WithSpan};
+use chandeliers_err as err;
 
 mod constexpr;
 pub mod options;
@@ -197,7 +198,9 @@ impl ToTokens for decl::NodeInstance {
     fn to_tokens(&self, toks: &mut TokenStream) {
         let Self { name, generics } = self;
         let name = name.as_sanitized_ident();
-        let generics = generics.as_ref().expect("Improperly initialized");
+        let generics = generics
+            .as_ref()
+            .unwrap_or_else(|| err::abort!("Generics are not sufficiently instanciated"));
         let generics = if generics.is_empty() {
             quote!()
         } else {
@@ -208,7 +211,7 @@ impl ToTokens for decl::NodeInstance {
         };
         toks.extend(quote! {
             #name #generics
-        })
+        });
     }
 }
 
@@ -220,7 +223,7 @@ impl decl::Node {
     #[expect(
         clippy::redundant_closure_for_method_calls,
         reason = "Required for type inference"
-    )] // FIXME: make it a trait
+    )] // FIXME: make it a trait to fix it ?
     fn internal_decl(&self) -> TokenStream {
         let Self {
             name,
@@ -244,24 +247,12 @@ impl decl::Node {
         let pos_outputs_decl = outputs.strictly_positive();
         let pos_locals_decl = locals.strictly_positive();
 
-        let pos_inputs_use = inputs
-            .strictly_positive()
-            .map(|v| v.name_of().as_sanitized_ident());
-        let pos_outputs_use = outputs
-            .strictly_positive()
-            .map(|v| v.name_of().as_sanitized_ident());
-        let pos_locals_use = locals
-            .strictly_positive()
-            .map(|v| v.name_of().as_sanitized_ident());
-        let pos_inputs_default = inputs
-            .strictly_positive()
-            .map(|v| v.name_of().as_sanitized_ident());
-        let pos_outputs_default = outputs
-            .strictly_positive()
-            .map(|v| v.name_of().as_sanitized_ident());
-        let pos_locals_default = locals
-            .strictly_positive()
-            .map(|v| v.name_of().as_sanitized_ident());
+        let pos_inputs_use = inputs.strictly_positive_sanitized_names();
+        let pos_outputs_use = outputs.strictly_positive_sanitized_names();
+        let pos_locals_use = locals.strictly_positive_sanitized_names();
+        let pos_inputs_default = inputs.strictly_positive_sanitized_names();
+        let pos_outputs_default = outputs.strictly_positive_sanitized_names();
+        let pos_locals_default = locals.strictly_positive_sanitized_names();
 
         //let inputs_ty_3 = inputs.as_defined_tys();
         let expected_input_tys_impl = inputs.as_embedded_tys();
@@ -307,6 +298,7 @@ impl decl::Node {
         };
 
         let implementation = quote_spanned! {name.span.unwrap()=>
+            #[allow(clippy::derivable_impls)] // This is, in fact, not always derivable.
             impl #generics Default for #uid_name #generics #bounds {
                 fn default() -> Self {
                     Self {
@@ -421,6 +413,7 @@ impl decl::Node {
         };
 
         let ext_step_impl = quote_spanned! {name.span.unwrap()=>
+            #[allow(clippy::derivable_impls)] // Not derivable when there are generics
             impl #generics Default for #ext_name #generics #bounds {
                 fn default() -> Self {
                     Self {
@@ -533,6 +526,12 @@ impl Sp<&Tuple<Sp<decl::TyVar>>> {
     fn strictly_positive(&self) -> impl Iterator<Item = &Sp<decl::TyVar>> {
         self.t.iter().filter(|v| v.t.strictly_positive())
     }
+
+    /// Get the sanitized identifiers for a tuple of typed variables.
+    fn strictly_positive_sanitized_names(&self) -> impl Iterator<Item = TokenStream> + '_ {
+        self.strictly_positive()
+            .map(|v| v.name_of().as_sanitized_ident())
+    }
 }
 
 /// Extern node declaration: assert that it implements the right trait.
@@ -584,6 +583,7 @@ impl ToTokens for decl::ExtNode {
                 __clock: usize,
             }
 
+            #[allow(clippy::derivable_impls)] // Not derivable when there are generics
             impl #generics Default for #uid_name #generics #bounds {
                 fn default() -> Self {
                     Self {

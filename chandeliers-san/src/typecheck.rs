@@ -13,8 +13,41 @@ use ast::options::usage::Typecheck as This;
 /// lets' give it a less confusing alias.
 type SpTyBaseTuple = Sp<Tuple<Sp<ty::Base>>>;
 
+/// Ordered sequence of names of type variables.
 type GenericParams = Vec<Sp<String>>;
+/// Ordered sequence of instanciations of type variables.
+/// Goes hand in hand with `GenericParams`: you should read
+/// a `(k: GenericParams, v: GenericInstances)` as a mapping where the
+/// value associated with `k[i]` is `v[i]`.
 type GenericInstances = Vec<Sp<ty::Base>>;
+
+/// Immutable accessor for an array.
+/// Catches out of bounds with a nice error message.
+macro_rules! at {
+    ( $arr:expr, $idx:expr ) => {
+        $arr.get($idx).unwrap_or_else(|| {
+            err::abort!(
+                "Index {} out of bounds of array {}.",
+                $idx,
+                stringify!($arr),
+            )
+        })
+    };
+}
+
+/// Mutable accessor for an array.
+/// Catches out of bounds with a nice error message.
+macro_rules! at_mut {
+    ( $arr:expr, $idx:expr ) => {
+        $arr.get_mut($idx).unwrap_or_else(|| {
+            err::abort!(
+                "Index {} out of bounds of array {}.",
+                $idx,
+                stringify!($arr),
+            )
+        })
+    };
+}
 
 /// Context that the typechecking is done in.
 #[derive(Debug)]
@@ -31,6 +64,7 @@ struct TyCtx<'i> {
     nodes_in: HashMap<var::Node, SpTyBaseTuple>,
     /// Outputs, same as the inputs above.
     nodes_out: HashMap<var::Node, SpTyBaseTuple>,
+    /// Generic variables and their instanciations for each node.
     nodes_generics: HashMap<var::Node, (GenericParams, Option<GenericInstances>)>,
 }
 
@@ -130,6 +164,7 @@ impl TyCtx<'_> {
         }
     }
 
+    /// Get the (ordered) sequence of type variables that the node declares.
     fn get_node_generics(&self, node: Sp<&var::Node>) -> GenericParams {
         match self.nodes_generics.get(node.t) {
             Some(tup) => tup.0.clone(),
@@ -139,15 +174,27 @@ impl TyCtx<'_> {
         }
     }
 
+    /// A `Node` introduces a hole in the context to eventually put the actual
+    /// values of type variables that the node declaration introduces.
+    /// This function fills in that hole from a computed unifier.
     fn instantiate(&mut self, node: Sp<&var::Node>, unifier: &TyUnifier) {
-        let gen = self.nodes_generics.get_mut(node.t).unwrap();
+        let gen = at_mut!(self.nodes_generics, node.t);
         match unifier {
             TyUnifier::Mapping {
                 site: _,
                 idx: _,
                 subst,
             } => {
-                gen.1 = Some(subst.iter().map(|v| v.clone().unwrap()).collect());
+                gen.1 = Some(
+                    subst
+                        .iter()
+                        .map(|v| {
+                            v.clone().unwrap_or_else(|| {
+                                err::abort!("Substitution is not fully instanciated")
+                            })
+                        })
+                        .collect(),
+                );
             }
             _ => {
                 gen.1 = Some(vec![]);
@@ -305,7 +352,7 @@ impl TypeCheckExpr for ast::expr::Expr {
                 let right = rhs
                     .typecheck(eaccum, ctx)
                     .and_then(|ty| ty.is_primitive(eaccum));
-                op.accepts(eaccum, left?, right?)?;
+                op.accepts(eaccum, left?.as_ref(), right?.as_ref())?;
                 Some(ty::Tuple::Single(ty::Base::Bool.with_span(span)))
             }
             Self::Later {
@@ -336,7 +383,7 @@ impl TypeCheckExpr for ast::expr::Expr {
                 let expected_tys = ctx.get_node_in(id.as_ref());
                 let generics = ctx.get_node_generics(id.as_ref());
                 let actual_tys = args.typecheck(eaccum, ctx)?;
-                let mut unifier = TyUnifier::from_generics(eaccum, generics, expected_tys.span)?;
+                let mut unifier = TyUnifier::from_generics(generics, expected_tys.span);
                 expected_tys.identical(eaccum, &mut unifier, &actual_tys, span)?;
                 ctx.instantiate(id.as_ref(), &unifier);
                 Some(ctx.get_node_out(id.as_ref()).t.substitute(&unifier))
@@ -526,11 +573,9 @@ impl ast::op::Bin {
                     right: &right,
                 })
             }
-            (Bin::Add | Bin::Mul | Bin::Sub | Bin::Div, ty::Base::Int | ty::Base::Float) => {
-                Some(())
-            }
-            (Bin::Rem, ty::Base::Int) => Some(()),
-            (Bin::BitAnd | Bin::BitOr | Bin::BitXor, ty::Base::Int | ty::Base::Bool) => Some(()),
+            (Bin::Add | Bin::Mul | Bin::Sub | Bin::Div, ty::Base::Int | ty::Base::Float)
+            | (Bin::Rem, ty::Base::Int)
+            | (Bin::BitAnd | Bin::BitOr | Bin::BitXor, ty::Base::Int | ty::Base::Bool) => Some(()),
             (_, ty::Base::Other(t)) => eaccum.error(err::BinopMismatch {
                 oper: self,
                 site: span,
@@ -559,8 +604,8 @@ impl ast::op::Un {
                 expect: "type bool or int, found float",
                 inner: &inner,
             }),
-            (Un::Neg, ty::Base::Int | ty::Base::Float) => Some(()),
-            (Un::Not, ty::Base::Int | ty::Base::Bool) => Some(()),
+            (Un::Neg, ty::Base::Int | ty::Base::Float)
+            | (Un::Not, ty::Base::Int | ty::Base::Bool) => Some(()),
             (_, ty::Base::Other(t)) => eaccum.error(err::UnopMismatch {
                 oper: self,
                 site: span,
@@ -573,7 +618,7 @@ impl ast::op::Un {
 
 impl ast::op::Cmp {
     /// Determines if the comparison operator can be applied to these arguments.
-    fn accepts(self, eaccum: &mut EAccum, left: Sp<ty::Base>, right: Sp<ty::Base>) -> Option<()> {
+    fn accepts(self, eaccum: &mut EAccum, left: Sp<&ty::Base>, right: Sp<&ty::Base>) -> Option<()> {
         use ast::op::Cmp;
         let span = left
             .span
@@ -626,35 +671,73 @@ impl Sp<&ty::Base> {
     }
 }
 
+/// We implement unification via mapping because the language is simple
+/// enough that there is always one of the two tuples that we need to unify
+/// that is fully instanciated.
+///
+/// For example
+/// - (T, U, V) ~ (T, int, T) introduces { T => T; V => T; U => int },
+/// - (A, B) ~ (B, float) introduces { A => B; B => float },
+/// - (A, A) ~ (int, float) is impossible.
+///
+/// In particular there is no relation between type variables of the same
+/// name on the left or right side, and all that we need is for every variable
+/// on the left to be uniquely mapped to a variable or type on the right.
+///
+/// The variants of this enum provide different behaviors towards type variables.
 #[derive(Debug)]
 enum TyUnifier {
-    Null,
+    /// Trivial mapping. Every variable is unchanged.
     Identity,
+    /// Absence of a mapping.
+    /// This panics if there is a type variable.
+    Null,
+    /// Description of a `Type -> Type` substitution.
+    /// Preserves order so that we can reproduce the correct sequence
+    /// of instanciated type variables.
     Mapping {
+        /// Function call that introduced this mapping.
         site: Span,
+        /// `Type -> id` part of the full mapping `Type -> Type`.
         idx: HashMap<Sp<String>, usize>,
+        /// `id -> Type` part of the full mapping `Type -> Type`.
         subst: Vec<Option<Sp<ty::Base>>>,
     },
 }
 
 impl TyUnifier {
-    fn from_generics(_eaccum: &mut EAccum, generics: Vec<Sp<String>>, site: Span) -> Option<Self> {
+    /// Fresh mapping unifier.
+    /// `generics` gives the variables that the mapping should have as keys
+    /// (requires no duplicates).
+    ///
+    /// `site` will be shown as the "thing that introduced this mapping" in
+    /// error messages, so you should typically set it to the location of
+    /// the full function call or other overapproximation of the statement
+    /// that introduces a mapping.
+    fn from_generics(generics: Vec<Sp<String>>, site: Span) -> Self {
         let mut idx = HashMap::new();
         let len = generics.len();
+        // Each type variable is a key. A duplicate means that the caller didn't properly
+        // check the uniqueness of type variables.
         for (i, gen) in generics.into_iter().enumerate() {
             if idx.insert(gen, i).is_some() {
                 err::abort!("Failed to catch duplicate type variable.")
             }
         }
-        Some(Self::Mapping {
+        Self::Mapping {
             site,
             idx,
             subst: vec![None; len],
-        })
+        }
     }
-}
 
-impl TyUnifier {
+    /// Extract the type that `s` should be substituted with.
+    ///
+    /// For non-mapping `TyUnifier`s this is the identity, otherwise this
+    /// is quite straightforwardly the value in the `HashMap` that is associated
+    /// with the key `s`. This requires that the map be fully instanciated, so
+    /// make sure to check somewhere that all type variables introduced by the
+    /// declaration are actually bound by the declarations.
     fn image(&self, s: Sp<String>) -> ty::Base {
         match self {
             Self::Mapping {
@@ -663,17 +746,24 @@ impl TyUnifier {
                 subst,
             } => {
                 if let Some(i) = idx.get(&s) {
-                    subst[*i]
+                    at!(subst, *i)
                         .clone()
-                        .unwrap_or_else(|| err::abort!("Mapping has the wrong length"))
+                        .unwrap_or_else(|| err::abort!("Mapping is not fully instanciated"))
                         .t
                 } else {
                     ty::Base::Other(s)
                 }
             }
-            _ => ty::Base::Other(s),
+            Self::Identity => ty::Base::Other(s),
+            Self::Null => err::abort!("This context should never contain generics"),
         }
     }
+
+    /// Add a new type substitution `T => U`.
+    /// If any substitution `T => V` already exists, it must be for `V = U`.
+    /// It is the *left* argument that gets coerced to the right one, so
+    /// `require_identical(T, int)` will produce `T => int` but
+    /// `require_identical(int, T)` will always fail.
     fn require_identical(
         &mut self,
         eaccum: &mut EAccum,
@@ -681,37 +771,50 @@ impl TyUnifier {
         right: Sp<&ty::Base>,
         source: Span,
     ) -> Option<()> {
-        use ty::Base::*;
+        use ty::Base as B;
         match &left.t {
-            l @ (Int | Float | Bool) => {
+            // Fully instanciated types don't get substituted obviously,
+            // so they just need to compare identical.
+            l @ (B::Int | B::Float | B::Bool) => {
                 if l == &right.t {
                     return Some(());
                 }
             }
-            Other(l) => match self {
+            B::Other(l) => match self {
                 Self::Mapping { site, idx, subst } => {
-                    if let Some(i) = idx.get(&l) {
-                        if subst[*i].as_ref().map(|v| v.as_ref()) == Some(right) {
-                            return Some(());
-                        } else if subst[*i] == None {
-                            subst[*i] = Some(right.cloned());
-                            return Some(());
-                        } else {
-                            eaccum.error(err::UnsatGenericConstraint {
-                                variable: &l,
-                                previous: subst[*i].as_ref().unwrap(),
-                                new: right,
-                                context: &*site,
-                            })?;
-                        }
+                    if let Some(i) = idx.get(l) {
+                        return match at_mut!(subst, *i) {
+                            x @ None => {
+                                // Not substituted yet.
+                                *x = Some(right.cloned());
+                                Some(())
+                            }
+                            Some(ref mut v) => {
+                                if v.as_ref() == right {
+                                    // Already has some compatible substitution.
+                                    Some(())
+                                } else {
+                                    // Already has another substitution.
+                                    eaccum.error(err::UnsatGenericConstraint {
+                                        variable: &l,
+                                        previous: v.as_ref(),
+                                        new: right,
+                                        context: &*site,
+                                    })
+                                }
+                            }
+                        };
                     } else {
+                        unimplemented!()
                         // We get here if we try to use a malformed signature.
                         // This occurs when the signature contains an undeclared
                         // generic argument.
+                        //
                         // We can just let this one go and the error will be
                         // caught by someone else.
-                        // This will also probably produce other errors as a side
-                        // effect, but whatever.
+                        // As a side effect, this will produce extraneous
+                        // TypeMismatch errors, but better that than risk
+                        // being unsound.
                     }
                 }
                 _ => {
@@ -731,7 +834,10 @@ impl TyUnifier {
     }
 }
 
+/// Apply a type substitution given by a `TyUnifier`.
 trait TySubstitute {
+    /// If `TyUnifier` is a `Mapping`, replace every occurence of a type with
+    /// its image by the substitution.
     fn substitute(self, unifier: &TyUnifier) -> Self;
 }
 
@@ -996,7 +1102,7 @@ impl TypeCheckDecl for ast::decl::Node {
                 }
             }
 
-            for unused in unused_generics.into_iter() {
+            for unused in unused_generics {
                 eaccum.error(err::UnusedGeneric {
                     unused,
                     inputs: &self.inputs,
@@ -1050,11 +1156,12 @@ impl TypeCheckDecl for ast::decl::Node {
         for st in &mut self.stmts {
             scope.compute(|eaccum| st.typecheck(eaccum, &mut ctx).map(|_| ()));
         }
+        scope.close()?;
         // Finally instanciate the learned generic parameters
-        for (id, gens) in ctx.nodes_generics.into_iter() {
-            self.blocks[id.id.t].generics = gens.1;
+        for (id, gens) in ctx.nodes_generics {
+            at_mut!(self.blocks, id.id.t).generics = gens.1;
         }
-        scope.close()
+        Some(())
     }
 
     /// Fetch the input and output tuple types of this node.
@@ -1155,7 +1262,7 @@ impl TypeCheckDecl for ast::decl::ExtNode {
                 }
             }
 
-            for unused in unused_generics.into_iter() {
+            for unused in unused_generics {
                 eaccum.error(err::UnusedGeneric {
                     unused,
                     inputs: &self.inputs,
@@ -1330,13 +1437,13 @@ impl Sp<ast::decl::Prog> {
                         });
                     }
                 }
-                ast::decl::Decl::Node(n) => {
-                    scope.compute(|eaccum| n.typecheck(eaccum, &functx, &varctx));
-                    let (name, g, i, o) = n.signature();
-                    if functx.insert(name.t, (g, i, o)).is_some() {
-                        let s = format!("Redefinition of node {}", n.t.name);
+                ast::decl::Decl::Node(node) => {
+                    scope.compute(|eaccum| node.typecheck(eaccum, &functx, &varctx));
+                    let (name, tyvars, ins, outs) = node.signature();
+                    if functx.insert(name.t, (tyvars, ins, outs)).is_some() {
+                        let s = format!("Redefinition of node {}", node.t.name);
                         scope.error(err::TmpBasic {
-                            span: n.span,
+                            span: node.span,
                             msg: s,
                         });
                     }
@@ -1361,13 +1468,13 @@ impl Sp<ast::decl::Prog> {
                         });
                     }
                 }
-                ast::decl::Decl::ExtNode(n) => {
-                    scope.compute(|eaccum| n.typecheck(eaccum, &functx, &varctx));
-                    let (name, g, i, o) = n.signature();
-                    if functx.insert(name.t, (g, i, o)).is_some() {
-                        let s = format!("Redefinition of node {}", n.t.name);
+                ast::decl::Decl::ExtNode(node) => {
+                    scope.compute(|eaccum| node.typecheck(eaccum, &functx, &varctx));
+                    let (name, tyvars, ins, outs) = node.signature();
+                    if functx.insert(name.t, (tyvars, ins, outs)).is_some() {
+                        let s = format!("Redefinition of node {}", node.t.name);
                         scope.error(err::TmpBasic {
-                            span: n.span,
+                            span: node.span,
                             msg: s,
                         });
                     }

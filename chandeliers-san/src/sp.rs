@@ -143,6 +143,7 @@ pub struct WithDefSite<T> {
 
 impl<T> WithDefSite<T> {
     /// No relevant span to associate.
+    #[must_use]
     pub fn new_without(data: T) -> Self {
         Self {
             data,
@@ -151,12 +152,14 @@ impl<T> WithDefSite<T> {
     }
 
     /// Attach an additional span to an object.
+    #[must_use]
     pub fn try_with_def_site(mut self, span: Option<Span>) -> Self {
         self.def_site = Transparent::from(span);
         self
     }
 
     /// Attach an additional span to an object.
+    #[must_use]
     pub fn with_def_site(self, span: Span) -> Self {
         self.try_with_def_site(Some(span))
     }

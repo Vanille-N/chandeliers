@@ -668,7 +668,7 @@ where
                 Some(reason),
             ));
         }
-        for h in self.extra.into_iter() {
+        for h in self.extra {
             es.push((h.to_string(), None));
         }
         es
