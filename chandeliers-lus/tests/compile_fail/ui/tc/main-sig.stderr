@@ -1,0 +1,30 @@
+error: Node has an incompatible signature to be marked as executable (required due to annotation #[main])
+ --> tests/compile_fail/ui/tc/main-sig.rs:3:5
+  |
+3 | /     node main() returns (i: int);
+4 | |     let i = 0; tel;
+  | |__________________^
+  |
+note: Outputs should be ()
+ --> tests/compile_fail/ui/tc/main-sig.rs:3:26
+  |
+3 |     node main() returns (i: int);
+  |                          ^^^^^^^
+
+error: Node has an incompatible signature to be marked as executable (required due to annotation #[test])
+  --> tests/compile_fail/ui/tc/main-sig.rs:9:5
+   |
+9  | /     node test(i: int) returns (b: bool);
+10 | |     let b = (i = 0); tel;
+   | |________________________^
+   |
+note: Inputs should be ()
+  --> tests/compile_fail/ui/tc/main-sig.rs:9:15
+   |
+9  |     node test(i: int) returns (b: bool);
+   |               ^^^^^^^
+note: Outputs should be ()
+  --> tests/compile_fail/ui/tc/main-sig.rs:9:32
+   |
+9  |     node test(i: int) returns (b: bool);
+   |                                ^^^^^^^^

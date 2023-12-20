@@ -114,7 +114,7 @@ impl<T> SetOpt<T> {
     /// Assert that this option was not set.
     fn skip(self, eaccum: &mut EAccum, current: &'static str) -> Option<()> {
         if self.value.is_some() {
-            eaccum.error(err::TmpBasic {
+            eaccum.error(err::Basic {
                 msg: format!(
                     "The attribute {} is not valid here (does not apply to {current})",
                     self.message
@@ -245,7 +245,7 @@ impl Decl {
                 $( syn:( $($syntax:tt)* ) )?
                 $( note:( $($suggestion:tt)* ) )?
             ) => {
-                eaccum.error(err::TmpRaw { es: vec![
+                eaccum.error(err::Raw { es: vec![
                     (format!("Malformed attribute {}: {}", action, format!($($msg)*)), Some(attr.span.into())),
                     $( (format!("Maybe try this syntax: {}", format!($($syntax)*)), None), )?
                     $( (format!($($suggestion)*), None), )?
@@ -257,7 +257,7 @@ impl Decl {
         macro_rules! duplicate {
             ($opt:ident) => {
                 if self.$opt.value.is_some() {
-                    eaccum.warning(err::TmpRaw {
+                    eaccum.warning(err::Raw {
                         es: vec![
                             (
                                 format!(
@@ -281,7 +281,7 @@ impl Decl {
         macro_rules! conflicting {
             ($this:ident, $other:ident) => {
                 if self.$other.value.is_some() {
-                    eaccum.warning(err::TmpRaw {
+                    eaccum.warning(err::Raw {
                         es: vec![
                             (
                                 format!(

@@ -943,7 +943,7 @@ impl Sp<ty::Tuple> {
                 ty::Tuple::Single(t) => Some(t.t.clone()),
                 ty::Tuple::Multiple(_) => {
                     let s = "expected a scalar type, got a tuple type".to_owned();
-                    eaccum.error(err::TmpBasic {
+                    eaccum.error(err::Basic {
                         span: self.span,
                         msg: s,
                     })
@@ -1044,7 +1044,7 @@ impl TypeCheckDecl for ast::decl::Node {
     fn typecheck(
         &mut self,
         eaccum: &mut EAccum,
-        _span: Span,
+        span: Span,
         extfun: &HashMap<ast::decl::NodeName, (GenericParams, SpTyBaseTuple, SpTyBaseTuple)>,
         extvar: &HashMap<var::Global, WithDefSite<Sp<ty::Base>>>,
     ) -> Option<()> {
@@ -1053,19 +1053,21 @@ impl TypeCheckDecl for ast::decl::Node {
         // they must have empty inputs and outputs.
         let is_main = self.options.main.fetch::<This>().is_some();
         let is_test = self.options.test.fetch::<This>().is_some();
-        if is_main || is_test {
-            if !self.inputs.t.is_empty() {
-                eaccum.error(err::TmpBasic {
-                    msg: "Node declared as executable (applies to `#[main]` and `#[test]`) should not have any inputs".to_owned(),
-                    span: self.inputs.span,
-                })?;
-            }
-            if !self.outputs.t.is_empty() {
-                eaccum.error(err::TmpBasic {
-                    msg: "Node declared as executable (applies to `#[main]` and `#[test]`) should not have any outputs".to_owned(),
-                    span: self.inputs.span,
-                })?;
-            }
+        let inputs_nonempty = !self.inputs.t.is_empty();
+        let outputs_nonempty = !self.outputs.t.is_empty();
+        if (is_main || is_test) && (inputs_nonempty || outputs_nonempty) {
+            eaccum.error(err::ExecutableNodeSig {
+                reason: if is_main {
+                    "annotation #[main]"
+                } else {
+                    "annotation #[test]"
+                },
+                inputs_nonempty,
+                outputs_nonempty,
+                site: span,
+                inputs: &self.inputs,
+                outputs: &self.outputs,
+            })?;
         }
 
         // Check that the generic parameters are all inferrable from the inputs only.
@@ -1139,7 +1141,7 @@ impl TypeCheckDecl for ast::decl::Node {
         for (id, blk) in self.blocks.iter().enumerate() {
             let Some((gen, i, o)) = extfun.get(&blk.name.t) else {
                 let s = format!("Block {} is not defined", &blk.name);
-                return eaccum.error(err::TmpBasic {
+                return eaccum.error(err::Basic {
                     span: blk.name.span,
                     msg: s,
                 });
@@ -1215,13 +1217,13 @@ impl TypeCheckDecl for ast::decl::ExtNode {
         // Extern nodes cannot be marked #[test] so we don't need to handle that.
         if self.options.main.fetch::<This>().is_some() {
             if !self.inputs.t.is_empty() {
-                eaccum.error(err::TmpBasic {
+                eaccum.error(err::Basic {
                     msg: "Node declared as main should not have any inputs".to_owned(),
                     span: self.inputs.span,
                 })?;
             }
             if !self.outputs.t.is_empty() {
-                eaccum.error(err::TmpBasic {
+                eaccum.error(err::Basic {
                     msg: "Node declared as main should not have any outputs".to_owned(),
                     span: self.inputs.span,
                 })?;
@@ -1431,7 +1433,7 @@ impl Sp<ast::decl::Prog> {
                         .is_some()
                     {
                         let s = format!("Redefinition of const {name}");
-                        scope.error(err::TmpBasic {
+                        scope.error(err::Basic {
                             span: c.span,
                             msg: s,
                         });
@@ -1442,7 +1444,7 @@ impl Sp<ast::decl::Prog> {
                     let (name, tyvars, ins, outs) = node.signature();
                     if functx.insert(name.t, (tyvars, ins, outs)).is_some() {
                         let s = format!("Redefinition of node {}", node.t.name);
-                        scope.error(err::TmpBasic {
+                        scope.error(err::Basic {
                             span: node.span,
                             msg: s,
                         });
@@ -1462,7 +1464,7 @@ impl Sp<ast::decl::Prog> {
                         .is_some()
                     {
                         let s = format!("Redefinition of const {name}");
-                        scope.error(err::TmpBasic {
+                        scope.error(err::Basic {
                             span: c.span,
                             msg: s,
                         });
@@ -1473,7 +1475,7 @@ impl Sp<ast::decl::Prog> {
                     let (name, tyvars, ins, outs) = node.signature();
                     if functx.insert(name.t, (tyvars, ins, outs)).is_some() {
                         let s = format!("Redefinition of node {}", node.t.name);
-                        scope.error(err::TmpBasic {
+                        scope.error(err::Basic {
                             span: node.span,
                             msg: s,
                         });

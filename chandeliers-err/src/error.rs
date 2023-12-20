@@ -91,14 +91,16 @@ impl<T: TryDefSite, E> TryDefSite for Result<T, E> {
 /// An explicit error message with its span.
 /// This error construct is meant to be phased out in favor of a prebuilt error
 /// message.
-pub struct TmpBasic {
+//#[deprecated = "This is a nonspecific error constructor that should eventually become a prebuilt message."]
+pub struct Basic {
     /// Error kind.
     pub msg: String,
     /// Error location.
     pub span: Span,
 }
 
-impl IntoError for TmpBasic {
+#[allow(deprecated)]
+impl IntoError for Basic {
     fn into_err(self) -> Error {
         vec![(self.msg, Some(self.span))]
     }
@@ -107,12 +109,12 @@ impl IntoError for TmpBasic {
 /// An explicit sequence of errors and spans
 /// This error construct is meant to be phased out in favor of a prebuilt error
 /// message.
-pub struct TmpRaw {
+pub struct Raw {
     /// Messages and their spans.
     pub es: Vec<(String, Option<Span>)>,
 }
 
-impl IntoError for TmpRaw {
+impl IntoError for Raw {
     fn into_err(self) -> Error {
         self.es
     }
@@ -821,5 +823,42 @@ where
                 None,
             ),
         ]
+    }
+}
+
+/// Node is declared as executable, but has nonempty inputs or outputs.
+pub struct ExecutableNodeSig<Reason, Inputs, Outputs, Site> {
+    /// Attribute that marks it as executable.
+    pub reason: Reason,
+    /// Whether there are any inputs.
+    pub inputs_nonempty: bool,
+    /// Where are the inputs.
+    pub inputs: Inputs,
+    /// Whether there are any outputs.
+    pub outputs_nonempty: bool,
+    /// Where are the outputs.
+    pub outputs: Outputs,
+    /// Entire call site.
+    pub site: Site,
+}
+
+impl<Reason, Inputs, Outputs, Site> IntoError for ExecutableNodeSig<Reason, Inputs, Outputs, Site>
+where
+    Reason: Display,
+    Inputs: TrySpan,
+    Outputs: TrySpan,
+    Site: TrySpan,
+{
+    fn into_err(self) -> Error {
+        let mut v = vec![
+            (format!("Node has an incompatible signature to be marked as executable (required due to {})", self.reason), self.site.try_span())
+        ];
+        if self.inputs_nonempty {
+            v.push((format!("Inputs should be ()"), self.inputs.try_span()));
+        }
+        if self.outputs_nonempty {
+            v.push((format!("Outputs should be ()"), self.outputs.try_span()));
+        }
+        v
     }
 }
