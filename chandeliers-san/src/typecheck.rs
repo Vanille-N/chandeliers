@@ -1214,9 +1214,10 @@ impl TypeCheckDecl for ast::decl::ExtNode {
         // Special case for functions declared as toplevel executables:
         // they must have empty inputs and outputs.
         // Extern nodes cannot be marked #[test] so we don't need to handle that.
+        let is_main = self.options.main.fetch::<This>().is_some();
         let inputs_nonempty = !self.inputs.t.is_empty();
         let outputs_nonempty = !self.outputs.t.is_empty();
-        if inputs_nonempty || outputs_nonempty {
+        if is_main && (inputs_nonempty || outputs_nonempty) {
             eaccum.error(err::ExecutableNodeSig {
                 reason: "annotation #[main]",
                 inputs_nonempty,
@@ -1429,22 +1430,18 @@ impl Sp<ast::decl::Prog> {
                         )
                         .is_some()
                     {
-                        let s = format!("Redefinition of const {name}");
-                        scope.error(err::Basic {
-                            span: c.span,
-                            msg: s,
-                        });
+                        err::abort!(
+                            "Duplicate const definition should have been caught during causality check"
+                        );
                     }
                 }
                 ast::decl::Decl::Node(node) => {
                     scope.compute(|eaccum| node.typecheck(eaccum, &functx, &varctx));
                     let (name, tyvars, ins, outs) = node.signature();
                     if functx.insert(name.t, (tyvars, ins, outs)).is_some() {
-                        let s = format!("Redefinition of node {}", node.t.name);
-                        scope.error(err::Basic {
-                            span: node.span,
-                            msg: s,
-                        });
+                        err::abort!(
+                            "Duplicate node definition should have been caught during causality check"
+                        );
                     }
                 }
                 ast::decl::Decl::ExtConst(c) => {
@@ -1460,22 +1457,18 @@ impl Sp<ast::decl::Prog> {
                         )
                         .is_some()
                     {
-                        let s = format!("Redefinition of const {name}");
-                        scope.error(err::Basic {
-                            span: c.span,
-                            msg: s,
-                        });
+                        err::abort!(
+                            "Duplicate const definition should have been caught during causality check"
+                        );
                     }
                 }
                 ast::decl::Decl::ExtNode(node) => {
                     scope.compute(|eaccum| node.typecheck(eaccum, &functx, &varctx));
                     let (name, tyvars, ins, outs) = node.signature();
                     if functx.insert(name.t, (tyvars, ins, outs)).is_some() {
-                        let s = format!("Redefinition of node {}", node.t.name);
-                        scope.error(err::Basic {
-                            span: node.span,
-                            msg: s,
-                        });
+                        err::abort!(
+                            "Duplicate node definition should have been caught during causality check"
+                        );
                     }
                 }
             }

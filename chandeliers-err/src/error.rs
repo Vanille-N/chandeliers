@@ -1,4 +1,9 @@
 //! Error message generation.
+//!
+//! Here we provide the facilities to instanciate prebuilt error messages.
+//! The general structure is that each kind of error message will be implemented
+//! by a `struct` that implements [IntoError], where the blanks are filled
+//! in by the `struct` fields' [Display] and [TrySpan] `impl`s.
 
 use std::fmt::Display;
 
@@ -109,189 +114,161 @@ impl IntoError for Basic {
 /// An explicit sequence of errors and spans
 /// This error construct is meant to be phased out in favor of a prebuilt error
 /// message.
+//#[deprecated = "This is a nonspecific error constructor that should eventually become a prebuilt message."]
 pub struct Raw {
     /// Messages and their spans.
     pub es: Vec<(String, Option<Span>)>,
 }
 
+#[allow(deprecated)]
 impl IntoError for Raw {
     fn into_err(self) -> Error {
         self.es
     }
 }
 
-/// Generate an error for incompatible types between a "left" and a "right" values.
-pub struct TypeMismatch<Source, Left, Right, Msg> {
-    /// Span of the entire error.
-    pub source: Source,
-    /// Left expression and span.
-    pub left: Left,
-    /// Right expression and span.
-    pub right: Right,
-    /// Extra message.
-    pub msg: Msg,
+/// More macro black magic.
+/// This one is supposed to reduce how repetitive it is to add new error messages.
+/// Describe the error message in a succint format and the macro will generate
+/// the `impl IntoError` automaticaly.
+///
+/// See examples for syntax.
+macro_rules! error_message {
+    (
+        $( [ $predoc:expr ] )* // documentation of the struct
+        struct $name:tt where {
+            $( // fields and trait bounds (typically `Display` and/or `TrySpan`)
+                [ $doc:expr ]
+                $field:ident : { $($bounds:tt)* } ,
+            )*
+        } let { // extra variable bindings
+            $( $var:ident = $val:expr ; )*
+        } impl { // ;-separated list of messages, handled by the auxiliary arms
+            $( $message:tt )*
+        }
+    ) => {
+        #[allow(non_camel_case_types)] // We are using a generic of the same name for each field
+        $( #[doc = $predoc] )*
+        pub struct $name <$($field),*> {
+            $(
+                #[doc = $doc]
+                pub $field : $field ,
+            )*
+        }
+
+        #[allow(non_camel_case_types)]
+        impl <$($field),*> IntoError for $name<$($field),*>
+        where $( $field: $($bounds)* , )*
+        {
+            fn into_err(self) -> Error {
+                let Self { $($field),* } = self;
+                $( let $var = $val; )*
+                let mut constructed = Vec::new();
+                error_message!([constructed]
+                    $($message)* // more black magic to turn these into statements
+                );
+                constructed
+            }
+        }
+    };
+    // Auxiliary arms to build just the message constructor.
+    // These recursively consume the stream of tokens that describe the message
+    // and produce the appropriate `push` operations.
+    ( [$constructed:ident] ) => {}; // done
+    ( [$constructed:ident] $fmt:tt @ $site:expr ; $($rest:tt)* ) => {
+        // Base case looks like ["foo" @ site]: "foo" is treated as a format
+        // string and `site` gives the `Span`.
+        $constructed.push((format!($fmt), $site.try_span()));
+        error_message!([$constructed] $($rest)*);
+    };
+    ( [$constructed:ident] $fmt:tt ; $($rest:tt)* ) => {
+        // Base case without `Span`.
+        $constructed.push((format!($fmt), None));
+        error_message!([$constructed] $($rest)*);
+    };
+
 }
 
-impl<Source, Left, Right, Msg> IntoError for TypeMismatch<Source, Left, Right, Msg>
-where
-    Source: TrySpan,
-    Msg: Display,
-    Left: Display + TrySpan,
-    Right: Display + TrySpan,
-{
-    fn into_err(self) -> Error {
-        vec![
-            (
-                format!(
-                    "Type mismatch between the left and right sides: {}",
-                    self.msg
-                ),
-                self.source.try_span(),
-            ),
-            (
-                format!("This element has type {}", self.left),
-                self.left.try_span(),
-            ),
-            (
-                format!("While this element has type {}", self.right),
-                self.right.try_span(),
-            ),
-        ]
+error_message! {
+    ["Generate an error for incompatible types between a \"left\" and a \"right\" values."]
+    struct TypeMismatch where {
+        ["Span of the entire error"] source: {TrySpan},
+        ["Left expression"] left: {Display + TrySpan},
+        ["Right expression"] right: {Display + TrySpan},
+        ["Further details on mismatch"] msg: {Display},
+    } let {
+    } impl {
+        "Type mismatch between the left and right sides: {msg}" @ source;
+        "This element has type {left}" @ left;
+        "While this element has type {right}" @ right;
     }
 }
 
-/// Generate an error for a variable that was not declared yet.
-pub struct VarNotFound<Var, Suggest1, Suggest2> {
-    /// What is missing.
-    pub var: Var,
-    /// Local variable suggestions.
-    pub suggest1: Suggest1,
-    /// Global variable suggestions.
-    pub suggest2: Suggest2,
+/// Trait to display suggestions.
+pub trait Suggest {
+    /// Print as a comma-separated list of items.
+    fn show(self) -> String;
 }
 
-impl<Var, Suggest1, S1, Suggest2, S2> IntoError for VarNotFound<Var, Suggest1, Suggest2>
+impl<T, I> Suggest for T
 where
-    Var: Display + TrySpan,
-    Suggest1: IntoIterator<Item = S1>,
-    Suggest2: IntoIterator<Item = S2>,
-    S1: Display,
-    S2: Display,
+    T: IntoIterator<Item = I>,
+    I: Display,
 {
-    fn into_err(self) -> Vec<(String, Option<Span>)> {
-        let mut suggest1 = self
-            .suggest1
-            .into_iter()
-            .map(|v| format!("{v}"))
-            .collect::<Vec<_>>();
-        let mut suggest2 = self
-            .suggest2
-            .into_iter()
-            .map(|v| format!("{v}"))
-            .collect::<Vec<_>>();
-        suggest1.sort();
-        suggest2.sort();
-        let suggest1 = if suggest1.is_empty() {
-            String::from("(none declared)")
-        } else {
-            suggest1.join(", ")
-        };
-        let suggest2 = if suggest2.is_empty() {
-            String::from("(none declared)")
-        } else {
-            suggest2.join(", ")
-        };
-
-        vec![
-            (
-                format!("Variable {} not found in the context.", self.var),
-                self.var.try_span(),
-            ),
-            (
-                format!("Perhaps you meant one of the local variables: {suggest1}"),
-                None,
-            ),
-            (format!("or one of the global variables: {suggest2}"), None),
-        ]
-    }
-}
-
-/// Generate an error for a type variable that was not declared yet,
-/// which has consequences on what we should say is and isn't available.
-pub struct TyVarNotFound<Var, Suggest> {
-    /// What is missing.
-    pub var: Var,
-    /// Local variable suggestions.
-    pub suggest: Suggest,
-}
-
-impl<Var, Suggest, S> IntoError for TyVarNotFound<Var, Suggest>
-where
-    Var: Display + TrySpan,
-    Suggest: IntoIterator<Item = S>,
-    S: Display,
-{
-    fn into_err(self) -> Vec<(String, Option<Span>)> {
-        let mut suggest = self
-            .suggest
-            .into_iter()
-            .map(|v| format!("{v}"))
-            .collect::<Vec<_>>();
+    fn show(self) -> String {
+        let mut suggest = self.into_iter().map(|v| format!("{v}")).collect::<Vec<_>>();
         suggest.sort();
-        let suggest = if suggest.is_empty() {
+        if suggest.is_empty() {
             String::from("(none declared)")
         } else {
             suggest.join(", ")
-        };
-
-        vec![
-            (
-                format!(
-                    "Variable {} is not available yet at this point of the typechecking.",
-                    self.var
-                ),
-                self.var.try_span(),
-            ),
-            (
-                "During this incremental typechecking, you cannot access global
-variables and you may only use local variables that have been
-declared strictly beforehand, in the order of inputs then outputs
-then locals."
-                    .to_owned(),
-                None,
-            ),
-            (
-                format!("These are the variables that are already useable: {suggest}"),
-                None,
-            ),
-        ]
+        }
     }
 }
 
-/// Generate an erorr for an expression that is noot valid in a `const` declaration.
-pub struct NotConst<Item, Site> {
-    /// Description of the invalid expression constructor.
-    pub what: Item,
-    /// Location of the error.
-    pub site: Site,
+error_message! {
+    ["Generate an error for a variable that was not declared yet."]
+    struct VarNotFound where {
+        ["What is missing"] var: {Display + TrySpan},
+        ["Local variable suggestions."] suggest1: {Suggest},
+        ["Global variable suggestions."] suggest2: {Suggest},
+    } let {
+        suggest1 = suggest1.show();
+        suggest2 = suggest2.show();
+    } impl {
+        "Variable {var} not found in the context." @ var;
+        "Perhaps you meant one of the local variables: {suggest1}";
+        "or one of the global variables: {suggest2}";
+    }
 }
 
-impl<Item, Site> IntoError for NotConst<Item, Site>
-where
-    Item: Display,
-    Site: TrySpan,
-{
-    fn into_err(self) -> Error {
-        vec![
-            (
-                format!("{} not valid in const contexts", self.what),
-                self.site.try_span(),
-            ),
-            (
-                String::from("You must put this definition inside a node"),
-                None,
-            ),
-        ]
+error_message! {
+    ["Generate an error for a type variable that was not declared yet,"]
+    ["which has consequences on what we should say is and isn't available."]
+    struct TyVarNotFound where {
+        ["What is missing."] var: {Display + TrySpan},
+        ["Local variable suggestions."] suggest: {Suggest},
+    } let {
+        suggest = suggest.show();
+    } impl {
+        "Variable {var} is not available yet at this point of the typechecking." @ var;
+        "During this incremental typechecking, you cannot access global
+variables and you may only use local variables that have been
+declared strictly beforehand, in the order of inputs then outputs
+then locals.";
+        "These are the variables that are already useable: {suggest}";
+    }
+}
+
+error_message! {
+    ["Generate an erorr for an expression that is noot valid in a `const` declaration."]
+    struct NotConst where {
+        ["Description of the invalid expression constructor."] what: {Display},
+        ["Location of the error."] site: {TrySpan},
+    } let {
+    } impl {
+        "{what} not valid in const contexts" @ site;
+        "You must put this definition inside a node";
     }
 }
 
