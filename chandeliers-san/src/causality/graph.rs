@@ -253,8 +253,8 @@ where
     /// This only has an effect at time of calling `scheduling`,
     /// so it is fine to provide these constraints before or after
     /// all `insert`.
-    pub fn already_provided(&mut self, o: Unit) {
-        let uid = self.get_or_insert_atomic(&o, true);
+    pub fn already_provided(&mut self, o: &Unit) {
+        let uid = self.get_or_insert_atomic(o, true);
         self.provided_by_ext
             .insert(uid, WithDefSite::new_try_with((), o.try_span()));
     }
@@ -395,7 +395,9 @@ where
                         try_span: e.def_site.unwrap(),
                     }
                 });
-                let head = looping.next().unwrap();
+                let head = looping
+                    .next()
+                    .unwrap_or_else(|| err::abort!("Zero-length cycle is not possible"));
                 eaccum.error(err::Cycle {
                     head,
                     items: looping,

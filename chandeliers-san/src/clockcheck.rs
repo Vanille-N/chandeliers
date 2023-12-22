@@ -63,6 +63,8 @@ impl err::TryDefSite for Clk {
 }
 
 impl Sp<&ty::Clock> {
+    /// Turn a parsing clock into a `Clk`. This could almost have been part of `translate`
+    /// in `syn`, but it's here because `Clk` is only an internal representation.
     fn into_clk(self) -> Sp<Clk> {
         match &self.t {
             ty::Clock::Implicit => Clk::Implicit,

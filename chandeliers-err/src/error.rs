@@ -2,8 +2,8 @@
 //!
 //! Here we provide the facilities to instanciate prebuilt error messages.
 //! The general structure is that each kind of error message will be implemented
-//! by a `struct` that implements [IntoError], where the blanks are filled
-//! in by the `struct` fields' [Display] and [TrySpan] `impl`s.
+//! by a `struct` that implements [`IntoError`], where the blanks are filled
+//! in by the `struct` fields' [`Display`] and [`TrySpan`] `impl`s.
 
 use std::fmt::Display;
 
@@ -12,7 +12,7 @@ use crate::Span;
 /// Anything that went wrong: a sequence of [Span] and associated message.
 pub type Error = Vec<(String, Option<Span>)>;
 
-/// Generate an [Error].
+/// Generate an [`Error`].
 #[expect(
     clippy::module_name_repetitions,
     reason = "Of course the trait contains the word 'Error'"
@@ -31,7 +31,7 @@ pub trait TrySpan {
     }
 }
 
-/// Always [Some].
+/// Always [`Some`].
 impl TrySpan for Span {
     fn try_span(&self) -> Option<Span> {
         Some(*self)
@@ -68,7 +68,7 @@ pub trait TryDefSite {
     }
 }
 
-/// Always [None]: `Span` provides a usage site not a def site.
+/// Always [`None`]: [`Span`] provides a usage site not a def site.
 /// Put it in a wrapper if you want one.
 impl TryDefSite for Span {}
 
@@ -93,7 +93,7 @@ impl<T: TryDefSite, E> TryDefSite for Result<T, E> {
     }
 }
 
-/// Generic wraper that implements `Display` and `TrySpan` to wrap together
+/// Generic wraper that implements [`Display`] and [`TrySpan`] to wrap together
 /// items that don't implement both.
 pub struct DisplayTrySpan<T> {
     /// Displayable part.
@@ -125,7 +125,8 @@ pub struct Basic {
     pub span: Span,
 }
 
-#[allow(deprecated)]
+#[allow(clippy::allow_attributes, reason = "Needs regular (un)commenting out")]
+#[allow(deprecated, reason = "Removing impl is breaking despite deprecation")]
 impl IntoError for Basic {
     fn into_err(self) -> Error {
         vec![(self.msg, Some(self.span))]
@@ -141,14 +142,17 @@ pub struct Raw {
     pub es: Vec<(String, Option<Span>)>,
 }
 
-#[allow(deprecated)]
+#[allow(clippy::allow_attributes, reason = "Needs regular (un)commenting out")]
+#[allow(deprecated, reason = "Removing impl is breaking despite deprecation")]
 impl IntoError for Raw {
     fn into_err(self) -> Error {
         self.es
     }
 }
 
+/// Boolean-like parameter for error generation.
 trait Condition {
+    /// Extract truth value.
     fn truth(&self) -> bool;
 }
 
@@ -194,7 +198,7 @@ impl Condition for bool {
 /// The following further constructs are available to manipulate lines of messages
 /// in a more fine-grained manner:
 /// - `"msg"` plain message without span
-/// - `"{bar}" format string (requires `bar: {Display}`)
+/// - `"{bar}"` format string (requires `bar: {Display}`)
 /// - `"msg" @ foo` use the span of `foo` (requires `foo: {TrySpan}`)
 /// - `"msg" @ if foo` use the span of `foo` but only if it is not `None` (requires `foo: {TrySpan}`)
 /// - `"msg" @* foo` use the def site of `foo` (requires `foo: {TryDefSite}`)
@@ -219,7 +223,7 @@ macro_rules! error_message {
             $( $message:tt )*
         }
     ) => {
-        #[allow(non_camel_case_types)] // We are using a generic of the same name for each field
+        #[expect(non_camel_case_types, reason = "Generic type has same name as field")]
         $( #[doc = $predoc] )*
         pub struct $name <$($field),*> {
             $(
@@ -228,7 +232,7 @@ macro_rules! error_message {
             )*
         }
 
-        #[allow(non_camel_case_types)]
+        #[expect(non_camel_case_types, reason = "Generic type has same name as field")]
         impl <$($($explicit_generics),*,)? $($field),*> IntoError for $name<$($field),*>
         where $(
             $field: $( IntoIterator<Item = $item>, $item: $($iterbounds)* )?

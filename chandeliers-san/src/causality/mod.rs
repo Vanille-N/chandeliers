@@ -74,7 +74,7 @@ impl Causality for ast::decl::Node {
         } = self;
         let mut g = Graph::default();
         for i in inputs.t.iter() {
-            g.already_provided(Reference::LocalVarName(
+            g.already_provided(&Reference::LocalVarName(
                 i.t.name.as_ref().map(|_, t| t.repr.t.clone()),
             ));
         }

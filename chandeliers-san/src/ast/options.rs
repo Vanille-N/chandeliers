@@ -307,12 +307,13 @@ pub enum Allow {
     Clippy(syn::Ident),
 }
 
+/// Documentation for each codegen feature.
 #[rustfmt::skip]
 macro_rules! doc_of_option {
     (trace) => { "`#[trace]`: print debug information." };
     (export) => { "`#[export]`: make the struct visible." };
     (public) => { "`#[pub]`: make the struct public." };
-    (impl_trait) => { "`#[trait]`: make the struct public." };
+    (impl_trait) => { "`#[trait]`: use a trait impl for step rather than an inherent impl." };
     (main) => { "`#[main(42)]`: generate a main function that executes this node a fixed number of times." };
     (test) => { "`#[test(42)]`: generate a Rust test function that executes this node a fixed number of times." };
     (rustc_allow) => { "`#[rustc_allow[dead_code]]`: forward the attribute to Rustc as an `#[allow(dead_code)]`" };
@@ -320,6 +321,7 @@ macro_rules! doc_of_option {
     (generics) => { "`#[generic[T, U, V]]`: declare type variables.`" };
 }
 
+/// Type of the value for each codegen feature.
 macro_rules! type_of_option {
     (trace) => { Option<(TraceFile, (TraceFormat, TraceFormat))> };
     (export) => { bool };
@@ -332,6 +334,7 @@ macro_rules! type_of_option {
     (generics) => { Vec<Sp<String>> };
 }
 
+/// Compiler passes where each codegen feature is used.
 macro_rules! usage_of_option {
     (trace) => { Sites<Codegen, Over> };
     (export) => { Sites<Codegen, Over> };

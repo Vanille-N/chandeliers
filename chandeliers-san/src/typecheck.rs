@@ -822,29 +822,7 @@ impl TyUnifier {
             }
             B::Other(l) => match self {
                 Self::Mapping { site, idx, subst } => {
-                    if let Some(i) = idx.get(l) {
-                        return match at_mut!(subst, *i) {
-                            x @ None => {
-                                // Not substituted yet.
-                                *x = Some(right.cloned());
-                                Some(())
-                            }
-                            Some(ref mut v) => {
-                                if v.as_ref() == right {
-                                    // Already has some compatible substitution.
-                                    Some(())
-                                } else {
-                                    // Already has another substitution.
-                                    eaccum.error(err::UnsatGenericConstraint {
-                                        variable: &l,
-                                        previous: v.as_ref(),
-                                        new: right,
-                                        context: &*site,
-                                    })
-                                }
-                            }
-                        };
-                    } else {
+                    let Some(i) = idx.get(l) else {
                         unimplemented!()
                         // We get here if we try to use a malformed signature.
                         // This occurs when the signature contains an undeclared
@@ -855,7 +833,29 @@ impl TyUnifier {
                         // As a side effect, this will produce extraneous
                         // TypeMismatch errors, but better that than risk
                         // being unsound.
-                    }
+                    };
+
+                    return match at_mut!(subst, *i) {
+                        x @ None => {
+                            // Not substituted yet.
+                            *x = Some(right.cloned());
+                            Some(())
+                        }
+                        Some(ref mut v) => {
+                            if v.as_ref() == right {
+                                // Already has some compatible substitution.
+                                Some(())
+                            } else {
+                                // Already has another substitution.
+                                eaccum.error(err::UnsatGenericConstraint {
+                                    variable: &l,
+                                    previous: v.as_ref(),
+                                    new: right,
+                                    context: &*site,
+                                })
+                            }
+                        }
+                    };
                 }
                 _ => {
                     if left == right {
