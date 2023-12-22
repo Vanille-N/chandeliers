@@ -307,6 +307,43 @@ pub enum Allow {
     Clippy(syn::Ident),
 }
 
+#[rustfmt::skip]
+macro_rules! doc_of_option {
+    (trace) => { "`#[trace]`: print debug information." };
+    (export) => { "`#[export]`: make the struct visible." };
+    (public) => { "`#[pub]`: make the struct public." };
+    (impl_trait) => { "`#[trait]`: make the struct public." };
+    (main) => { "`#[main(42)]`: generate a main function that executes this node a fixed number of times." };
+    (test) => { "`#[test(42)]`: generate a Rust test function that executes this node a fixed number of times." };
+    (rustc_allow) => { "`#[rustc_allow[dead_code]]`: forward the attribute to Rustc as an `#[allow(dead_code)]`" };
+    (doc) => { "`#[doc(\"Message\")]`: forward the attribute to Rustc for documentation purposes`" };
+    (generics) => { "`#[generic[T, U, V]]`: declare type variables.`" };
+}
+
+macro_rules! type_of_option {
+    (trace) => { Option<(TraceFile, (TraceFormat, TraceFormat))> };
+    (export) => { bool };
+    (public) => { bool };
+    (impl_trait) => { bool };
+    (main) => { Option<usize> };
+    (test) => { Option<usize> };
+    (rustc_allow) => { Vec<Allow> };
+    (doc) => { Vec<Sp<String>> };
+    (generics) => { Vec<Sp<String>> };
+}
+
+macro_rules! usage_of_option {
+    (trace) => { Sites<Codegen, Over> };
+    (export) => { Sites<Codegen, Over> };
+    (public) => { Sites<Codegen, Over> };
+    (impl_trait) => { Sites<Codegen, Over> };
+    (main) => { Sites<Typecheck, Sites<Codegen, Over>> };
+    (test) => { Sites<Typecheck, Sites<Codegen, Over>> };
+    (rustc_allow) => { Sites<Codegen, Over> };
+    (doc) => { Sites<Codegen, Over> };
+    (generics) => { Sites<Typecheck, Sites<Codegen, Over>> };
+}
+
 /// Black magic to generate option sets.
 /// Will wrap types in `UseOpt` and attach to them the documentation
 /// for the defined item.
@@ -326,63 +363,10 @@ macro_rules! selection_aux_decl {
     //
     // The processing in question includes inserting a `pub` qualifier to
     // all fields, adding documentation, and registering their type.
-    ( $struct:ident ( $($done:tt)* ) ++ ( trace , $($rest:tt)* ) )
-        // #[trace] is of type `Option<TraceFile>` and is useful only during codegen.
+    ( $struct:ident ( $($done:tt)* ) ++ ( $field:ident , $($rest:tt)* ) )
         => { selection_aux_decl!($struct ( $($done)*
-                #[doc = "`#[trace]`: print debug information."]
-                pub trace: UseOpt<Option<(TraceFile, (TraceFormat, TraceFormat))>, Sites<Codegen, Over>>,
-            ) ++ ( $($rest)* ) ); };
-    ( $struct:ident ( $($done:tt)* ) ++ ( export , $($rest:tt)* ) )
-        // #[export] is of type `bool` and is useful only during codegen.
-        => { selection_aux_decl!($struct ( $($done)*
-                #[doc = "`#[export]`: make the struct visible."]
-                pub export: UseOpt<bool, Sites<Codegen, Over>>,
-        ) ++ ( $($rest)* ) ); };
-    ( $struct:ident ( $($done:tt)* ) ++ ( public , $($rest:tt)* ) )
-        // #[export] is of type `bool` and is useful only during codegen.
-        => { selection_aux_decl!($struct ( $($done)*
-                #[doc = "`#[pub]`: make the struct public."]
-                pub public: UseOpt<bool, Sites<Codegen, Over>>,
-        ) ++ ( $($rest)* ) ); };
-    ( $struct:ident ( $($done:tt)* ) ++ ( impl_trait , $($rest:tt)* ) )
-        // #[export] is of type `bool` and is useful only during codegen.
-        => { selection_aux_decl!($struct ( $($done)*
-                #[doc = "`#[trait]`: make the struct public."]
-                pub impl_trait: UseOpt<bool, Sites<Codegen, Over>>,
-        ) ++ ( $($rest)* ) ); };
-    ( $struct:ident ( $($done:tt)* ) ++ ( main , $($rest:tt)* ) )
-        // `#[main]` is of type `Option<usize>` and is useful during both
-        // typechecking (verify that the inputs and outputs are `()`) and codegen
-        // (write the actual function).
-        => { selection_aux_decl!($struct ( $($done)*
-                #[doc = "`#[main(42)]`: generate a main function that executes this node a fixed number of times."]
-                pub main: UseOpt<Option<usize>, Sites<Typecheck, Sites<Codegen, Over>>>,
-            ) ++ ( $($rest)* ) ); };
-    ( $struct:ident ( $($done:tt)* ) ++ ( test , $($rest:tt)* ) )
-        // `#[test]` is of type `Option<usize>` and is useful during both
-        // typechecking (verify that the inputs and outputs are `()`) and codegen
-        // (write the actual function).
-        => { selection_aux_decl!($struct ( $($done)*
-                #[doc = "`#[test(42)]`: generate a Rust test function that executes this node a fixed number of times."]
-                pub test: UseOpt<Option<usize>, Sites<Typecheck, Sites<Codegen, Over>>>,
-            ) ++ ( $($rest)* ) ); };
-    ( $struct:ident ( $($done:tt)* ) ++ ( rustc_allow , $($rest:tt)* ) )
-        // #[rustc_allow] is of type `Vec<syn::Ident>` and is useful only during codegen.
-        => { selection_aux_decl!($struct ( $($done)*
-                #[doc = "`#[rustc_allow[dead_code]]`: forward the attribute to Rustc as an `#[allow(dead_code)]`"]
-                pub rustc_allow: UseOpt<Vec<Allow>, Sites<Codegen, Over>>,
-            ) ++ ( $($rest)* ) ); };
-    ( $struct:ident ( $($done:tt)* ) ++ ( doc , $($rest:tt)* ) )
-        // #[doc] is of type `Vec<Sp<String>>` and is useful only during codegen.
-        => { selection_aux_decl!($struct ( $($done)*
-                #[doc = "`#[doc(\"Message\")]`: forward the attribute to Rustc for documentation purposes`"]
-                pub doc: UseOpt<Vec<Sp<String>>, Sites<Codegen, Over>>,
-            ) ++ ( $($rest)* ) ); };
-    ( $struct:ident ( $($done:tt)* ) ++ ( generics , $($rest:tt)* ) )
-        // #[doc] is of type `Vec<Sp<String>>` and is useful only during codegen.
-        => { selection_aux_decl!($struct ( $($done)*
-                #[doc = "`#[generic[T, U, V]]`: declare type variables.`"]
-                pub generics: UseOpt<Vec<Sp<String>>, Sites<Typecheck, Sites<Codegen, Over>>>,
+                #[doc = doc_of_option!($field)]
+                pub $field: UseOpt<type_of_option!($field), usage_of_option!($field)>,
             ) ++ ( $($rest)* ) ); };
     // Base case: generate the struct definition from all the accumulated tokens in `<handled>`
     // (by now `<unhandled>` is empty).

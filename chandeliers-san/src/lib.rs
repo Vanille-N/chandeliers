@@ -52,7 +52,6 @@
 //! AST because you thought it was changed in-place.
 
 #![feature(lint_reasons)]
-#![feature(iterator_try_collect)]
 #![warn(
     missing_docs,
     unused_crate_dependencies,

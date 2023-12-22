@@ -60,6 +60,7 @@ main() {
             echo "    bump x.y.z                   bump all crates chandeliers-* to version x.y.z"
             echo "    test, update, publish,...    passed directly to cargo"
             echo "    bless                        blesses the output of 'cargo test'"
+            echo "    lint                         compare nightly features"
     esac
 }
 
