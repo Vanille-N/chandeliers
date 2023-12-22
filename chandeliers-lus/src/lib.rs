@@ -84,6 +84,7 @@ pub fn decl(i: proc_macro::TokenStream) -> proc_macro::TokenStream {
 }
 
 fn prog_pipeline(eaccum: &mut EAccum, prog: Sp<syntax::Prog>) -> Option<proc_macro::TokenStream> {
+    // Just let the trait impls from [pipeline] guide you...
     pipeline::CompilerPass::new(eaccum, prog)?
         .finish()
         .apply(eaccum)?

@@ -326,8 +326,10 @@ impl TypeCheckStmt for ast::stmt::Statement {
 impl TypeCheckExpr for ast::expr::Expr {
     fn typecheck(&self, eaccum: &mut EAccum, span: Span, ctx: &mut TyCtx) -> Option<ty::Tuple> {
         match self {
-            Self::Lit(l) => Some(l.typecheck(eaccum, ctx)?.t),
-            Self::Reference(r) => Some(r.typecheck(eaccum, ctx)?.t),
+            // Transparent containers
+            Self::Lit(inner) => Some(inner.typecheck(eaccum, ctx)?.t),
+            Self::Reference(inner) => Some(inner.typecheck(eaccum, ctx)?.t),
+            Self::DummyPre(inner) => Some(inner.typecheck(eaccum, ctx)?.t),
             Self::Tuple(es) => {
                 es.as_ref()
                     .map(|span, es| {
@@ -338,7 +340,7 @@ impl TypeCheckExpr for ast::expr::Expr {
                     })
                     .t
             }
-            Self::DummyPre(e) => Some(e.typecheck(eaccum, ctx)?.t),
+            // Both sides must be equal and accepted by `op`.
             Self::Bin { op, lhs, rhs } => {
                 let left = lhs
                     .typecheck(eaccum, ctx)
@@ -350,11 +352,13 @@ impl TypeCheckExpr for ast::expr::Expr {
                 op.accepts(eaccum, left.as_ref(), right?.as_ref())?;
                 Some(ty::Tuple::Single(left))
             }
+            // Must be accepted by `op`.
             Self::Un { op, inner } => {
                 let inner = inner.typecheck(eaccum, ctx)?.is_primitive(eaccum)?;
                 op.accepts(eaccum, span, inner.as_ref())?;
                 Some(ty::Tuple::Single(inner))
             }
+            // Both sides must be equal and accepted by `op`.
             Self::Cmp { op, lhs, rhs } => {
                 let left = lhs
                     .typecheck(eaccum, ctx)
@@ -365,6 +369,7 @@ impl TypeCheckExpr for ast::expr::Expr {
                 op.accepts(eaccum, left?.as_ref(), right?.as_ref())?;
                 Some(ty::Tuple::Single(ty::Base::Bool.with_span(span)))
             }
+            // Both sides must be equal.
             Self::Later {
                 delay: _,
                 before,
@@ -376,6 +381,7 @@ impl TypeCheckExpr for ast::expr::Expr {
                 left.identical(eaccum, &mut TyUnifier::Identity, &right?, span)?;
                 Some(left.t)
             }
+            // Both branches must be equal. Condition must be a boolean.
             Self::Ifx { cond, yes, no } => {
                 let cond = cond
                     .typecheck(eaccum, ctx)
@@ -389,15 +395,20 @@ impl TypeCheckExpr for ast::expr::Expr {
                 yes.identical(eaccum, &mut TyUnifier::Identity, &no?, span)?;
                 Some(yes.t)
             }
+            // All arguments need to have the right input type.
             Self::Substep { delay: _, id, args } => {
                 let expected_tys = ctx.get_node_in(id.as_ref());
                 let generics = ctx.get_node_generics(id.as_ref());
                 let actual_tys = args.typecheck(eaccum, ctx)?;
+                // It's a bit more subtle than plain equality between `expected_tys` and
+                // `actual_tys` because there might be subtyping or substitutions.
                 let mut unifier = TyUnifier::from_generics(generics, expected_tys.span);
                 expected_tys.identical(eaccum, &mut unifier, &actual_tys, span)?;
-                ctx.instantiate(id.as_ref(), &unifier);
+                ctx.instantiate(id.as_ref(), &unifier); // The node might contain generics that we
+                                                        // now learned about.
                 Some(ctx.get_node_out(id.as_ref()).t.substitute(&unifier))
             }
+            // Clocked by a boolean always.
             Self::Clock {
                 op: _,
                 inner,
@@ -410,6 +421,7 @@ impl TypeCheckExpr for ast::expr::Expr {
                 activate?.as_ref().is_bool(eaccum, "A clock", span)?;
                 Some(inner.t)
             }
+            // Merge operates on a boolean, and both branches must have the same type.
             Self::Merge { switch, on, off } => {
                 let switch = switch.typecheck(eaccum, ctx)?;
                 let on = on.typecheck(eaccum, ctx)?;
@@ -424,7 +436,17 @@ impl TypeCheckExpr for ast::expr::Expr {
 
     fn is_const(&self, eaccum: &mut EAccum, span: Span) -> Option<()> {
         match self {
-            Self::Lit(_) | Self::Reference(_) | Self::Tuple(_) => Some(()),
+            // Base cases
+            Self::Lit(inner) => {
+                inner.is_const(eaccum)?;
+                Some(())
+            }
+            Self::Reference(inner) => {
+                inner.is_const(eaccum)?;
+                Some(())
+            }
+            // Transparent containers (i.e. all Rust-comptime-computable
+            // operations)
             Self::Bin { lhs, rhs, .. } => {
                 let lhs = lhs.is_const(eaccum);
                 let rhs = rhs.is_const(eaccum);
@@ -443,18 +465,6 @@ impl TypeCheckExpr for ast::expr::Expr {
                 rhs?;
                 Some(())
             }
-            Self::DummyPre(_) => eaccum.error(err::NotConst {
-                what: "The temporal operator `pre` is",
-                site: span,
-            }),
-            Self::Later { .. } => eaccum.error(err::NotConst {
-                what: "The delay operator (-> / fby) is",
-                site: span,
-            }),
-            Self::Substep { .. } => eaccum.error(err::NotConst {
-                what: "Function calls",
-                site: span,
-            }),
             Self::Ifx { cond, yes, no } => {
                 let cond = cond.is_const(eaccum);
                 let yes = yes.is_const(eaccum);
@@ -464,6 +474,25 @@ impl TypeCheckExpr for ast::expr::Expr {
                 no?;
                 Some(())
             }
+            // Currently unsupported, but not outrageous to add support in the future.
+            Self::Tuple(_) => eaccum.error(err::NotConst {
+                what: "Tuples are currently",
+                site: span,
+            }),
+            // Unambiguous failures: not only are they not computable at compile-time by Rust,
+            // it just doesn't make sense to put the temporal operators in a constant.
+            Self::DummyPre(_) => eaccum.error(err::NotConst {
+                what: "The temporal operator `pre` is",
+                site: span,
+            }),
+            Self::Later { .. } => eaccum.error(err::NotConst {
+                what: "The delay operator (-> / fby) is",
+                site: span,
+            }),
+            Self::Substep { .. } => eaccum.error(err::NotConst {
+                what: "Function calls are",
+                site: span,
+            }),
             Self::Merge { .. } => eaccum.error(err::NotConst {
                 what: "The merge builtin is",
                 site: span,
@@ -488,6 +517,7 @@ impl TypeCheckExpr for ast::expr::Lit {
             .with_span(span),
         ))
     }
+
     fn is_const(&self, _eaccum: &mut EAccum, _span: Span) -> Option<()> {
         Some(())
     }
