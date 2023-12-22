@@ -148,12 +148,65 @@ impl IntoError for Raw {
     }
 }
 
+trait Condition {
+    fn truth(&self) -> bool;
+}
+
+impl Condition for bool {
+    fn truth(&self) -> bool {
+        *self
+    }
+}
+
 /// More macro black magic.
 /// This one is supposed to reduce how repetitive it is to add new error messages.
 /// Describe the error message in a succint format and the macro will generate
 /// the `impl IntoError` automaticaly.
 ///
-/// See examples for syntax.
+/// This defines a metalanguage to describe error messages.
+/// Each error consists of a declaration and an implementation.
+///
+/// The declaration looks like this:
+/// ```skip
+/// ["Documentation for SomeError"]
+/// struct SomeError where {
+///     ["Documentation for foo"] foo: {Display},
+///     ["Documentation for bar"] bar: {TrySpan},
+///     ["Documentation for quux"] quux: {Display + TrySpan},
+/// }
+/// ```
+/// As implied, this results in a struct having the fields `foo` and `bar`,
+/// and these fields can be of any type that implements the trait bounds.
+///
+/// The second part is the implementation
+/// ```skip
+/// impl {
+///     "Uh oh this is bad: {foo} occured here" @ bar;
+///     "Fix this construct {quux}" @ quux;
+/// }
+/// ```
+/// This will produce an error message that show is that order:
+/// - the first text line, formatted with `self.foo`
+/// - the span of `self.bar`
+/// - the second text line, formated with `self.quux`
+/// - the span of `self.quux`
+///
+/// The following further constructs are available to manipulate lines of messages
+/// in a more fine-grained manner:
+/// - `"msg"` plain message without span
+/// - `"{bar}" format string (requires `bar: {Display}`)
+/// - `"msg" @ foo` use the span of `foo` (requires `foo: {TrySpan}`)
+/// - `"msg" @ if foo` use the span of `foo` but only if it is not `None` (requires `foo: {TrySpan}`)
+/// - `"msg" @* foo` use the def site of `foo` (requires `foo: {TryDefSite}`)
+/// - `"msg" @* if foo` use the def site of `foo` but only if it is not `None` (requires `foo: {TryDefSite}`)
+/// - `if cond => "msg" @ foo` only insert if `cond` holds (implements `Condition` that returns `true`)
+/// - `for items => "msg"` and `for items => "msg" @ foo`
+///   iterate over `items`, can be reused as a binding in both the format string and the span.
+///   Requires `items: [It .. Display + TrySpan]` (`Display` and `TrySpan` are optional depending
+///   on what you do with `items`) i.e. requires `items` to be an iterator of `Display + TrySpan`
+///   items.
+///
+/// See concrete syntax examples below.
 macro_rules! error_message {
     (
         $( [ $predoc:expr ] )* // documentation of the struct
@@ -201,15 +254,13 @@ macro_rules! error_message {
         $constructed.push((format!($fmt), $site.try_span()));
         error_message!([$constructed] $($rest)*);
     };
-    ( [$constructed:ident] $fmt:tt @* if let $site:ident ; $($rest:tt)* ) => {
-        // Base case looks like ["foo" @ site]: "foo" is treated as a format
-        // string and `site` gives the `Span`.
+    ( [$constructed:ident] $fmt:tt @* if $site:ident ; $($rest:tt)* ) => {
+        // Only insert if `try_def_site` is defined.
         if let Some(site) = $site.try_def_site() {
             $constructed.push((format!($fmt), Some(site)));
         }
         error_message!([$constructed] $($rest)*);
     };
-
     ( [$constructed:ident] for $iterator:ident => $fmt:tt @ $site:expr ; $($rest:tt)* ) => {
         // Loop over the base case [for items => "foo" @ site]
         for $iterator in $iterator {
@@ -217,13 +268,20 @@ macro_rules! error_message {
         }
         error_message!([$constructed] $($rest)*);
     };
-    ( [$constructed:ident] $fmt:tt @ if let $site:expr ; $($rest:tt)* ) => {
+    ( [$constructed:ident] if $cond:ident => $fmt:tt @ $site:expr ; $($rest:tt)* ) => {
+        // Only insert if `cond` holds [if cond => "foo" @ site]
+        if $cond.truth() {
+            $constructed.push((format!($fmt), $site.try_span()));
+        }
+        error_message!([$constructed] $($rest)*);
+    };
+    ( [$constructed:ident] $fmt:tt @ if $site:expr ; $($rest:tt)* ) => {
+        // Only insert if `try_span` is defined.
         if let Some(site) = $site.try_span() {
             $constructed.push((format!($fmt), Some(site)));
         }
         error_message!([$constructed] $($rest)*);
     };
-
     ( [$constructed:ident] for $iterator:ident => $fmt:tt ; $($rest:tt)* ) => {
         // Loop over the base case without a span [for items => "foo"]
         for $iterator in $iterator {
@@ -395,138 +453,58 @@ error_message! {
     }
 }
 
-/// Special case of [Cycle]: custom message for an object that depends
-/// specifically on itself directly.
-pub struct GraphUnitDependsOnItself<Unit, Site1, Site2> {
-    /// Object that loops.
-    pub unit: Unit,
-    /// Where it is defined.
-    pub def_site: Site1,
-    /// Where it is used (usually a subspan of `def_site`).
-    pub usage: Site2,
-}
-
-impl<Unit, Site1, Site2> IntoError for GraphUnitDependsOnItself<Unit, Site1, Site2>
-where
-    Unit: Display,
-    Site1: TrySpan,
-    Site2: TrySpan,
-{
-    fn into_err(self) -> Error {
-        vec![
-            (
-                format!("{} depends on itself", self.unit),
-                self.def_site.try_span(),
-            ),
-            (
-                String::from("used here within its own definition"),
-                self.usage.try_span(),
-            ),
-        ]
+error_message! {
+    ["Special case of [Cycle]: custom message for an object that depends"]
+    ["specifically on itself directly."]
+    struct GraphUnitDependsOnItself where {
+        ["Object that loops."] unit: {Display},
+        ["Where it is defined."] def_site: {TrySpan},
+        ["Where it is used (usually a subspan of `def_site`)."] usage: {TrySpan},
+    } impl {
+        "{unit} depends on itself" @ def_site;
+        "used here within its own definition" @ usage;
     }
 }
 
-/// Error for when one tried to access too far into the past.
-pub struct NotPositive<Var, Site> {
-    /// Variable that is not deep enough.
-    pub var: Var,
-    /// Location of the error.
-    pub site: Site,
-    /// How deep we could have gone.
-    pub available_depth: usize,
-    /// How deep we actually tried to go.
-    pub attempted_depth: usize,
-}
-impl<Var, Site> IntoError for NotPositive<Var, Site>
-where
-    Var: Display,
-    Site: TrySpan,
-{
-    fn into_err(self) -> Error {
-        vec![
-            (
-                format!("Variable {} is not positive at this depth", self.var),
-                self.site.try_span(),
-            ),
-            (
-                format!(
-                    "tried to reach {} steps into the past, with only {} available",
-                    self.attempted_depth, self.available_depth
-                ),
-                None,
-            ),
-            (
-                String::from("Maybe add a `->` in front of the expression to increase the depth ?"),
-                None,
-            ),
-        ]
+error_message! {
+    ["Error for when one tried to access too far into the past."]
+    struct NotPositive where {
+        ["Variable that is not deep enough."] var: {Display},
+        ["Location of the error"] site: {TrySpan},
+        ["How deep we could have gone"] available_depth: {Display},
+        ["How deep we actually tried to go"] attempted_depth: {Display},
+    } impl {
+        "Variable {var} is not positive at this depth" @ site;
+        "tried to reach {attempted_depth} steps into the past, with only {available_depth} available";
+        "Maybe add a `->` in front of the expression to increase the depth ?";
     }
 }
 
-/// Error for a literal that is not supported.
-///
-/// Lustre only has `float`, `int`, and `bool` literals, so e.g. a `&str` will trigger this error.
-pub struct UnhandledLitType<Site> {
-    /// Location of the literal.
-    pub site: Site,
-}
-impl<Site> IntoError for UnhandledLitType<Site>
-where
-    Site: TrySpan,
-{
-    fn into_err(self) -> Error {
-        vec![(
-            String::from("Lustre only accepts literals of type int, float, or bool"),
-            self.site.try_span(),
-        )]
+error_message! {
+    ["Error for a literal that is not supported."]
+    ["Lustre only has `float`, `int`, and `bool` literals, so e.g. a `&str` will trigger this error."]
+    struct UnhandledLitType where {
+        ["Location of the literal."] site: {TrySpan},
+    } impl {
+        "Lustre only accepts literals of type int, float, or bool" @ site;
     }
 }
 
-/// Error for when a comparison operator is used with associativity.
-///
-/// Since `a = b = c` is ambiguous (does it mean `(a = b) = c` or `a = (b = c)`
-/// or `(a = b) and (b = c)`, we choose to reject all interpretations and
-/// ask for explicit parentheses around comparison operators.
-pub struct CmpNotAssociative<First, Oper1, Second, Oper2, Third, Site> {
-    /// The `<` of `a < b > c`
-    pub oper1: Oper1,
-    /// The `a` of `a < b > c`
-    pub first: First,
-    /// The whole location of `a < b > c`
-    pub site: Site,
-    /// The `b` of `a < b > c`
-    pub second: Second,
-    /// The `c` of `a < b > c`
-    pub third: Third,
-    /// The `>` of `a < b > c`
-    pub oper2: Oper2,
-}
-impl<First, Oper1, Second, Oper2, Third, Site> IntoError
-    for CmpNotAssociative<First, Oper1, Second, Oper2, Third, Site>
-where
-    Oper1: Display,
-    Oper2: Display,
-    First: Display,
-    Second: Display,
-    Third: Display,
-    Site: TrySpan,
-{
-    fn into_err(self) -> Error {
-        let Self {
-            first,
-            oper1,
-            second,
-            oper2,
-            third,
-            site,
-        } = &self;
-        vec![(
-            format!("Comparison operator {oper1} is not associative"),
-            site.try_span(),
-        ),(
-            format!("Maybe replace `{first} {oper1} {second} {oper2} {third}` with `{first} {oper1} {second} and {second} {oper2} {third}` ?"),
-            None,
-        )]
+error_message! {
+    ["Error for when a comparison operator is used with associativity."]
+    ["Since `a = b = c` is ambiguous (does it mean `(a = b) = c` or `a = (b = c)`"]
+    ["or `(a = b) and (b = c)`, we choose to reject all interpretations and"]
+    ["ask for explicit parentheses around comparison operators."]
+    struct CmpNotAssociative where {
+        ["The `<` of `a < b > c`"] oper1: {Display},
+        ["The `a` of `a < b > c`"] first: {Display},
+        ["The whole location of `a < b > c`"] site: {TrySpan},
+        ["The `b` of `a < b > c`"] second: {Display},
+        ["The `c` of `a < b > c`"] third: {Display},
+        ["The `>` of `a < b > c`"] oper2: {Display},
+    } impl {
+        "Comparison operator {oper1} is not associative" @ site;
+        "Maybe replace `{first} {oper1} {second} {oper2} {third}` with `{first} {oper1} {second} and {second} {oper2} {third}` ?";
     }
 }
 
@@ -539,215 +517,83 @@ error_message! {
         ["Extra help messages, optionally."] extra: [It .. Display],
     } impl {
         "This expression is too slow: expected the implicit clock 'self, found {slow}" @ slow;
-        "Found {slow} here" @* if let slow;
-        "Expected because this expression moves at the implicit pace" @ if let implicit;
-        //if let Some(def) = self.slow.try_def_site() {
-        //    es.push((format!("Found {} here", self.slow), Some(def)));
-        //}
-        //if let Some(reason) = self.implicit.try_span() {
-        //    es.push((
-        //        "Expected because this expression moves at the implicit pace".to_owned(),
-        //        Some(reason),
-        //    ));
-        //}
+        "Found {slow} here" @* if slow;
+        "Expected because this expression moves at the implicit pace" @ if implicit;
         for extra => "{extra}";
     }
 }
 
-/// When an expression is not a valid clock (anything but a local variable).
-pub struct NotAClock<Expr> {
-    /// The faulty expression.
-    pub expr: Expr,
-}
-
-impl<Expr> IntoError for NotAClock<Expr>
-where
-    Expr: Display + TrySpan,
-{
-    fn into_err(self) -> Error {
-        vec![(
-            format!("The expression `{}` cannot be interpreted as a clock because it is not a local boolean variable", self.expr),
-            self.expr.try_span(),
-        )]
+error_message! {
+    ["When an expression is not a valid clock (anything but a local variable)."]
+    struct NotAClock where {
+        ["The faulty expression."] expr: {Display + TrySpan},
+    } impl {
+        "The expression `{expr}` cannot be interpreted as a clock because it is not a local boolean variable" @ expr;
     }
 }
 
-/// To help track clock errors we show the usage site and the definition site if
-/// it exists.
-pub fn clock_and_def_site<Clk>(es: &mut Error, clk: Clk)
-where
-    Clk: Display + TrySpan + TryDefSite,
-{
-    es.push((format!("This is clocked by {clk}"), clk.try_span()));
-    if let Some(def) = clk.try_def_site() {
-        es.push(("defined here".to_owned(), Some(def)));
+error_message! {
+    ["When two clocks are both non-implicit but different."]
+    struct ClkNotComparable where {
+        ["First clock."] first: {Display + TrySpan + TryDefSite},
+        ["Second clock."] second: {Display + TrySpan + TryDefSite},
+        ["Span of the whole expression that contains both."] whole: {TrySpan},
+    } impl {
+        "Two subexpressions have incomparable clocks: {first} and {second} are incompatible" @ whole;
+        "This is clocked by {first}" @ first;
+        "defined here" @* if first;
+        "This is clocked by {second}" @ second;
+        "defined here" @* if second;
     }
 }
 
-/// When two clocks are both non-implicit but different.
-pub struct ClkNotComparable<First, Second, Whole> {
-    /// First clock.
-    pub first: First,
-    /// Second clock.
-    pub second: Second,
-    /// Span of the whole expression that contains both.
-    pub whole: Whole,
-}
-
-impl<First, Second, Whole> IntoError for ClkNotComparable<First, Second, Whole>
-where
-    First: Display + TrySpan + TryDefSite,
-    Second: Display + TrySpan + TryDefSite,
-    Whole: TrySpan,
-{
-    fn into_err(self) -> Error {
-        let mut v = vec![(
-            format!(
-                "Two subexpressions have incomparable clocks: {} and {} are incompatible",
-                self.first, self.second,
-            ),
-            self.whole.try_span(),
-        )];
-        clock_and_def_site(&mut v, self.first);
-        clock_and_def_site(&mut v, self.second);
-        v
+error_message! {
+    ["When a generic type variable is unused and thus not inferrable"]
+    struct UnusedGeneric where {
+        ["Type variable that is absent from the inputs declaration."] unused: {Display + TrySpan},
+        ["Declaration of said inputs."] inputs: {TrySpan},
+    } impl {
+        "Type variable {unused} cannot be inferred from the inputs of this node" @ unused;
+        "None of these arguments are of type {unused}" @ inputs;
     }
 }
 
-/// When a generic type variable is unused and thus not inferrable
-pub struct UnusedGeneric<Unused, Inputs> {
-    /// Type variable that is absent from the inputs declaration.
-    pub unused: Unused,
-    /// Declaration of said inputs.
-    pub inputs: Inputs,
-}
-
-impl<Unused, Inputs> IntoError for UnusedGeneric<Unused, Inputs>
-where
-    Unused: Display + TrySpan,
-    Inputs: TrySpan,
-{
-    fn into_err(self) -> Error {
-        vec![
-            (
-                format!(
-                    "Type variable {} cannot be inferred from the inputs of this node",
-                    self.unused
-                ),
-                self.unused.try_span(),
-            ),
-            (
-                format!("None of these arguments are of type {}", self.unused),
-                self.inputs.try_span(),
-            ),
-        ]
+error_message! {
+    ["Impossible to satisfy generic constraints introduced by bounds."]
+    struct UnsatGenericConstraint where {
+        ["Type variable."] variable: {Display},
+        ["Already equal to."] previous: {Display + TrySpan},
+        ["Now additionally required to be equal to."] new: {Display + TrySpan},
+        ["Bound introduced by this node declaration."] context: {TrySpan},
+    } impl {
+        "Cannot satisfy constraint {variable} = {new} introduced here..." @ new;
+        "...because a previous bound already enforces {variable} = {previous}" @ previous;
+        "Unable to satisfy the generic bounds on {variable}" @ context;
     }
 }
 
-/// Impossible to satisfy generic constraints introduced by bounds.
-pub struct UnsatGenericConstraint<Variable, Previous, New, Context> {
-    /// Type variable.
-    pub variable: Variable,
-    /// Already equal to.
-    pub previous: Previous,
-    /// Now additionally required to be equal to.
-    pub new: New,
-    /// Bound introduced by this node declaration.
-    pub context: Context,
-}
-
-impl<Variable, Previous, New, Context> IntoError
-    for UnsatGenericConstraint<Variable, Previous, New, Context>
-where
-    Variable: Display,
-    Previous: Display + TrySpan,
-    New: Display + TrySpan,
-    Context: TrySpan,
-{
-    fn into_err(self) -> Error {
-        vec![
-            (
-                format!(
-                    "Cannot satisfy constraint {} = {} introduced here...",
-                    self.variable, self.new
-                ),
-                self.new.try_span(),
-            ),
-            (
-                format!(
-                    "...because a previous bound already enforces {} = {}",
-                    self.variable, self.previous
-                ),
-                self.previous.try_span(),
-            ),
-            (
-                format!("Unable to satisfy the generic bounds on {}", self.variable,),
-                self.context.try_span(),
-            ),
-        ]
+error_message! {
+    ["When a generic type variable is unused and thus not inferrable."]
+    struct UndeclaredGeneric where {
+        ["Type variable that is absent from the generics declaration."] undeclared: {Display + TrySpan},
+    } impl {
+        "Type variable {undeclared} was not declared" @ undeclared;
+        "Maybe add a `#[generic[{undeclared}]]` annotation to the node ?";
     }
 }
 
-/// When a generic type variable is unused and thus not inferrable
-pub struct UndeclaredGeneric<Undeclared> {
-    /// Type variable that is absent from the generics declaration.
-    pub undeclared: Undeclared,
-}
-
-impl<Undeclared> IntoError for UndeclaredGeneric<Undeclared>
-where
-    Undeclared: Display + TrySpan,
-{
-    fn into_err(self) -> Error {
-        vec![
-            (
-                format!("Type variable {} was not declared", self.undeclared),
-                self.undeclared.try_span(),
-            ),
-            (
-                format!(
-                    "Maybe add a `#[generic[{}]]` annotation to the node ?",
-                    self.undeclared
-                ),
-                None,
-            ),
-        ]
-    }
-}
-
-/// Node is declared as executable, but has nonempty inputs or outputs.
-pub struct ExecutableNodeSig<Reason, Inputs, Outputs, Site> {
-    /// Attribute that marks it as executable.
-    pub reason: Reason,
-    /// Whether there are any inputs.
-    pub inputs_nonempty: bool,
-    /// Where are the inputs.
-    pub inputs: Inputs,
-    /// Whether there are any outputs.
-    pub outputs_nonempty: bool,
-    /// Where are the outputs.
-    pub outputs: Outputs,
-    /// Entire call site.
-    pub site: Site,
-}
-
-impl<Reason, Inputs, Outputs, Site> IntoError for ExecutableNodeSig<Reason, Inputs, Outputs, Site>
-where
-    Reason: Display,
-    Inputs: TrySpan,
-    Outputs: TrySpan,
-    Site: TrySpan,
-{
-    fn into_err(self) -> Error {
-        let mut v = vec![
-            (format!("Node has an incompatible signature to be marked as executable (required due to {})", self.reason), self.site.try_span())
-        ];
-        if self.inputs_nonempty {
-            v.push((format!("Inputs should be ()"), self.inputs.try_span()));
-        }
-        if self.outputs_nonempty {
-            v.push((format!("Outputs should be ()"), self.outputs.try_span()));
-        }
-        v
+error_message! {
+    ["Node is declared as executable, but has nonempty inputs or outputs."]
+    struct ExecutableNodeSig where {
+        ["Attribute that marks it as executable."] reason: {Display},
+        ["Whether there are any inputs."] inputs_nonempty: {Condition},
+        ["Where are the inputs."] inputs: {TrySpan},
+        ["Whether there are any outputs."] outputs_nonempty: {Condition},
+        ["Where are the outputs."] outputs: {TrySpan},
+        ["Entire call site."] site: {TrySpan},
+    } impl {
+        "Node has an incompatible signature to be marked as executable (required due to {reason})" @ site;
+        if inputs_nonempty => "Inputs should be ()" @ inputs;
+        if outputs_nonempty => "Outputs should be ()" @ outputs;
     }
 }
