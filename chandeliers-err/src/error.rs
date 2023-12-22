@@ -93,6 +93,27 @@ impl<T: TryDefSite, E> TryDefSite for Result<T, E> {
     }
 }
 
+/// Generic wraper that implements `Display` and `TrySpan` to wrap together
+/// items that don't implement both.
+pub struct DisplayTrySpan<T> {
+    /// Displayable part.
+    pub display: T,
+    /// Spannable part.
+    pub try_span: Option<Span>,
+}
+
+impl<T: Display> Display for DisplayTrySpan<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.display.fmt(f)
+    }
+}
+
+impl<T> TrySpan for DisplayTrySpan<T> {
+    fn try_span(&self) -> Option<Span> {
+        self.try_span
+    }
+}
+
 /// An explicit error message with its span.
 /// This error construct is meant to be phased out in favor of a prebuilt error
 /// message.
@@ -136,13 +157,11 @@ impl IntoError for Raw {
 macro_rules! error_message {
     (
         $( [ $predoc:expr ] )* // documentation of the struct
-        struct $name:tt where {
+        struct $name:tt $( <$($explicit_generics:ident),*> )? where {
             $( // fields and trait bounds (typically `Display` and/or `TrySpan`)
                 [ $doc:expr ]
-                $field:ident : { $($bounds:tt)* } ,
+                $field:ident : $( [$item:ident .. $($iterbounds:tt)* ] )? $( { $($bounds:tt)+ } )?,
             )*
-        } let { // extra variable bindings
-            $( $var:ident = $val:expr ; )*
         } impl { // ;-separated list of messages, handled by the auxiliary arms
             $( $message:tt )*
         }
@@ -157,12 +176,13 @@ macro_rules! error_message {
         }
 
         #[allow(non_camel_case_types)]
-        impl <$($field),*> IntoError for $name<$($field),*>
-        where $( $field: $($bounds)* , )*
+        impl <$($($explicit_generics),*,)? $($field),*> IntoError for $name<$($field),*>
+        where $(
+            $field: $( IntoIterator<Item = $item>, $item: $($iterbounds)* )?
+                $( $($bounds)* , )? )*
         {
             fn into_err(self) -> Error {
                 let Self { $($field),* } = self;
-                $( let $var = $val; )*
                 let mut constructed = Vec::new();
                 error_message!([constructed]
                     $($message)* // more black magic to turn these into statements
@@ -175,10 +195,40 @@ macro_rules! error_message {
     // These recursively consume the stream of tokens that describe the message
     // and produce the appropriate `push` operations.
     ( [$constructed:ident] ) => {}; // done
-    ( [$constructed:ident] $fmt:tt @ $site:expr ; $($rest:tt)* ) => {
+    ( [$constructed:ident] $fmt:tt @ $site:ident ; $($rest:tt)* ) => {
         // Base case looks like ["foo" @ site]: "foo" is treated as a format
         // string and `site` gives the `Span`.
         $constructed.push((format!($fmt), $site.try_span()));
+        error_message!([$constructed] $($rest)*);
+    };
+    ( [$constructed:ident] $fmt:tt @* if let $site:ident ; $($rest:tt)* ) => {
+        // Base case looks like ["foo" @ site]: "foo" is treated as a format
+        // string and `site` gives the `Span`.
+        if let Some(site) = $site.try_def_site() {
+            $constructed.push((format!($fmt), Some(site)));
+        }
+        error_message!([$constructed] $($rest)*);
+    };
+
+    ( [$constructed:ident] for $iterator:ident => $fmt:tt @ $site:expr ; $($rest:tt)* ) => {
+        // Loop over the base case [for items => "foo" @ site]
+        for $iterator in $iterator {
+            $constructed.push((format!($fmt), $site.try_span()));
+        }
+        error_message!([$constructed] $($rest)*);
+    };
+    ( [$constructed:ident] $fmt:tt @ if let $site:expr ; $($rest:tt)* ) => {
+        if let Some(site) = $site.try_span() {
+            $constructed.push((format!($fmt), Some(site)));
+        }
+        error_message!([$constructed] $($rest)*);
+    };
+
+    ( [$constructed:ident] for $iterator:ident => $fmt:tt ; $($rest:tt)* ) => {
+        // Loop over the base case without a span [for items => "foo"]
+        for $iterator in $iterator {
+            $constructed.push((format!($fmt), None));
+        }
         error_message!([$constructed] $($rest)*);
     };
     ( [$constructed:ident] $fmt:tt ; $($rest:tt)* ) => {
@@ -196,7 +246,6 @@ error_message! {
         ["Left expression"] left: {Display + TrySpan},
         ["Right expression"] right: {Display + TrySpan},
         ["Further details on mismatch"] msg: {Display},
-    } let {
     } impl {
         "Type mismatch between the left and right sides: {msg}" @ source;
         "This element has type {left}" @ left;
@@ -204,24 +253,29 @@ error_message! {
     }
 }
 
-/// Trait to display suggestions.
-pub trait Suggest {
-    /// Print as a comma-separated list of items.
-    fn show(self) -> String;
+/// Wrapper to display suggestions.
+pub struct Suggest<Its> {
+    /// Iterator of suggested items
+    pub available: Its,
 }
 
-impl<T, I> Suggest for T
+impl<Its, It> Display for Suggest<Its>
 where
-    T: IntoIterator<Item = I>,
-    I: Display,
+    Its: IntoIterator<Item = It> + Clone,
+    It: Display,
 {
-    fn show(self) -> String {
-        let mut suggest = self.into_iter().map(|v| format!("{v}")).collect::<Vec<_>>();
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut suggest = self
+            .available
+            .clone()
+            .into_iter()
+            .map(|v| format!("{v}"))
+            .collect::<Vec<_>>();
         suggest.sort();
         if suggest.is_empty() {
-            String::from("(none declared)")
+            write!(f, "(none declared)")
         } else {
-            suggest.join(", ")
+            write!(f, "{}", suggest.join(", "))
         }
     }
 }
@@ -230,11 +284,8 @@ error_message! {
     ["Generate an error for a variable that was not declared yet."]
     struct VarNotFound where {
         ["What is missing"] var: {Display + TrySpan},
-        ["Local variable suggestions."] suggest1: {Suggest},
-        ["Global variable suggestions."] suggest2: {Suggest},
-    } let {
-        suggest1 = suggest1.show();
-        suggest2 = suggest2.show();
+        ["Local variable suggestions."] suggest1: {Display},
+        ["Global variable suggestions."] suggest2: {Display},
     } impl {
         "Variable {var} not found in the context." @ var;
         "Perhaps you meant one of the local variables: {suggest1}";
@@ -247,9 +298,7 @@ error_message! {
     ["which has consequences on what we should say is and isn't available."]
     struct TyVarNotFound where {
         ["What is missing."] var: {Display + TrySpan},
-        ["Local variable suggestions."] suggest: {Suggest},
-    } let {
-        suggest = suggest.show();
+        ["Local variable suggestions."] suggest: {Display},
     } impl {
         "Variable {var} is not available yet at this point of the typechecking." @ var;
         "During this incremental typechecking, you cannot access global
@@ -265,203 +314,84 @@ error_message! {
     struct NotConst where {
         ["Description of the invalid expression constructor."] what: {Display},
         ["Location of the error."] site: {TrySpan},
-    } let {
     } impl {
         "{what} not valid in const contexts" @ site;
         "You must put this definition inside a node";
     }
 }
 
-/// Generate an error for a binary operator that expected arguments of a specific type.
-pub struct BinopMismatch<Oper, Site, Expect, Left, Right> {
-    /// Description of the operator.
-    pub oper: Oper,
-    /// Location of the error.
-    pub site: Site,
-    /// What we expected in place of the arguments.
-    pub expect: Expect,
-    /// Left hand side and span.
-    pub left: Left,
-    /// Right hand side and span.
-    pub right: Right,
-}
-
-impl<Oper, Site, Expect, Left, Right> IntoError for BinopMismatch<Oper, Site, Expect, Left, Right>
-where
-    Oper: Display,
-    Site: TrySpan,
-    Expect: Display,
-    Left: Display + TrySpan,
-    Right: Display + TrySpan,
-{
-    fn into_err(self) -> Vec<(String, Option<Span>)> {
-        vec![
-            (
-                format!(
-                    "Binary operator `{}` expects arguments of {}",
-                    self.oper, self.expect
-                ),
-                self.site.try_span(),
-            ),
-            (
-                format!("The left-hand-side is found to be of type {}", self.left),
-                self.left.try_span(),
-            ),
-            (
-                format!("The right-hand-side is found to be of type {}", self.right),
-                self.right.try_span(),
-            ),
-        ]
+error_message! {
+    ["Generate an error for a binary operator that expected arguments of a specific type."]
+    struct BinopMismatch where {
+        ["Description of the operator."] oper: {Display},
+        ["Location of the error."] site: {TrySpan},
+        ["What we expected in place of the arguments."] expect: {Display},
+        ["Left hand side and span."] left: {Display + TrySpan},
+        ["Right hand side and span."] right: {Display + TrySpan},
+    } impl {
+        "Binary operator `{oper}` expects arguments of {expect}" @ site;
+        "The left-hand-side is found to be of type {left}" @ left;
+        "The right-hand-side is found to be of type {right}" @ right;
     }
 }
 
-/// Generate an error for a unary operator that expected an argument of a specific type.
-pub struct UnopMismatch<Oper, Expect, Site, Inner> {
-    /// Description of the operator.
-    pub oper: Oper,
-    /// What the operator expects.
-    pub expect: Expect,
-    /// Location of the error.
-    pub site: Site,
-    /// Invalid expression and span.
-    pub inner: Inner,
-}
-
-impl<Oper, Expect, Site, Inner> IntoError for UnopMismatch<Oper, Expect, Site, Inner>
-where
-    Oper: Display,
-    Expect: Display,
-    Site: TrySpan,
-    Inner: Display + TrySpan,
-{
-    fn into_err(self) -> Error {
-        vec![
-            (
-                format!(
-                    "Unary operator `{}` expects an argument of {}",
-                    self.oper, self.expect
-                ),
-                self.site.try_span(),
-            ),
-            (
-                format!("The inner value is found to be of type {}", self.inner),
-                self.inner.try_span(),
-            ),
-        ]
+error_message! {
+    ["Generate an error for a unary operator that expected an argument of a specific type."]
+    struct UnopMismatch where {
+        ["Description of the operator."] oper: {Display},
+        ["What the operator expects."] expect: {Display},
+        ["Location of the error."] site: {TrySpan},
+        ["Invalid expression and span."] inner: {Display + TrySpan},
+    } impl {
+        "Unary operator `{oper}` expects an argument of {expect}" @ site;
+        "The inner value is found to be of type {inner}" @ inner;
     }
 }
 
-/// Generate an error for something that should have been a bool but isn't,
-/// e.g. `if 1 then 0 else 1`.
-pub struct BoolRequired<Type, Site, Inner> {
-    /// Type that was found (should have been bool).
-    pub actual: Type,
-    /// Location of the error.
-    pub site: Site,
-    /// Location of the inner contents.
-    pub inner: Inner,
-}
-
-impl<Type, Site, Inner> IntoError for BoolRequired<Type, Site, Inner>
-where
-    Type: Display,
-    Site: TrySpan,
-    Inner: Display + TrySpan,
-{
-    fn into_err(self) -> Error {
-        vec![
-            (
-                format!("{} should be of type bool", self.actual),
-                self.site.try_span(),
-            ),
-            (
-                format!("The argument is found to be of type {}", self.inner),
-                self.inner.try_span(),
-            ),
-        ]
+error_message! {
+    ["Generate an error for something that should have been a bool but isn't,"]
+    ["e.g. `if 1 then 0 else 1`."]
+    struct BoolRequired where {
+        ["Explanation of what this item is (e.g. \"the condition of if\")"] what: {Display},
+        ["Location of the error."] site: {TrySpan},
+        ["Location of the inner contents."] inner: {Display + TrySpan},
+    } impl {
+        "{what} should be of type bool" @ site;
+        "The argument is found to be of type {inner}" @ inner;
     }
 }
 
-/// Generate an error for a cyclic definition.
-pub struct Cycle<Items> {
-    /// A (not necessarily ordered) cycle.
-    pub items: Items,
-}
-
-impl<Items, Item> IntoError for Cycle<Items>
-where
-    Items: IntoIterator<Item = (Item, Option<Span>)>,
-    Item: Display,
-{
-    fn into_err(self) -> Error {
-        let mut v = vec![];
-        for (i, (it, sp)) in self.items.into_iter().enumerate() {
-            v.push((
-                if i == 0 {
-                    format!("{it} was found to be part of a dependency cycle")
-                } else {
-                    format!("The cycle also goes through {it}")
-                },
-                sp,
-            ));
-        }
-        v
+error_message! {
+    ["Generate an error for a cyclic definition."]
+    struct Cycle<Its> where {
+        ["Beginning of the cycle"] head: {Display + TrySpan},
+        ["Rest of the cycle (not necessarily ordered)."] items: [Its .. TrySpan + Display],
+    } impl {
+        "{head} was found to be part of a dependency cycle" @ head;
+        for items => "The cycle also goes through {items}" @ items;
     }
 }
 
-/// Error message for an object that was defined twice when only one
-/// declaration should exist.
-pub struct GraphUnitDeclTwice<Unit, NewSite, Prior, PriorSite> {
-    /// Display of the redefined object.
-    pub unit: Unit,
-    /// Location of the superfluous definition.
-    pub new_site: NewSite,
-    /// Item that defined the object previously.
-    pub prior: Prior,
-    /// Location of the first definition.
-    pub prior_site: PriorSite,
-}
-
-impl<Unit, NewSite, Prior, PriorSite> IntoError
-    for GraphUnitDeclTwice<Unit, NewSite, Prior, PriorSite>
-where
-    Unit: Display,
-    Prior: Display,
-    NewSite: TrySpan,
-    PriorSite: TrySpan,
-{
-    fn into_err(self) -> Error {
-        vec![
-            (
-                format!(
-                    "Attempt to redefine {}, when {} already defines it",
-                    self.unit, self.prior
-                ),
-                self.new_site.try_span(),
-            ),
-            (
-                String::from("Already defined here"),
-                self.prior_site.try_span(),
-            ),
-        ]
+error_message! {
+    ["Error message for an object that was defined twice when only one"]
+    ["declaration should exist."]
+    struct GraphUnitDeclTwice where {
+        ["Display of the redefined object."] unit: {Display},
+        ["Location of the superfluous definition."] new_site: {TrySpan},
+        ["Item that defined the object previously."] prior: {Display},
+        ["Location of the first definition."] prior_site: {TrySpan},
+    } impl {
+        "Attempt to redefine {unit}, when {prior} already defines it" @ new_site;
+        "Already defined here" @ prior_site;
     }
 }
 
-/// Error for an object that should have been declared but was not.
-pub struct GraphUnitUndeclared<Unit> {
-    /// Missing object and site where usage was attempted.
-    pub unit: Unit,
-}
-
-impl<Unit> IntoError for GraphUnitUndeclared<Unit>
-where
-    Unit: Display + TrySpan,
-{
-    fn into_err(self) -> Error {
-        vec![(
-            format!("No definition provided for {} which is required", self.unit),
-            self.unit.try_span(),
-        )]
+error_message! {
+    ["Error for an object that should have been declared but was not."]
+    struct GraphUnitUndeclared where {
+        ["Missing object and site where usage was attempted."] unit: {Display + TrySpan},
+    } impl {
+        "No definition provided for {unit} which is required" @ unit;
     }
 }
 
@@ -600,57 +530,27 @@ where
     }
 }
 
-/// To help track clock errors we show the usage site and the definition site if
-/// it exists.
-pub fn clock_and_def_site<Clk>(es: &mut Error, clk: Clk)
-where
-    Clk: Display + TrySpan + TryDefSite,
-{
-    es.push((format!("This is clocked by {clk}"), clk.try_span()));
-    if let Some(def) = clk.try_def_site() {
-        es.push(("defined here".to_owned(), Some(def)));
-    }
-}
-
-/// Generate an error when due to `implicit` that has the implicit clock,
-/// `slow` was expected to also have the implicit clock but doesn't.
-pub struct ClkTooSlowExpectImplicit<Slow, Implicit, Extra> {
-    /// Clocked by something else, should have been `'self`.
-    pub slow: Slow,
-    /// Clocked by `'self`
-    pub implicit: Implicit,
-    /// Extra help messages, optionally.
-    pub extra: Extra,
-}
-
-impl<Slow, Implicit, Extra, Help> IntoError for ClkTooSlowExpectImplicit<Slow, Implicit, Extra>
-where
-    Slow: Display + TrySpan + TryDefSite,
-    Implicit: TrySpan,
-    Extra: IntoIterator<Item = Help>,
-    Help: Display,
-{
-    fn into_err(self) -> Error {
-        let mut es = vec![(
-            format!(
-                "This expression is too slow: expected the implicit clock 'self, found {}",
-                self.slow
-            ),
-            self.slow.try_span(),
-        )];
-        if let Some(def) = self.slow.try_def_site() {
-            es.push((format!("Found {} here", self.slow), Some(def)));
-        }
-        if let Some(reason) = self.implicit.try_span() {
-            es.push((
-                "Expected because this expression moves at the implicit pace".to_owned(),
-                Some(reason),
-            ));
-        }
-        for h in self.extra {
-            es.push((h.to_string(), None));
-        }
-        es
+error_message! {
+    ["Generate an error when due to `implicit` that has the implicit clock,"]
+    ["`slow` was expected to also have the implicit clock but doesn't."]
+    struct ClkTooSlowExpectImplicit<It> where {
+        ["Clocked by something else, should have been `'self`."] slow: {Display + TrySpan + TryDefSite},
+        ["Clocked by `'self`"] implicit: {TrySpan},
+        ["Extra help messages, optionally."] extra: [It .. Display],
+    } impl {
+        "This expression is too slow: expected the implicit clock 'self, found {slow}" @ slow;
+        "Found {slow} here" @* if let slow;
+        "Expected because this expression moves at the implicit pace" @ if let implicit;
+        //if let Some(def) = self.slow.try_def_site() {
+        //    es.push((format!("Found {} here", self.slow), Some(def)));
+        //}
+        //if let Some(reason) = self.implicit.try_span() {
+        //    es.push((
+        //        "Expected because this expression moves at the implicit pace".to_owned(),
+        //        Some(reason),
+        //    ));
+        //}
+        for extra => "{extra}";
     }
 }
 
@@ -669,6 +569,18 @@ where
             format!("The expression `{}` cannot be interpreted as a clock because it is not a local boolean variable", self.expr),
             self.expr.try_span(),
         )]
+    }
+}
+
+/// To help track clock errors we show the usage site and the definition site if
+/// it exists.
+pub fn clock_and_def_site<Clk>(es: &mut Error, clk: Clk)
+where
+    Clk: Display + TrySpan + TryDefSite,
+{
+    es.push((format!("This is clocked by {clk}"), clk.try_span()));
+    if let Some(def) = clk.try_def_site() {
+        es.push(("defined here".to_owned(), Some(def)));
     }
 }
 

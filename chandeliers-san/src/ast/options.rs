@@ -161,6 +161,32 @@ trait AssertUsed {
     fn assert_used(&self, msg: &'static str);
 }
 
+/// Empty usage site.
+/// This is trivially `AssertUsed` but never `Usage`, which
+/// ensures that we find a matching usage declaration for every call site.
+#[derive(Debug, Clone, Default)]
+pub struct Over {}
+
+impl AssertUsed for Over {
+    fn assert_used(&self, _: &'static str) {}
+}
+
+/// Constructor for usage sites.
+/// `AssertUsed` will succeed if `used` is set.
+/// `Usage` will either set `used` if `Head` matches the caller's type,
+/// or defer to `Tail` to try to find a matching site.
+#[derive(Debug, Clone, Default)]
+pub struct Sites<Head, Tail> {
+    /// Records whether the value was used. Initially `false`, set to `true` by
+    /// a call to `Usage`.
+    used: bool,
+    /// Type is only used by the trait implementations for matching against
+    /// the type provided by the caller.
+    head: std::marker::PhantomData<Head>,
+    /// Other records, usually another `Sites<_, _>`.
+    tail: Tail,
+}
+
 impl<T, Sites: Default> UseOpt<T, Sites> {
     /// Get the value of this option and record it as used for the corresponding site.
     #[expect(private_bounds, reason = "Sealed trait pattern")]
@@ -188,41 +214,6 @@ impl<T, Sites: Default> UseOpt<T, Sites> {
     {
         self.usage.borrow().assert_used(msg);
     }
-}
-
-/// Constructor for usage sites.
-/// `AssertUsed` will succeed if `used` is set.
-/// `Usage` will either set `used` if `Head` matches the caller's type,
-/// or defer to `Tail` to try to find a matching site.
-#[derive(Debug, Clone, Default)]
-pub struct Sites<Head, Tail> {
-    /// Records whether the value was used. Initially `false`, set to `true` by
-    /// a call to `Usage`.
-    used: bool,
-    /// Type is only used by the trait implementations for matching against
-    /// the type provided by the caller.
-    head: std::marker::PhantomData<Head>,
-    /// Other records, usually another `Sites<_, _>`.
-    tail: Tail,
-}
-
-/// Allow attributes.
-#[derive(Clone, Debug)]
-pub enum Allow {
-    /// `#[allow(x)]`
-    Rustc(syn::Ident),
-    /// `#[allow(clippy::x)]`
-    Clippy(syn::Ident),
-}
-
-/// Empty usage site.
-/// This is trivially `AssertUsed` but never `Usage`, which
-/// ensures that we find a matching usage declaration for every call site.
-#[derive(Debug, Clone, Default)]
-pub struct Over {}
-
-impl AssertUsed for Over {
-    fn assert_used(&self, _: &'static str) {}
 }
 
 impl<Head: usage::ShowTy, Tail: AssertUsed> AssertUsed for Sites<Head, Tail> {
@@ -305,6 +296,15 @@ pub enum TraceFormat {
     Empty,
     /// Custom format string provided by the user.
     Str(String),
+}
+
+/// Allow attributes.
+#[derive(Clone, Debug)]
+pub enum Allow {
+    /// `#[allow(x)]`
+    Rustc(syn::Ident),
+    /// `#[allow(clippy::x)]`
+    Clippy(syn::Ident),
 }
 
 /// Black magic to generate option sets.

@@ -97,8 +97,12 @@ impl TyCtx<'_> {
             ),
             None => eaccum.error(err::VarNotFound {
                 var: &var,
-                suggest1: self.vars.keys(),
-                suggest2: self.global.keys(),
+                suggest1: err::Suggest {
+                    available: self.vars.keys(),
+                },
+                suggest2: err::Suggest {
+                    available: self.global.keys(),
+                },
             }),
         }
     }
@@ -119,7 +123,9 @@ impl TyCtx<'_> {
             ),
             None => eaccum.error(err::TyVarNotFound {
                 var: &var,
-                suggest: self.vars.keys(),
+                suggest: err::Suggest {
+                    available: self.vars.keys(),
+                },
             }),
         }
     }
@@ -138,8 +144,12 @@ impl TyCtx<'_> {
             ),
             None => eaccum.error(err::VarNotFound {
                 var: &var,
-                suggest1: self.vars.keys(),
-                suggest2: self.global.keys(),
+                suggest1: err::Suggest {
+                    available: self.vars.keys(),
+                },
+                suggest2: err::Suggest {
+                    available: self.global.keys(),
+                },
             }),
         }
     }
@@ -663,7 +673,7 @@ impl Sp<&ty::Base> {
         match self.t {
             ty::Base::Bool => Some(()),
             _ => eaccum.error(err::BoolRequired {
-                actual: req,
+                what: req,
                 site: span,
                 inner: &self,
             }),

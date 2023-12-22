@@ -1,0 +1,11 @@
+error: The condition of if should be of type bool
+ --> tests/compile_fail/ui/tc/if-int.rs:4:16
+  |
+4 |         assert if 1 then true else false;
+  |                ^^^^^^^^^^^^^^^^^^^^^^^^^
+  |
+note: The argument is found to be of type int
+ --> tests/compile_fail/ui/tc/if-int.rs:4:19
+  |
+4 |         assert if 1 then true else false;
+  |                   ^

@@ -388,11 +388,18 @@ where
             );
             if c.len() > 1 {
                 // Oops, here's a loop.
-                let looping = c.iter().map(|l| {
+                let mut looping = c.iter().map(|l| {
                     let e = at!(self.atomics.0, *l);
-                    (&e.data, e.def_site.unwrap())
+                    err::DisplayTrySpan {
+                        display: &e.data,
+                        try_span: e.def_site.unwrap(),
+                    }
                 });
-                eaccum.error(err::Cycle { items: looping })?;
+                let head = looping.next().unwrap();
+                eaccum.error(err::Cycle {
+                    head,
+                    items: looping,
+                })?;
             }
             // Correctly of size 1, we can use it next.
             let Some(&id) = c.last() else {
