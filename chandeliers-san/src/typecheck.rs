@@ -951,13 +951,7 @@ impl Sp<ty::Tuple> {
         self.as_ref()
             .map(|_, t| match t {
                 ty::Tuple::Single(t) => Some(t.t.clone()),
-                ty::Tuple::Multiple(_) => {
-                    let s = "expected a scalar type, got a tuple type".to_owned();
-                    eaccum.error(err::Basic {
-                        span: self.span,
-                        msg: s,
-                    })
-                }
+                ty::Tuple::Multiple(_) => eaccum.error(err::ScalarNotTuple { typ: self }),
             })
             .transpose()
     }

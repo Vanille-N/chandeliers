@@ -597,3 +597,12 @@ error_message! {
         if outputs_nonempty => "Outputs should be ()" @ outputs;
     }
 }
+
+error_message! {
+    ["Two types cannot be equal because one is a tuple and the other a scalar"]
+    struct ScalarNotTuple where {
+        ["Tuple type found"] typ: {Display + TrySpan},
+    } impl {
+        "Expected a scalar type, found a tuple {typ}" @ typ;
+    }
+}
