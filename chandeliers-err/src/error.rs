@@ -117,7 +117,7 @@ impl<T> TrySpan for DisplayTrySpan<T> {
 /// An explicit error message with its span.
 /// This error construct is meant to be phased out in favor of a prebuilt error
 /// message.
-//#[deprecated = "This is a nonspecific error constructor that should eventually become a prebuilt message."]
+#[deprecated = "This is a nonspecific error constructor that should eventually become a prebuilt message."]
 pub struct Basic {
     /// Error kind.
     pub msg: String,
@@ -604,5 +604,16 @@ error_message! {
         ["Tuple type found"] typ: {Display + TrySpan},
     } impl {
         "Expected a scalar type, found a tuple {typ}" @ typ;
+    }
+}
+
+error_message! {
+    ["Attribute cannot apply to this language construct."]
+    struct InapplicableAttribute where {
+        ["Description"] attr: {Display},
+        ["Language item in question."] construct: {Display},
+        ["Location"] site: {TrySpan},
+    } impl {
+        "Attribute {attr} is not applicable to {construct}" @ site;
     }
 }

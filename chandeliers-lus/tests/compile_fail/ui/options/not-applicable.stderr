@@ -1,4 +1,4 @@
-error: The attribute #[main(nb_iter)] is not valid here (does not apply to Const)
+error: Attribute #[main(nb_iter)] is not applicable to Const
  --> tests/compile_fail/ui/options/not-applicable.rs:2:5
   |
 2 |     #[main]

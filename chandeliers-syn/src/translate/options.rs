@@ -114,14 +114,10 @@ impl<T> SetOpt<T> {
     /// Assert that this option was not set.
     fn skip(self, eaccum: &mut EAccum, current: &'static str) -> Option<()> {
         if self.value.is_some() {
-            eaccum.error(err::Basic {
-                msg: format!(
-                    "The attribute {} is not valid here (does not apply to {current})",
-                    self.message
-                ),
-                span: self.span.unwrap_or_else(|| {
-                    err::abort!("Malformed `SetOpt`: it has a `value` but no `span`")
-                }),
+            eaccum.error(err::InapplicableAttribute {
+                attr: self.message,
+                construct: current,
+                site: self.span,
             })
         } else {
             Some(())
