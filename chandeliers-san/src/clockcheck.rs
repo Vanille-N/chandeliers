@@ -213,7 +213,10 @@ impl ClockCheckExpr for var::Reference {
     }
 }
 
+/// Apply clock substitution.
 trait Reclock: Sized {
+    /// Change clock into `new`, after checking that the current clock
+    /// is compatible with `clock_of_clock`.
     fn reclock(
         self,
         eaccum: &mut EAccum,
@@ -358,6 +361,9 @@ impl ClockCheckExpr for expr::Expr {
 }
 
 impl Sp<Box<expr::Expr>> {
+    /// Convert an expression into a clock.
+    /// i.e. Check that it is a local variable (typecheck has already
+    /// verified that it is a boolean), and apply the sign given by `op`.
     fn as_clock(&self, eaccum: &mut EAccum, op: op::Clock) -> Option<Sp<Clk>> {
         match &*self.t {
             expr::Expr::Reference(r) => match &r.t {
@@ -388,6 +394,9 @@ impl Sp<Box<expr::Expr>> {
 }
 
 impl Sp<&Clk> {
+    /// Check that the given clock is not explicitly set, i.e. that it is `Implicit` or
+    /// `Adaptative`. This is required by `pre` and `->` who need their operands to
+    /// move at the same pace as the node.
     fn is_implicit(self, eaccum: &mut EAccum, help: &'static str) -> Option<()> {
         match &self.t {
             Clk::Implicit | Clk::Adaptative => Some(()),

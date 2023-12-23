@@ -450,7 +450,7 @@ impl Decl {
                                     malformed!(
                                         msg:("Gereric parameter `{other}` is declared twice")
                                         note:("Type variables must have mutually distinct names")
-                                    )
+                                    );
                                 }
                             }
                         }
