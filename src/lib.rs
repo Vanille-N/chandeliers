@@ -597,3 +597,11 @@ mod generic_pre {
         tel;
     }
 }
+
+mod incompat {
+    chandeliers_lus::decl! {
+        #[export]
+        node foo(m : int) returns (f : float);
+        let f = m; tel;
+    }
+}

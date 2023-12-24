@@ -3,7 +3,7 @@
 use chandeliers_sem::traits::Step;
 use chandeliers_sem::ty;
 
-///
+/// Lustre node that converts an `int` to a `float`.
 #[derive(Debug, Clone, Default)]
 pub struct float_of_int {}
 
