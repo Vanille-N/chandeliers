@@ -265,13 +265,7 @@ generic_option! {
                     ::std::marker::PhantomData<( #( #generics ),* )>
                 }, quote! {
                     where #(
-                        #generics:
-                            ::chandeliers_sem::stepping::Embed<Target = ::chandeliers_sem::nillable::Nillable<#generics>>
-                            + ::chandeliers_sem::time_travel::SealedVisible
-                            + Default // FIXME: absolute path
-                            + Copy
-                            + std::fmt::Display,
-
+                        #generics: ::chandeliers_sem::traits::Scalar,
                     )*
                 })
             }

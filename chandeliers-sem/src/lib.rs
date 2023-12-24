@@ -37,7 +37,27 @@ pub mod candle;
 pub mod traits {
     pub use crate::nillable::AllNil;
     pub use crate::stepping::{Embed, Step, Trusted};
-    pub use crate::time_travel::{Ago, Update};
+    pub use crate::time_travel::{Ago, SealedVisible, Update};
+
+    /// Can be trivially manipulated, converted to another scalar,
+    /// and trivially embedded.
+    // The bounds guarantee that this type is...
+    pub trait Scalar:
+        // Initializable
+        Default
+        // Trivial to embed and remember past values of
+        + Sized
+        + Embed<Target = crate::nillable::Nillable<Self>>
+        + SealedVisible
+        + Copy
+        // Printable in a debug trace
+        + std::fmt::Display
+    {
+    }
+
+    impl Scalar for bool {}
+    impl Scalar for i64 {}
+    impl Scalar for f64 {}
 }
 
 /// The macros that define the semantics of Candle by translating it to Rust.
