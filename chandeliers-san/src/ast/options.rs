@@ -38,6 +38,8 @@
 //! Everywhere in the compiler if you have a `UseOpt` you can try
 //! to invoque `opt.fetch::<This>()` where `This` is a usage site that should
 //! match the step of the compilation process that you are doing.
+//! Typically `codegen.rs` will define an alias `type This = Codegen`,
+//! and so on.
 //! Once you think you're done using the option, you can use
 //! `opt.assert_used()` to verify it.
 //! A good place to use `opt.assert_used()` is at the very end of whatever
@@ -55,7 +57,7 @@
 //! and it is thus considered unused.
 //!
 //! Good ways to fix the error:
-//! - use a `fetch` somewhere relevant to inform that you have used the option, or
+//! - use a `fetch` somewhere relevant to handle the option, or
 //! - remove the extra usage site from the list so that no usage at that location
 //!   is expected.
 //!
@@ -82,7 +84,7 @@
 //!
 //! The entire option handling pipeline of the Chandeliers suite should be quite robust
 //! as long as you start from the right place:
-//! 0. Create a file with the right option.
+//! 0. Create a test file in Lustre that makes use of this option.
 //!    This will produce a *runtime error* that the option is malformed or missing.
 //! 1. Parse a new option in `chandeliers_syn::translate::options`'s `fn with` for `Decl`.
 //!    This will fix 0. and produce a new *compilation error* in the invocations
@@ -100,13 +102,15 @@
 //!    make a mistake during this step it will produce a *compilation error*
 //!    that some trait is not implemented.
 //!
+//! (Note: above, "runtime" vs "compile-time" is that of Chandeliers, so
+//! the runtime of the proc macro, not the runtime of the user code)
+//!
 //! As you can see most of the above steps are compilation errors and there
 //! is little room for forgetting to handle an option somewhere.
 //! Nevertheless several steps are runtime errors and thus may not be caught.
 //! To minimize this risk it is recommended to
 //! - keep the parsing in `Decl::with` as simple as possible,
 //! - invoque `fetch` and `assert_used` on the main path and not behind conditionals.
-//!
 
 use crate::sp::Sp;
 

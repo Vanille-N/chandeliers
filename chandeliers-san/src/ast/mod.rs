@@ -17,8 +17,7 @@ use crate::causality::depends::Depends;
 pub mod options;
 
 crate::sp::derive_with_span!(Tuple<T> where <T>);
-/// Because `Vec` does not implement `Parse` as we want,
-/// `Tuple` is used to for sequences.
+/// Generic wrapper for sequences of AST items.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Tuple<T> {
     /// Internals, intended to be interpreted as comma-separated.
@@ -26,6 +25,7 @@ pub struct Tuple<T> {
 }
 
 impl<T> Default for Tuple<T> {
+    // Not derivable because `T` is not necessarily `Default`.
     fn default() -> Self {
         Self {
             elems: Vec::default(),
@@ -99,6 +99,7 @@ impl<T> Tuple<T> {
 impl<T> IntoIterator for Tuple<T> {
     type Item = T;
     type IntoIter = <Vec<T> as IntoIterator>::IntoIter;
+    // This is pretty much transparent.
     fn into_iter(self) -> Self::IntoIter {
         self.elems.into_iter()
     }
@@ -159,7 +160,7 @@ pub mod ty {
     use crate::sp::Sp;
 
     crate::sp::derive_with_span!(Base);
-    /// A basic scalar type.
+    /// A basic scalar type or atomic type variable.
     #[derive(Debug, Clone, PartialEq, Eq, Hash)]
     pub enum Base {
         /// Integer type (parsed from `int`, represented by `i64`)
