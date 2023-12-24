@@ -357,6 +357,19 @@ impl ClockCheckExpr for expr::Expr {
                 off.refine(eaccum, expect_off?, span)?;
                 Some(switch.t)
             }
+            Self::FetchRegister {
+                id: _,
+                dummy_init,
+                dummy_followed_by,
+                step_immediately: _,
+            } => {
+                let init = dummy_init.clockcheck(eaccum, ctx);
+                let followed_by = dummy_followed_by.clockcheck(eaccum, ctx);
+                let mut init = init?;
+                let followed_by = followed_by?;
+                init.refine(eaccum, followed_by, span)?;
+                Some(init.t)
+            }
         }
     }
 }
@@ -499,6 +512,10 @@ impl ClockCheckDecl for stmt::Statement {
                 let mut target = target.clockcheck(eaccum, ctx)?;
                 let source = source.clockcheck(eaccum, ctx)?;
                 target.refine(eaccum, source, span)?;
+                Some(())
+            }
+            Self::PutRegister { .. } => {
+                // All checks already completed by `FetchRegister`.
                 Some(())
             }
         }

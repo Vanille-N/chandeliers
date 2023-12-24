@@ -197,6 +197,22 @@ impl CheckPositive for expr::Expr {
                 off.check_positive(eaccum, fork!(depths))?;
                 Some(())
             }
+            Self::FetchRegister {
+                id,
+                dummy_init,
+                dummy_followed_by,
+                step_immediately,
+            } => {
+                dummy_init.check_positive(eaccum, fork!(depths))?;
+                dummy_followed_by.check_positive(
+                    eaccum,
+                    if *step_immediately {
+                        fork!(depths)
+                    } else {
+                        fork!(depths).with(depths.current + 1)
+                    },
+                )
+            }
         }
     }
 }

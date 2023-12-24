@@ -56,6 +56,8 @@ struct TyCtx<'i> {
     global: &'i HashMap<var::Global, WithDefSite<Sp<ty::Base>>>,
     /// Local variables (both inputs/outputs and hidden locals).
     vars: HashMap<var::Local, WithDefSite<Sp<ty::Base>>>,
+    /// Registers storing delayed values.
+    registers: HashMap<Sp<var::Register>, Sp<ty::Tuple>>,
     /// Known input and output types of nodes.
     /// Notice how these maps use `Node`s, not `NodeName`s:
     /// at the level at which typechecking on expressions is done, we have
@@ -74,6 +76,7 @@ impl<'i> TyCtx<'i> {
     fn from_ext(global: &'i HashMap<var::Global, WithDefSite<Sp<ty::Base>>>) -> TyCtx<'i> {
         Self {
             global,
+            registers: HashMap::default(),
             vars: HashMap::default(),
             nodes_in: HashMap::default(),
             nodes_out: HashMap::default(),
@@ -317,6 +320,16 @@ impl TypeCheckStmt for ast::stmt::Statement {
                 t.as_ref().is_bool(eaccum, "The argument of assert", span)?;
                 Some(())
             }
+            Self::PutRegister {
+                id,
+                init,
+                followed_by,
+                step_immediately: _,
+            } => {
+                // This whole thing has already been verified by `TypeCheckExpr`
+                // for `FetchRegister`
+                Some(())
+            }
         }
     }
 }
@@ -432,6 +445,19 @@ impl TypeCheckExpr for ast::expr::Expr {
                 on.identical(eaccum, &mut TyUnifier::Identity, &off, span)?;
                 Some(on.t)
             }
+            Self::FetchRegister {
+                id,
+                dummy_init,
+                dummy_followed_by,
+                step_immediately: _,
+            } => {
+                let init = dummy_init.typecheck(eaccum, ctx);
+                let followed_by = dummy_followed_by.typecheck(eaccum, ctx);
+                let init = init?;
+                init.identical(eaccum, &mut TyUnifier::Identity, &followed_by?, span)?;
+                ctx.registers.insert(*id, init.clone());
+                Some(init.t)
+            }
         }
     }
 
@@ -470,6 +496,10 @@ impl TypeCheckExpr for ast::expr::Expr {
                 rhs?;
                 Some(())
             }
+            Self::FetchRegister { .. } => eaccum.error(err::NotConst {
+                what: "Register operations",
+                site: span,
+            }),
             Self::Ifx { cond, yes, no } => {
                 let cond = cond.is_const(eaccum);
                 let yes = yes.is_const(eaccum);

@@ -328,6 +328,19 @@ pub mod var {
         pub repr: Sp<String>,
     }
 
+    crate::sp::derive_with_span!(Register);
+    /// A register for delayed values.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+    pub struct Register {
+        pub id: Sp<usize>,
+    }
+
+    impl fmt::Display for Register {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            write!(f, "{}", self.id)
+        }
+    }
+
     impl fmt::Display for Past {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
             if self.depth.t.dt > 0 {
@@ -475,6 +488,8 @@ pub mod op {
 
 /// Definitions of expressions.
 pub mod expr {
+    use super::var;
+
     use std::fmt;
 
     use crate::ast::{op, past, Tuple};
@@ -564,7 +579,14 @@ pub mod expr {
         },
         /// Alternative to `Later` and `Pre`, provides a delay by enabling
         /// a read before a write.
-        FetchRegister { id: usize },
+        FetchRegister {
+            id: Sp<var::Register>,
+            // We're keeping those here so that we can do the typechecking
+            // bottom-up.
+            dummy_init: Sp<Box<Expr>>,
+            dummy_followed_by: Sp<Box<Expr>>,
+            step_immediately: bool,
+        },
         /// A conditional expression `if b then x else y`
         Ifx {
             /// Boolean condition.
@@ -605,6 +627,10 @@ pub mod expr {
                 Self::Bin { op, lhs, rhs } => write!(f, "{lhs} {op} {rhs}"),
                 Self::Un { op, inner } => write!(f, "{op} {inner}"),
                 Self::Cmp { op, lhs, rhs } => write!(f, "{lhs} {op} {rhs}"),
+                Self::Bin { op, lhs, rhs } => write!(f, "({lhs} {op} {rhs})"),
+                Self::Un { op, inner } => write!(f, "({op} {inner})"),
+                Self::Cmp { op, lhs, rhs } => write!(f, "({lhs} {op} {rhs})"),
+                Self::FetchRegister { id, .. } => write!(f, "!{id}"),
                 Self::Later {
                     delay,
                     before,
@@ -671,7 +697,12 @@ pub mod stmt {
         /// Perform an assertion.
         Assert(Sp<expr::Expr>),
         /// Perform the write to an already read register.
-        PutRegister { id: usize },
+        PutRegister {
+            id: Sp<var::Register>,
+            init: Option<Sp<expr::Expr>>,
+            followed_by: Sp<expr::Expr>,
+            step_immediately: bool,
+        },
     }
 }
 

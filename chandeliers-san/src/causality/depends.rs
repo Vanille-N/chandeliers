@@ -57,6 +57,8 @@ pub enum Reference {
     LocalVarName(Sp<String>),
     /// A global constant.
     GlobalVarName(Sp<String>),
+    /// A value register.
+    Register(Sp<usize>),
 }
 
 impl fmt::Display for Reference {
@@ -65,6 +67,7 @@ impl fmt::Display for Reference {
             Self::FunName(fun) => write!(f, "Node `{fun}`"),
             Self::LocalVarName(var) => write!(f, "Variable `{var}`"),
             Self::GlobalVarName(var) => write!(f, "Global `{var}`"),
+            Self::Register(rid) => write!(f, "Register `#{rid}`"),
         }
     }
 }
@@ -75,6 +78,7 @@ impl err::TrySpan for Reference {
             Reference::FunName(i) | Reference::LocalVarName(i) | Reference::GlobalVarName(i) => {
                 i.try_span()
             }
+            Reference::Register(rid) => rid.try_span(),
         }
     }
 }
@@ -253,6 +257,13 @@ impl Depends for decl::NodeName {
     require_this!(|this: &Self| Reference::FunName(this.repr.clone()));
 }
 
+//// `Register` is a leaf element.
+impl Depends for var::Register {
+    type Output = Reference;
+    provide_this!(|this: &Self| Reference::Register(this.id));
+    require_this!(|this: &Self| Reference::Register(this.id));
+}
+
 /// Statement recurses differently in both methods.
 /// Node that `Statement` is only ever considered to provide anything
 /// within the body of a `Node` since `impl Depends for Node` does not
@@ -264,20 +275,51 @@ impl Depends for stmt::Statement {
         Self::Let { target, .. } => target;
         // Pure, provides nothing.
         Self::Assert(_) => ;
+        // Dependency is reversed: PutRegister *requires* the register to be set
+        Self::PutRegister { .. } => ;
     }
-    require_by_match! {
-        // `_ = source` requires the value to be assigned.
-        Self::Let { source, .. } => source;
-        // Assertion is a wrapper.
-        Self::Assert(e) => e;
+    // This one is tricky because of `PutRegister`, we need to implement it
+    // manually.
+    fn requires(&self, v: &mut Vec<Self::Output>) {
+        match self {
+            // `_ = source` requires the value to be assigned.
+            Self::Let { source, .. } => {
+                source.requires(v);
+            }
+            // Assertion is a wrapper.
+            Self::Assert(e) => {
+                e.requires(v);
+            }
+            // Dependency is reversed: PutRegister *requires* the register to be set
+            Self::PutRegister {
+                id,
+                init,
+                followed_by,
+                step_immediately,
+            } => {
+                id.requires(v);
+                if let Some(init) = init {
+                    init.requires(v);
+                }
+                if *step_immediately {
+                    followed_by.requires(v);
+                }
+            }
+        }
     }
 }
 
-/// `Expr` provides nothing (all expressions are pure),
+/// For most constructs, `Expr` provides nothing (most expressions are pure),
 /// and recurses into all non-punctuation fields for `require`.
+/// The one exception is `FetchRegister` which has a reversed dependency.
 impl Depends for expr::Expr {
     type Output = Reference;
-    provide_nothing!();
+    provide_by_match! {
+        Self::FetchRegister { id, .. } => id; // Note: nothing provided or required by
+                                              // dummy fields obviously. Those are only
+                                              // handled in `PutRegister`'s `Depends`.
+        _ => ;
+    }
     require_by_match! {
         Self::Lit(_) => ;
         Self::Reference(r) => r;
@@ -292,6 +334,8 @@ impl Depends for expr::Expr {
         Self::Substep { args, .. } => args;
         Self::Clock { inner, activate, .. } => inner, activate;
         Self::Merge { switch, on, off } => switch, on, off;
+        // Nothing here !
+        Self::FetchRegister { .. } => ;
     }
 }
 
