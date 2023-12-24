@@ -583,7 +583,7 @@ pub mod expr {
             id: Sp<var::Register>,
             // We're keeping those here so that we can do the typechecking
             // bottom-up.
-            dummy_init: Sp<Box<Expr>>,
+            dummy_init: Option<Sp<Box<Expr>>>,
             dummy_followed_by: Sp<Box<Expr>>,
             step_immediately: bool,
         },
@@ -754,6 +754,12 @@ pub mod decl {
         pub generics: Option<Vec<Sp<ty::Base>>>,
     }
 
+    #[derive(Debug, Clone)]
+    pub struct RegisterInstance {
+        pub id: Sp<var::Register>,
+        pub typ: Option<Sp<ty::Tuple>>,
+    }
+
     /// A node declaration `node foo(x) returns (y); var z; let <body> tel`.
     #[derive(Debug, Clone)]
     pub struct Node {
@@ -773,6 +779,8 @@ pub mod decl {
         pub deptys: Vec<Sp<var::Local>>,
         /// Body of the node declaration (`<body>`).
         pub stmts: Vec<Sp<stmt::Statement>>,
+        /// Delayed values stored in registers.
+        pub registers: Vec<RegisterInstance>,
     }
 
     /// A global constant `const X : int = 0`.

@@ -99,6 +99,7 @@ impl ConstExprTokens for expr::Expr {
             }
             Self::Merge { .. } => err::abort!("Merge is not valid in const contexts, which should have been caught during typecheck"),
             Self::Clock { .. } => err::abort!("Clock is not valid in const contexts, which should have been caught during typecheck"),
+            Self::FetchRegister { .. } => err::abort!("FetchRegister is not valid in const contexts, which should have been caught during typecheck"),
         }
     }
 }

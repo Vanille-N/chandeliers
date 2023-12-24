@@ -363,12 +363,13 @@ impl ClockCheckExpr for expr::Expr {
                 dummy_followed_by,
                 step_immediately: _,
             } => {
-                let init = dummy_init.clockcheck(eaccum, ctx);
                 let followed_by = dummy_followed_by.clockcheck(eaccum, ctx);
-                let mut init = init?;
-                let followed_by = followed_by?;
-                init.refine(eaccum, followed_by, span)?;
-                Some(init.t)
+                let mut followed_by = followed_by?;
+                if let Some(init) = dummy_init {
+                    let init = init.clockcheck(eaccum, ctx)?;
+                    followed_by.refine(eaccum, init, span);
+                }
+                Some(followed_by.t)
             }
         }
     }

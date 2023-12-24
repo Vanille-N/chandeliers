@@ -234,7 +234,9 @@ impl decl::Node {
             stmts,
             deptys,
             options,
+            registers,
         } = self;
+        dbg!("{:?}", registers);
         let inputs = inputs.as_ref();
         let outputs = outputs.as_ref();
         let locals = locals.as_ref();
@@ -848,6 +850,9 @@ impl ToTokens for stmt::Statement {
                     ::chandeliers_sem::truth!(#e, #s);
                 });
             }
+            Self::PutRegister { .. } => {
+                unimplemented!("PutRegister codegen")
+            }
         }
     }
 }
@@ -941,6 +946,9 @@ impl ToTokens for expr::Expr {
             } => {
                 // `#op` expands to `when` or `whenot` which are Candle macros.
                 quote!(::chandeliers_sem::#op!(#activate; #inner))
+            }
+            Self::FetchRegister { .. } => {
+                unimplemented!("FetchRegister codegen")
             }
         });
     }

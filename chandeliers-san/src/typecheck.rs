@@ -451,12 +451,13 @@ impl TypeCheckExpr for ast::expr::Expr {
                 dummy_followed_by,
                 step_immediately: _,
             } => {
-                let init = dummy_init.typecheck(eaccum, ctx);
-                let followed_by = dummy_followed_by.typecheck(eaccum, ctx);
-                let init = init?;
-                init.identical(eaccum, &mut TyUnifier::Identity, &followed_by?, span)?;
-                ctx.registers.insert(*id, init.clone());
-                Some(init.t)
+                let followed_by = dummy_followed_by.typecheck(eaccum, ctx)?;
+                if let Some(init) = dummy_init {
+                    let init = init.typecheck(eaccum, ctx)?;
+                    followed_by.identical(eaccum, &mut TyUnifier::Identity, &init, span)?;
+                }
+                ctx.registers.insert(*id, followed_by.clone());
+                Some(followed_by.t)
             }
         }
     }
@@ -1227,6 +1228,10 @@ impl TypeCheckDecl for ast::decl::Node {
         // Finally instanciate the learned generic parameters
         for (id, gens) in ctx.nodes_generics {
             at_mut!(self.blocks, id.id.t).generics = gens.1;
+        }
+        // And propagate upwards the learned types of registers
+        for reg in &mut self.registers {
+            reg.typ = ctx.registers.get(&reg.id).cloned();
         }
         Some(())
     }

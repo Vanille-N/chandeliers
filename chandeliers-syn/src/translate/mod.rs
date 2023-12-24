@@ -447,6 +447,8 @@ struct ExprCtx {
     shadow_glob: HashSet<String>,
     /// Are we using the temporal operators with buffers or registers ?
     use_registers: bool,
+    /// List of registers, if any.
+    registers: Vec<tgt::decl::RegisterInstance>,
 }
 
 /// Accessor for `ExprCtx`.
@@ -464,6 +466,8 @@ pub struct ExprCtxView<'i> {
     depth: usize,
     /// Are we using the temporal operators with buffers or registers ?
     use_registers: bool,
+    /// List of registers, if any.
+    registers: &'i mut Vec<tgt::decl::RegisterInstance>,
 }
 
 impl ExprCtx {
@@ -475,6 +479,7 @@ impl ExprCtx {
             shadow_glob: &self.shadow_glob,
             depth: 0,
             use_registers: self.use_registers,
+            registers: &mut self.registers,
         }
     }
 }
@@ -493,19 +498,18 @@ impl ExprCtxView<'_> {
     fn incr(self) -> Self {
         self.bump(1)
     }
-}
 
-/// Reborrow a view on an `ExprCtx`.
-macro_rules! fork {
-    ($this:ident) => {
+    /// Reborrow a view on an `ExprCtx`.
+    fn fork(&mut self) -> Self {
         ExprCtxView {
-            blocks: &mut *$this.blocks,
-            stmts: &mut *$this.stmts,
-            shadow_glob: &$this.shadow_glob,
-            depth: $this.depth,
-            use_registers: $this.use_registers,
+            blocks: &mut *self.blocks,
+            stmts: &mut *self.stmts,
+            shadow_glob: &mut *self.shadow_glob,
+            registers: &mut *self.registers,
+            depth: self.depth,
+            use_registers: self.use_registers,
         }
-    };
+    }
 }
 
 impl Translate for src::Node {
@@ -537,7 +541,12 @@ impl Translate for src::Node {
         for def in self.defs {
             def.translate(eaccum, run_uid, ectx.view())?;
         }
-        let ExprCtx { blocks, stmts, .. } = ectx;
+        let ExprCtx {
+            blocks,
+            stmts,
+            registers,
+            ..
+        } = ectx;
         Some(tgt::decl::Node {
             name,
             options,
@@ -547,6 +556,7 @@ impl Translate for src::Node {
             blocks,
             deptys,
             stmts,
+            registers,
         })
     }
 }
@@ -813,9 +823,9 @@ impl Translate for src::Assertion {
         eaccum: &mut EAccum,
         run_uid: Transparent<usize>,
         span: Span,
-        ctx: Self::Ctx<'_>,
+        mut ctx: Self::Ctx<'_>,
     ) -> Option<()> {
-        let e = self.expr.translate(eaccum, run_uid, fork!(ctx))?;
+        let e = self.expr.translate(eaccum, run_uid, ctx.fork())?;
         ctx.stmts
             .push(tgt::stmt::Statement::Assert(e).with_span(span));
         Some(())
@@ -830,10 +840,10 @@ impl Translate for src::Def {
         eaccum: &mut EAccum,
         run_uid: Transparent<usize>,
         span: Span,
-        ctx: Self::Ctx<'_>,
+        mut ctx: Self::Ctx<'_>,
     ) -> Option<()> {
         let target = self.target.translate(eaccum, run_uid, ())?;
-        let source = self.source.translate(eaccum, run_uid, fork!(ctx))?;
+        let source = self.source.translate(eaccum, run_uid, ctx.fork())?;
         ctx.stmts
             .push(tgt::stmt::Statement::Let { target, source }.with_span(span));
         Some(())
@@ -913,10 +923,10 @@ impl Translate for src::expr::If {
         eaccum: &mut EAccum,
         run_uid: Transparent<usize>,
         _span: Span,
-        ctx: Self::Ctx<'_>,
+        mut ctx: Self::Ctx<'_>,
     ) -> Option<tgt::expr::Expr> {
-        let cond = self.cond.translate(eaccum, run_uid, fork!(ctx))?.boxed();
-        let yes = self.yes.translate(eaccum, run_uid, fork!(ctx))?.boxed();
+        let cond = self.cond.translate(eaccum, run_uid, ctx.fork())?.boxed();
+        let yes = self.yes.translate(eaccum, run_uid, ctx.fork())?.boxed();
         let no = self.no.translate(eaccum, run_uid, ctx)?.boxed();
         Some(tgt::expr::Expr::Ifx { cond, yes, no })
     }
@@ -946,7 +956,8 @@ mod assoc {
     use syn::punctuated::{Pair, Punctuated};
 
     /// Descriptor for a translation.
-    pub struct Descr<Label, Convert, Compose> {
+    pub struct Descr<'i, Label, Convert, Compose> {
+        ctx: super::ExprCtxView<'i>,
         /// Text to print if there is an error. Typically the name of the type
         /// being translated.
         pub label: Label,
@@ -956,7 +967,7 @@ mod assoc {
         pub compose: Compose,
     }
 
-    impl<Label, Convert, Compose> Descr<Label, Convert, Compose>
+    impl<'i, Label, Convert, Compose> Descr<'i, Label, Convert, Compose>
     where
         Label: Display,
     {
@@ -966,10 +977,11 @@ mod assoc {
         pub fn left_associative<Elem, Punct, Accum, Item>(
             &mut self,
             elems: Punctuated<Sp<Elem>, Punct>,
+            mut ctx: super::ExprCtxView<'_>,
         ) -> Option<Accum>
         where
-            Convert: FnMut(Sp<Elem>, usize) -> Option<Sp<Item>>,
-            Compose: FnMut(Sp<Accum>, Punct, usize, Sp<Item>) -> Accum,
+            Convert: FnMut(Sp<Elem>, super::ExprCtxView<'i>) -> Option<Sp<Item>>,
+            Compose: FnMut(Sp<Accum>, Punct, Sp<Item>, super::ExprCtxView<'i>) -> Accum,
             Accum: WithSpan<Output = Sp<Accum>>,
             Item: Into<Accum>,
         {
@@ -990,11 +1002,11 @@ mod assoc {
             };
             match fst {
                 Pair::Punctuated(elem, punct) => {
-                    accum = (self.convert)(elem, depth)?.map(|_, i| i.into());
+                    accum = (self.convert)(elem, ctx.fork().bump(depth))?.map(|_, i| i.into());
                     oper = punct;
                 }
                 Pair::End(elem) => {
-                    return Some((self.convert)(elem, depth)?.t.into());
+                    return Some((self.convert)(elem, ctx.fork().bump(depth))?.t.into());
                 }
             }
             // Looping case.
@@ -1003,7 +1015,7 @@ mod assoc {
                     // One more element: add it to the accumulator and record
                     // the punctuation to be used in the next iteration.
                     Pair::Punctuated(elem, punct) => {
-                        let expr = (self.convert)(elem, depth)?;
+                        let expr = (self.convert)(elem, ctx.fork().bump(depth))?;
                         let Some(span) = expr.span.join(accum.span) else {
                             chandeliers_err::abort!(
                                 "Malformed span between {:?} and {:?}",
@@ -1011,13 +1023,14 @@ mod assoc {
                                 accum.span
                             );
                         };
-                        accum = (self.compose)(accum, oper, depth, expr).with_span(span);
+                        accum = (self.compose)(accum, oper, expr, ctx.fork().bump(depth))
+                            .with_span(span);
                         oper = punct;
                     }
                     // End: combine now then return the accumulator.
                     Pair::End(elem) => {
-                        let expr = (self.convert)(elem, depth)?;
-                        return Some((self.compose)(accum, oper, depth, expr));
+                        let expr = (self.convert)(elem, ctx.bump(depth))?;
+                        return Some((self.compose)(accum, oper, expr, ctx.fork().bump(depth)));
                     }
                 }
             }
@@ -1087,12 +1100,16 @@ impl Translate for src::expr::Or {
         eaccum: &mut EAccum,
         run_uid: Transparent<usize>,
         _span: Span,
-        ctx: Self::Ctx<'_>,
+        mut ctx: Self::Ctx<'_>,
     ) -> Option<tgt::expr::Expr> {
         assoc::Descr {
             label: "OrExpr",
-            convert: |elem: Sp<src::expr::And>, _depth| elem.translate(eaccum, run_uid, fork!(ctx)),
-            compose: |lhs: Sp<tgt::expr::Expr>, _op, _depth, rhs: Sp<tgt::expr::Expr>| {
+            convert: |elem: Sp<src::expr::And>, _depth| elem.translate(eaccum, run_uid, ctx.fork()),
+            compose: |lhs: Sp<tgt::expr::Expr>,
+                      _op,
+                      _depth,
+                      rhs: Sp<tgt::expr::Expr>,
+                      _ctx: ExprCtxView| {
                 tgt::expr::Expr::Bin {
                     op: tgt::op::Bin::BitOr,
                     lhs: lhs.boxed(),
@@ -1100,7 +1117,7 @@ impl Translate for src::expr::Or {
                 }
             },
         }
-        .left_associative(self.items)
+        .left_associative(self.items, ctx)
     }
 }
 
@@ -1112,12 +1129,16 @@ impl Translate for src::expr::And {
         eaccum: &mut EAccum,
         run_uid: Transparent<usize>,
         _span: Span,
-        ctx: Self::Ctx<'_>,
+        mut ctx: Self::Ctx<'_>,
     ) -> Option<tgt::expr::Expr> {
         assoc::Descr {
             label: "AndExpr",
-            convert: |elem: Sp<src::expr::Cmp>, _depth| elem.translate(eaccum, run_uid, fork!(ctx)),
-            compose: |lhs: Sp<tgt::expr::Expr>, _op, _depth, rhs: Sp<tgt::expr::Expr>| {
+            convert: |elem: Sp<src::expr::Cmp>, _depth| elem.translate(eaccum, run_uid, ctx.fork()),
+            compose: |lhs: Sp<tgt::expr::Expr>,
+                      _op,
+                      _depth,
+                      rhs: Sp<tgt::expr::Expr>,
+                      ctx: ExprCtxView| {
                 tgt::expr::Expr::Bin {
                     op: tgt::op::Bin::BitAnd,
                     lhs: lhs.boxed(),
@@ -1125,7 +1146,7 @@ impl Translate for src::expr::And {
                 }
             },
         }
-        .left_associative(self.items)
+        .left_associative(self.items, ctx)
     }
 }
 
@@ -1155,7 +1176,7 @@ impl Translate for src::expr::Cmp {
         eaccum: &mut EAccum,
         run_uid: Transparent<usize>,
         span: Span,
-        ctx: Self::Ctx<'_>,
+        mut ctx: Self::Ctx<'_>,
     ) -> Option<tgt::expr::Expr> {
         use syn::punctuated::Pair;
         chandeliers_err::consistency!(
@@ -1179,7 +1200,7 @@ impl Translate for src::expr::Cmp {
         let Pair::Punctuated(lhs, op) = first else {
             err::malformed!()
         };
-        let lhs = lhs.translate(eaccum, run_uid, fork!(ctx))?.boxed();
+        let lhs = lhs.translate(eaccum, run_uid, ctx.fork())?.boxed();
         let op = op.translate(eaccum, run_uid, span, ())?;
         // We must not have a third element.
         if let Some(third) = it.next() {
@@ -1188,12 +1209,12 @@ impl Translate for src::expr::Cmp {
             let Pair::Punctuated(second, oper2) = second else {
                 err::malformed!()
             };
-            let second = second.translate(eaccum, run_uid, fork!(ctx))?;
+            let second = second.translate(eaccum, run_uid, ctx.fork())?;
             let oper2 = oper2.translate(eaccum, run_uid, span, ())?;
             let third = match third {
                 Pair::Punctuated(third, _) | Pair::End(third) => third,
             };
-            let third = third.translate(eaccum, run_uid, fork!(ctx))?;
+            let third = third.translate(eaccum, run_uid, ctx.fork())?;
             return eaccum.error(err::CmpNotAssociative {
                 site: span,
                 first: lhs,
@@ -1239,19 +1260,36 @@ impl Translate for src::expr::Fby {
         self,
         eaccum: &mut EAccum,
         run_uid: Transparent<usize>,
-        _span: Span,
+        span: Span,
         ctx: Self::Ctx<'_>,
     ) -> Option<tgt::expr::Expr> {
         if ctx.use_registers {
             assoc::Descr {
                 label: "FbyExpr",
                 convert: |elem: Sp<src::expr::Then>, _depth| {
-                    elem.translate(eaccum, run_uid, fork!(ctx) /* DO NOT BUMP */)
+                    elem.translate(eaccum, run_uid, ctx.fork() /* DO NOT BUMP */)
                 },
                 compose: |before: Sp<tgt::expr::Expr>, _op, _depth, after: Sp<tgt::expr::Expr>| {
-                    tgt::expr::Expr::Register {
-                        initial: Some(before.boxed()),
-                        followed_by: after.boxed(),
+                    let id: Sp<tgt::var::Register> = tgt::var::Register {
+                        id: ctx.registers.len().with_span(span),
+                    }
+                    .with_span(span);
+                    ctx.registers
+                        .push(tgt::decl::RegisterInstance { id, typ: None });
+                    ctx.stmts.push(
+                        tgt::stmt::Statement::PutRegister {
+                            id,
+                            init: Some(before),
+                            followed_by: after,
+                            step_immediately: false,
+                        }
+                        .with_span(span),
+                    );
+
+                    tgt::expr::Expr::FetchRegister {
+                        id,
+                        dummy_init: Some(before.boxed()),
+                        dummy_followed_by: after.boxed(),
                         step_immediately: false,
                     }
                 },
@@ -1261,7 +1299,7 @@ impl Translate for src::expr::Fby {
             assoc::Descr {
                 label: "FbyExpr",
                 convert: |elem: Sp<src::expr::Then>, depth| {
-                    elem.translate(eaccum, run_uid, fork!(ctx).bump(depth) /* BUMP */)
+                    elem.translate(eaccum, run_uid, ctx.fork().bump(depth) /* BUMP */)
                 },
                 compose: |before: Sp<tgt::expr::Expr>, _op, depth, after: Sp<tgt::expr::Expr>| {
                     tgt::expr::Expr::Later {
@@ -1290,13 +1328,30 @@ impl Translate for src::expr::Pre {
         self,
         eaccum: &mut EAccum,
         run_uid: Transparent<usize>,
-        _span: Span,
+        span: Span,
         ctx: Self::Ctx<'_>,
     ) -> Option<tgt::expr::Expr> {
         if ctx.use_registers {
-            Some(tgt::expr::Expr::Register {
-                initial: None,
-                followed_by: self.inner.translate(eaccum, run_uid, ctx.incr())?.boxed(),
+            let id: Sp<tgt::var::Register> = tgt::var::Register {
+                id: ctx.registers.len().with_span(span),
+            }
+            .with_span(span);
+            ctx.registers
+                .push(tgt::decl::RegisterInstance { id, typ: None });
+            let inner = self.inner.translate(eaccum, run_uid, ctx.incr())?;
+            ctx.stmts.push(
+                tgt::stmt::Statement::PutRegister {
+                    id,
+                    init: None,
+                    followed_by: inner,
+                    step_immediately: false,
+                }
+                .with_span(span),
+            );
+            Some(tgt::expr::Expr::FetchRegister {
+                id,
+                dummy_init: None,
+                dummy_followed_by: inner.boxed(),
                 step_immediately: false,
             })
         } else {
@@ -1314,19 +1369,36 @@ impl Translate for src::expr::Then {
         self,
         eaccum: &mut EAccum,
         run_uid: Transparent<usize>,
-        _span: Span,
-        ctx: Self::Ctx<'_>,
+        span: Span,
+        mut ctx: Self::Ctx<'_>,
     ) -> Option<tgt::expr::Expr> {
         if ctx.use_registers {
             assoc::Descr {
                 label: "ThenExpr",
                 convert: |elem: Sp<src::expr::Add>, _depth| {
-                    elem.translate(eaccum, run_uid, fork!(ctx) /* DO NOT BUMP */)
+                    elem.translate(eaccum, run_uid, ctx.fork() /* DO NOT BUMP */)
                 },
                 compose: |before: Sp<tgt::expr::Expr>, _op, depth, after: Sp<tgt::expr::Expr>| {
-                    tgt::expr::Expr::Register {
-                        initial: Some(before.boxed()),
-                        followed_by: after.boxed(),
+                    let id: Sp<tgt::var::Register> = tgt::var::Register {
+                        id: ctx.registers.len().with_span(span),
+                    }
+                    .with_span(span);
+                    ctx.registers
+                        .push(tgt::decl::RegisterInstance { id, typ: None });
+                    ctx.stmts.push(
+                        tgt::stmt::Statement::PutRegister {
+                            id,
+                            init: Some(before),
+                            followed_by: after,
+                            step_immediately: true,
+                        }
+                        .with_span(span),
+                    );
+
+                    tgt::expr::Expr::FetchRegister {
+                        id,
+                        dummy_init: Some(before.boxed()),
+                        dummy_followed_by: after.boxed(),
                         step_immediately: true,
                     }
                 },
@@ -1338,7 +1410,7 @@ impl Translate for src::expr::Then {
             assoc::Descr {
                 label: "ThenExpr",
                 convert: |elem: Sp<src::expr::Add>, _depth| {
-                    elem.translate(eaccum, run_uid, fork!(ctx) /* DO NOT BUMP */)
+                    elem.translate(eaccum, run_uid, ctx.fork() /* DO NOT BUMP */)
                 },
                 compose: |before: Sp<tgt::expr::Expr>, _op, depth, after: Sp<tgt::expr::Expr>| {
                     tgt::expr::Expr::Later {
@@ -1370,17 +1442,18 @@ impl Translate for src::expr::Add {
         eaccum: &mut EAccum,
         run_uid: Transparent<usize>,
         _span: Span,
-        ctx: Self::Ctx<'_>,
+        mut ctx: Self::Ctx<'_>,
     ) -> Option<tgt::expr::Expr> {
         // Back to normal left assaciative stuff that doesn't care about the depth,
         // but this time we have to handle the fact that there are multiple possible operators.
         assoc::Descr {
             label: "AddExpr",
-            convert: |elem: Sp<src::expr::Mul>, _depth| elem.translate(eaccum, run_uid, fork!(ctx)),
+            convert: |elem: Sp<src::expr::Mul>, _depth| elem.translate(eaccum, run_uid, ctx.fork()),
             compose: |lhs: Sp<tgt::expr::Expr>,
                       op: src::op::Add,
                       _depth,
-                      rhs: Sp<tgt::expr::Expr>| {
+                      rhs: Sp<tgt::expr::Expr>,
+                      ctx: ExprCtxView| {
                 tgt::expr::Expr::Bin {
                     op: op.translate(),
                     lhs: lhs.boxed(),
@@ -1388,7 +1461,7 @@ impl Translate for src::expr::Add {
                 }
             },
         }
-        .left_associative(self.items)
+        .left_associative(self.items, ctx)
     }
 }
 
@@ -1421,17 +1494,18 @@ impl Translate for src::expr::Mul {
         eaccum: &mut EAccum,
         run_uid: Transparent<usize>,
         _span: Span,
-        ctx: Self::Ctx<'_>,
+        mut ctx: Self::Ctx<'_>,
     ) -> Option<tgt::expr::Expr> {
         assoc::Descr {
             label: "MulExpr",
             convert: |elem: Sp<src::expr::Clock>, _depth| {
-                elem.translate(eaccum, run_uid, fork!(ctx))
+                elem.translate(eaccum, run_uid, ctx.fork())
             },
             compose: |lhs: Sp<tgt::expr::Expr>,
                       op: src::op::Mul,
                       _depth,
-                      rhs: Sp<tgt::expr::Expr>| {
+                      rhs: Sp<tgt::expr::Expr>,
+                      ctx: ExprCtxView| {
                 tgt::expr::Expr::Bin {
                     op: op.translate(),
                     lhs: lhs.boxed(),
@@ -1439,7 +1513,7 @@ impl Translate for src::expr::Mul {
                 }
             },
         }
-        .left_associative(self.items)
+        .left_associative(self.items, ctx)
     }
 }
 
@@ -1461,17 +1535,18 @@ impl Translate for src::expr::Clock {
         eaccum: &mut EAccum,
         run_uid: Transparent<usize>,
         _span: Span,
-        ctx: Self::Ctx<'_>,
+        mut ctx: Self::Ctx<'_>,
     ) -> Option<tgt::expr::Expr> {
         assoc::Descr {
             label: "ClockExpr",
-            convert: |elem: Sp<src::expr::Positive>, _depth| {
-                elem.translate(eaccum, run_uid, fork!(ctx))
+            convert: |elem: Sp<src::expr::Positive>, _depth, mut ctx: ExprCtxView| {
+                elem.translate(eaccum, run_uid, ctx.fork())
             },
             compose: |lhs: Sp<tgt::expr::Expr>,
                       op: src::op::Clock,
                       _depth,
-                      rhs: Sp<tgt::expr::Expr>| {
+                      rhs: Sp<tgt::expr::Expr>,
+                      ctx: ExprCtxView| {
                 tgt::expr::Expr::Clock {
                     op: op.translate(),
                     inner: lhs.boxed(),
@@ -1479,7 +1554,7 @@ impl Translate for src::expr::Clock {
                 }
             },
         }
-        .left_associative(self.items)
+        .left_associative(self.items, ctx.fork())
     }
 }
 
@@ -1509,12 +1584,12 @@ impl Translate for src::expr::Paren {
         eaccum: &mut EAccum,
         run_uid: Transparent<usize>,
         span: Span,
-        ctx: Self::Ctx<'_>,
+        mut ctx: Self::Ctx<'_>,
     ) -> Option<tgt::expr::Expr> {
         let mut es = tgt::Tuple::default();
         let trail = self.inner.trailing_punct();
         for e in self.inner {
-            es.push(e.translate(eaccum, run_uid, fork!(ctx))?);
+            es.push(e.translate(eaccum, run_uid, ctx.fork())?);
         }
         if es.len() == 1 && !trail {
             Some(tgt::expr::Expr::DummyParen(
@@ -1537,9 +1612,9 @@ impl Translate for src::expr::Call {
         eaccum: &mut EAccum,
         run_uid: Transparent<usize>,
         span: Span,
-        ctx: Self::Ctx<'_>,
+        mut ctx: Self::Ctx<'_>,
     ) -> Option<tgt::expr::Expr> {
-        let args = self.args.translate(eaccum, run_uid, fork!(ctx))?;
+        let args = self.args.translate(eaccum, run_uid, ctx.fork())?;
         let repr = self.fun.map(|_, t| t.to_string());
         let id = tgt::var::Node {
             id: ctx.blocks.len().with_span(span),
@@ -1606,11 +1681,11 @@ impl Translate for src::expr::Merge {
         eaccum: &mut EAccum,
         run_uid: Transparent<usize>,
         _span: Span,
-        ctx: Self::Ctx<'_>,
+        mut ctx: Self::Ctx<'_>,
     ) -> Option<tgt::expr::Expr> {
-        let switch = self.clk.translate(eaccum, run_uid, fork!(ctx))?.boxed();
-        let on = self.on.translate(eaccum, run_uid, fork!(ctx))?.boxed();
-        let off = self.off.translate(eaccum, run_uid, fork!(ctx))?.boxed();
+        let switch = self.clk.translate(eaccum, run_uid, ctx.fork())?.boxed();
+        let on = self.on.translate(eaccum, run_uid, ctx.fork())?.boxed();
+        let off = self.off.translate(eaccum, run_uid, ctx.fork())?.boxed();
         Some(tgt::expr::Expr::Merge { switch, on, off })
     }
 }

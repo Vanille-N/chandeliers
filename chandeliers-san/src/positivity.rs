@@ -138,6 +138,10 @@ impl CheckPositive for stmt::Statement {
         match self {
             Self::Let { source, .. } => source.check_positive(eaccum, depths),
             Self::Assert(e) => e.check_positive(eaccum, depths),
+            Self::PutRegister { .. } => {
+                // Already checked by `FetchRegister`.
+                Some(())
+            }
         }
     }
 }
@@ -203,7 +207,10 @@ impl CheckPositive for expr::Expr {
                 dummy_followed_by,
                 step_immediately,
             } => {
-                dummy_init.check_positive(eaccum, fork!(depths))?;
+                if let Some(init) = dummy_init {
+                    assert!(depths.current > 0);
+                    init.check_positive(eaccum, fork!(depths).with(depths.current - 1))?;
+                }
                 dummy_followed_by.check_positive(
                     eaccum,
                     if *step_immediately {

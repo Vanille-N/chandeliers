@@ -324,7 +324,8 @@ macro_rules! doc_of_option {
     (test) => { "`#[test(42)]`: generate a Rust test function that executes this node a fixed number of times." };
     (rustc_allow) => { "`#[rustc_allow[dead_code]]`: forward the attribute to Rustc as an `#[allow(dead_code)]`" };
     (doc) => { "`#[doc(\"Message\")]`: forward the attribute to Rustc for documentation purposes`" };
-    (generics) => { "`#[generic[T, U, V]]`: declare type variables.`" };
+    (generics) => { "`#[generic[T, U, V]]`: declare type variables." };
+    (universal_pre) => { "`#[universal_pre]`: use registers to translate temporal operators." };
 }
 
 /// Type of the value for each codegen feature.
@@ -338,6 +339,7 @@ macro_rules! type_of_option {
     (rustc_allow) => { Vec<Allow> };
     (doc) => { Vec<Sp<String>> };
     (generics) => { Vec<Sp<String>> };
+    (universal_pre) => { bool };
 }
 
 /// Compiler passes where each codegen feature is used.
@@ -351,6 +353,7 @@ macro_rules! usage_of_option {
     (rustc_allow) => { Sites<Codegen, Over> };
     (doc) => { Sites<Codegen, Over> };
     (generics) => { Sites<Typecheck, Sites<Codegen, Over>> };
+    (universal_pre) => { Sites<Parsing, Over> };
 }
 
 /// Black magic to generate option sets.
