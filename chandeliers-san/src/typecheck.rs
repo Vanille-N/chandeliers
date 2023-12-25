@@ -1174,10 +1174,7 @@ impl TypeCheckDecl for ast::decl::Node {
         // Then also register the per-var::Node types of the blocks.
         for (id, blk) in self.blocks.iter().enumerate() {
             let Some((gen, i, o)) = extfun.get(&blk.name.t) else {
-                err::abort!(
-                    "Absence of {} should have been caught during causality check",
-                    &blk.name
-                )
+                return eaccum.error(err::FunNotFound { fun: &blk.name });
             };
             let id = var::Node {
                 id: id.with_span(blk.name.span),

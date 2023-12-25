@@ -16,4 +16,12 @@ chandeliers_lus::decl! {
     tel;
 }
 
+chandeliers_lus::decl! {
+    node foo() returns ();
+    let () = bar(); tel;
+
+    node bar() returns ();
+    let () = foo(); tel;
+}
+
 fn main() {}

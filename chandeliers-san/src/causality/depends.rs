@@ -210,13 +210,16 @@ impl Depends for decl::ExtConst {
 /// provides `foo` and requires `STMTS`.
 ///
 /// Do not confuse `Node` as a *subject* of `Causality` on `Prog`
-/// and as itself an implementor of `Prog`!
+/// and as itself an implementor of `Causality`!
+/// I.e. `Node` is both an item of `Prog` that needs to be sorted relative
+/// to the rest of `Prog` and a container of `Statement`s who need to be
+/// sorted between them.
 ///
 /// Here we are talking about what a `Node` requires and provides
 /// of and to the outside world, not about what local variables it makes
 /// available to its statements. This is why we don't consider
 /// its `inputs` and `outputs` to be provided here.
-/// See also: `impl Causality for Node` in `causality.rs` where
+/// See also: `impl Causality for Node` in `causality.rs` where we
 ///           do define local variables to be provided for the purposes
 ///           of sorting the statements.
 impl Depends for decl::Node {

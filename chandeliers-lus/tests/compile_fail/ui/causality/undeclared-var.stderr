@@ -1,0 +1,8 @@
+error: Variable absent not found in the context.
+ --> tests/compile_fail/ui/causality/undeclared-var.rs:3:13
+  |
+3 |     let i = absent; tel;
+  |             ^^^^^^
+  |
+  = note: Perhaps you meant one of the local variables: i
+  = note: or one of the global variables: (none declared)

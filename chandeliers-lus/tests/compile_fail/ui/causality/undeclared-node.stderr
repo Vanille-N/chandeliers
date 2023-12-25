@@ -1,0 +1,5 @@
+error: fby_witness is not a known function in this scope.
+  --> tests/compile_fail/ui/causality/undeclared-node.rs:15:33
+   |
+15 |         assert fby_testing(n) = fby_witness(n);
+   |                                 ^^^^^^^^^^^^^^

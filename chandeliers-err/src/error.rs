@@ -356,6 +356,15 @@ error_message! {
 }
 
 error_message! {
+    ["Generate an error for an undeclared function."]
+    struct FunNotFound where {
+        ["Invocation of missing function"] fun: {Display + TrySpan},
+    } impl {
+        "{fun} is not a known function in this scope." @ fun;
+    }
+}
+
+error_message! {
     ["Generate an error for a type variable that was not declared yet,"]
     ["which has consequences on what we should say is and isn't available."]
     struct TyVarNotFound where {
