@@ -332,6 +332,7 @@ pub mod var {
     /// A register for delayed values.
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
     pub struct Register {
+        /// Unique identifier (this is the id'th register created for this node).
         pub id: Sp<usize>,
     }
 
@@ -580,11 +581,13 @@ pub mod expr {
         /// Alternative to `Later` and `Pre`, provides a delay by enabling
         /// a read before a write.
         FetchRegister {
+            /// Unique identifier.
             id: Sp<var::Register>,
-            // We're keeping those here so that we can do the typechecking
-            // bottom-up.
+            /// Remember the init value for checking (ignored during codegen).
             dummy_init: Option<Sp<Box<Expr>>>,
+            /// Remember the follow-up value for checking (ignored during codegen).
             dummy_followed_by: Sp<Box<Expr>>,
+            /// Whether this node introduces a unit delay.
             step_immediately: bool,
         },
         /// A conditional expression `if b then x else y`
@@ -698,9 +701,13 @@ pub mod stmt {
         Assert(Sp<expr::Expr>),
         /// Perform the write to an already read register.
         PutRegister {
+            /// Unique identifier.
             id: Sp<var::Register>,
+            /// Value at time 0.
             init: Option<Sp<expr::Expr>>,
+            /// Follow-up value.
             followed_by: Sp<expr::Expr>,
+            /// Whether this introduces a unit delay.
             step_immediately: bool,
         },
     }
@@ -754,9 +761,13 @@ pub mod decl {
         pub generics: Option<Vec<Sp<ty::Base>>>,
     }
 
+    /// Typed register.
     #[derive(Debug, Clone)]
     pub struct RegisterInstance {
+        /// Unique identifier.
         pub id: Sp<var::Register>,
+        /// Registers can contain values of arbitrary types because they don't
+        /// need to be duplicated.
         pub typ: Option<Sp<ty::Tuple>>,
     }
 

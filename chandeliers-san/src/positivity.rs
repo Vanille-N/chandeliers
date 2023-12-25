@@ -202,7 +202,7 @@ impl CheckPositive for expr::Expr {
                 Some(())
             }
             Self::FetchRegister {
-                id,
+                id: _,
                 dummy_init,
                 dummy_followed_by,
                 step_immediately,

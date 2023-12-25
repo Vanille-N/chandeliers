@@ -236,7 +236,9 @@ impl decl::Node {
             options,
             registers,
         } = self;
-        dbg!("{:?}", registers);
+        if !registers.is_empty() {
+            unimplemented!()
+        }
         let inputs = inputs.as_ref();
         let outputs = outputs.as_ref();
         let locals = locals.as_ref();
