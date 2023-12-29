@@ -598,6 +598,7 @@ mod generic_pre {
     }
 }
 
+/*
 mod incompat {
     chandeliers_lus::decl! {
         #[export]
@@ -605,3 +606,14 @@ mod incompat {
         let f = m; tel;
     }
 }
+*/
+
+/*
+chandeliers_lus::decl! {
+    node main() returns ();
+    let
+        () = f();
+    tel;
+
+}
+*/
