@@ -612,9 +612,9 @@ pub mod expr {
                 }
                 Self::Substep { delay, id, args } => {
                     if *delay > 0 {
-                        write!(f, "{id}@{delay} {args}")
+                        write!(f, "{id}@{delay}{args}")
                     } else {
-                        write!(f, "{id} {args}")
+                        write!(f, "{id}{args}")
                     }
                 }
                 Self::Clock {
