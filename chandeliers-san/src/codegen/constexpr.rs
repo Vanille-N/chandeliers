@@ -88,6 +88,7 @@ impl ConstExprTokens for expr::Expr {
                 quote!( ( #( #ts ),* ) )
             }
             Self::Later { .. } => err::abort!("Later is not valid in const contexts, which should have been caught during typecheck"),
+            Self::Flip { .. } => err::abort!("Flip is not valid in const contexts, which should have been caught during typecheck"),
             Self::Substep { .. } => err::abort!("Substep is not valid in const contexts, which should have been caught during typecheck"),
             Self::Ifx { cond, yes, no } => {
                 let cond = cond.const_expr_tokens();

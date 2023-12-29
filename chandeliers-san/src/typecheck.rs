@@ -390,6 +390,17 @@ impl TypeCheckExpr for ast::expr::Expr {
                 left.identical(eaccum, &mut TyUnifier::Identity, &right?, span)?;
                 Some(left.t)
             }
+            Self::Flip {
+                id: _,
+                initial,
+                continued,
+            } => {
+                let left = initial.typecheck(eaccum, ctx);
+                let right = continued.typecheck(eaccum, ctx);
+                let left = left?;
+                left.identical(eaccum, &mut TyUnifier::Identity, &right?, span)?;
+                Some(left.t)
+            }
             // Both branches must be equal. Condition must be a boolean.
             Self::Ifx { cond, yes, no } => {
                 let cond = cond
@@ -444,7 +455,6 @@ impl TypeCheckExpr for ast::expr::Expr {
                 id,
                 dummy_init,
                 dummy_followed_by,
-                step_immediately: _,
             } => {
                 let followed_by = dummy_followed_by.typecheck(eaccum, ctx)?;
                 if let Some(init) = dummy_init {
@@ -492,10 +502,6 @@ impl TypeCheckExpr for ast::expr::Expr {
                 rhs?;
                 Some(())
             }
-            Self::FetchRegister { .. } => eaccum.error(err::NotConst {
-                what: "Register operations",
-                site: span,
-            }),
             Self::Ifx { cond, yes, no } => {
                 let cond = cond.is_const(eaccum);
                 let yes = yes.is_const(eaccum);
@@ -516,10 +522,12 @@ impl TypeCheckExpr for ast::expr::Expr {
                 what: "The temporal operator `pre` is",
                 site: span,
             }),
-            Self::Later { .. } => eaccum.error(err::NotConst {
-                what: "The delay operator (-> / fby) is",
-                site: span,
-            }),
+            Self::Later { .. } | Self::FetchRegister { .. } | Self::Flip { .. } => {
+                eaccum.error(err::NotConst {
+                    what: "The delay operator (-> / fby) is",
+                    site: span,
+                })
+            }
             Self::Substep { .. } => eaccum.error(err::NotConst {
                 what: "Function calls are",
                 site: span,

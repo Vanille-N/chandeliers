@@ -310,6 +310,21 @@ impl ClockCheckExpr for expr::Expr {
                 );
                 Some(before.t)
             }
+            // Flip serves the same role as Later, but it can operate on arbitrary
+            // clocks as long as it's the same on both sides.
+            Self::Flip {
+                id: _,
+                initial,
+                continued,
+            } => {
+                let lhs = initial.clockcheck(eaccum, ctx);
+                let rhs = continued.clockcheck(eaccum, ctx);
+                let mut lhs = lhs?;
+                let rhs = rhs?;
+                lhs.refine(eaccum, rhs, span)?;
+                Some(lhs.t)
+            }
+
             Self::Clock {
                 op,
                 inner,
@@ -361,7 +376,6 @@ impl ClockCheckExpr for expr::Expr {
                 id: _,
                 dummy_init,
                 dummy_followed_by,
-                step_immediately: _,
             } => {
                 let followed_by = dummy_followed_by.clockcheck(eaccum, ctx);
                 let mut followed_by = followed_by?;

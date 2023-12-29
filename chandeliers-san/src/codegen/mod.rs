@@ -952,6 +952,9 @@ impl ToTokens for expr::Expr {
             Self::FetchRegister { .. } => {
                 unimplemented!("FetchRegister codegen")
             }
+            Self::Flip { .. } => {
+                unimplemented!("Flip codegen")
+            }
         });
     }
 }

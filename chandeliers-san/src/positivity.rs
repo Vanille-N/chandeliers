@@ -183,6 +183,17 @@ impl CheckPositive for expr::Expr {
                 after.check_positive(eaccum, fork!(depths).with(delay.t.dt + 1))?;
                 Some(())
             }
+            // Flip is similar to Later but it is always at depth 1.
+            Self::Flip {
+                id: _,
+                initial,
+                continued,
+            } => {
+                initial.check_positive(eaccum, fork!(depths))?;
+                continued.check_positive(eaccum, fork!(depths).with(1))?;
+                Some(())
+            }
+
             Self::Substep { args, .. } => args.check_positive(eaccum, depths),
             // Reference is also an interesting case, but its impl is separate.
             Self::Reference(refer) => refer.check_positive(eaccum, depths),
@@ -205,20 +216,12 @@ impl CheckPositive for expr::Expr {
                 id: _,
                 dummy_init,
                 dummy_followed_by,
-                step_immediately,
             } => {
                 if let Some(init) = dummy_init {
                     assert!(depths.current > 0);
                     init.check_positive(eaccum, fork!(depths).with(depths.current - 1))?;
                 }
-                dummy_followed_by.check_positive(
-                    eaccum,
-                    if *step_immediately {
-                        fork!(depths)
-                    } else {
-                        fork!(depths).with(depths.current + 1)
-                    },
-                )
+                dummy_followed_by.check_positive(eaccum, fork!(depths).with(depths.current + 1))
             }
         }
     }

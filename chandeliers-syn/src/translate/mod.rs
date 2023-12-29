@@ -448,7 +448,11 @@ struct ExprCtx {
     /// Are we using the temporal operators with buffers or registers ?
     use_registers: bool,
     /// List of registers, if any.
+    /// A register is a struct that stores a value from one iteration to the next.
     registers: Vec<tgt::decl::RegisterInstance>,
+    /// List of flips, if any.
+    /// A flip is a 0-then-1 boolean to perform an initialization exactly once.
+    flips: Vec<tgt::decl::FlipInstance>,
 }
 
 /// Accessor for `ExprCtx`.
@@ -468,6 +472,8 @@ pub struct ExprCtxView<'i> {
     use_registers: bool,
     /// List of registers, if any.
     registers: &'i mut Vec<tgt::decl::RegisterInstance>,
+    /// List of flips, if any.
+    flips: &'i mut Vec<tgt::decl::FlipInstance>,
 }
 
 impl ExprCtx {
@@ -480,6 +486,7 @@ impl ExprCtx {
             depth: 0,
             use_registers: self.use_registers,
             registers: &mut self.registers,
+            flips: &mut self.flips,
         }
     }
 }
@@ -508,6 +515,7 @@ macro_rules! fork {
             stmts: &mut *$this.stmts,
             shadow_glob: &*$this.shadow_glob,
             registers: &mut *$this.registers,
+            flips: &mut *$this.flips,
             depth: $this.depth,
             use_registers: $this.use_registers,
         }
@@ -1293,7 +1301,6 @@ impl Translate for src::expr::Fby {
                             id,
                             init: Some(before.clone()),
                             followed_by: after.clone(),
-                            step_immediately: false,
                         }
                         .with_span(span),
                     );
@@ -1302,7 +1309,6 @@ impl Translate for src::expr::Fby {
                         id,
                         dummy_init: Some(before.boxed()),
                         dummy_followed_by: after.boxed(),
-                        step_immediately: false,
                     }
                 },
             }
@@ -1361,7 +1367,6 @@ impl Translate for src::expr::Pre {
                     id,
                     init: None,
                     followed_by: inner.clone(),
-                    step_immediately: false,
                 }
                 .with_span(span),
             );
@@ -1369,7 +1374,6 @@ impl Translate for src::expr::Pre {
                 id,
                 dummy_init: None,
                 dummy_followed_by: inner.boxed(),
-                step_immediately: false,
             })
         } else {
             Some(tgt::expr::Expr::DummyPre(
@@ -1401,27 +1405,15 @@ impl Translate for src::expr::Then {
                           _depth,
                           after: Sp<tgt::expr::Expr>,
                           ctx: ExprCtxView| {
-                    let id: Sp<tgt::var::Register> = tgt::var::Register {
-                        id: ctx.registers.len().with_span(span),
+                    let id: Sp<tgt::var::Flip> = tgt::var::Flip {
+                        id: ctx.flips.len().with_span(span),
                     }
                     .with_span(span);
-                    ctx.registers
-                        .push(tgt::decl::RegisterInstance { id, typ: None });
-                    ctx.stmts.push(
-                        tgt::stmt::Statement::PutRegister {
-                            id,
-                            init: Some(before.clone()),
-                            followed_by: after.clone(),
-                            step_immediately: true,
-                        }
-                        .with_span(span),
-                    );
-
-                    tgt::expr::Expr::FetchRegister {
+                    ctx.flips.push(tgt::decl::FlipInstance { id });
+                    tgt::expr::Expr::Flip {
                         id,
-                        dummy_init: Some(before.boxed()),
-                        dummy_followed_by: after.boxed(),
-                        step_immediately: true,
+                        initial: before.boxed(),
+                        continued: after.boxed(),
                     }
                 },
             }
@@ -1437,11 +1429,14 @@ impl Translate for src::expr::Then {
                 },
                 compose: |before: Sp<tgt::expr::Expr>,
                           _op,
-                          _depth,
+                          depth,
                           after: Sp<tgt::expr::Expr>,
                           ctx: ExprCtxView<'_>| {
                     tgt::expr::Expr::Later {
-                        delay: tgt::past::Depth { dt: ctx.depth }.with_span(
+                        delay: tgt::past::Depth {
+                            dt: ctx.depth + depth,
+                        }
+                        .with_span(
                             before.span.join(after.span).unwrap_or_else(|| {
                                 chandeliers_err::abort!(
                                     "Malformed span between {before:?} and {after:?}"

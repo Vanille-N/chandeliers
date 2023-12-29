@@ -88,7 +88,7 @@ macro_rules! provide_by_match {
     ( $( $pat:pat => $($y:ident),* ; )* ) => {
         fn provides(&self, v: &mut Vec<Self::Output>) {
             match self {
-                $( $pat => { $( $y.t.provides(v); )* } )*
+                $( $pat => { $( $y.provides(v); )* } )*
             }
         }
     }
@@ -99,7 +99,7 @@ macro_rules! require_by_match {
     ( $( $pat:pat => $($y:ident),* ; )* ) => {
         fn requires(&self, v: &mut Vec<Self::Output>) {
             match self {
-                $( $pat => { $( $y.t.requires(v); )* } )*
+                $( $pat => { $( $y.requires(v); )* } )*
             }
         }
     }
@@ -160,6 +160,28 @@ impl<T: Depends> Depends for Sp<T> {
     type Output = T::Output;
     provide_in_fields!(t);
     require_in_fields!(t);
+}
+
+impl<T: Depends> Depends for Box<T> {
+    type Output = T::Output;
+    fn provides(&self, v: &mut Vec<Self::Output>) {
+        self.as_ref().provides(v);
+    }
+    fn requires(&self, v: &mut Vec<Self::Output>) {
+        self.as_ref().requires(v);
+    }
+}
+
+impl<T: Depends> Depends for Option<T> {
+    type Output = T::Output;
+    provide_by_match! {
+        None => ;
+        Some(x) => x;
+    }
+    require_by_match! {
+        None => ;
+        Some(x) => x;
+    }
 }
 
 /// Vec is a wrapper and recurses into everything.
@@ -278,34 +300,13 @@ impl Depends for stmt::Statement {
         // Dependency is reversed: PutRegister *requires* the register to be set
         Self::PutRegister { .. } => ;
     }
-    // This one is tricky because of `PutRegister`, we need to implement it
-    // manually.
-    fn requires(&self, v: &mut Vec<Self::Output>) {
-        match self {
-            // `_ = source` requires the value to be assigned.
-            Self::Let { source, .. } => {
-                source.requires(v);
-            }
-            // Assertion is a wrapper.
-            Self::Assert(e) => {
-                e.requires(v);
-            }
-            // Dependency is reversed: PutRegister *requires* the register to be set
-            Self::PutRegister {
-                id,
-                init,
-                followed_by,
-                step_immediately,
-            } => {
-                id.requires(v);
-                if let Some(init) = init {
-                    init.requires(v);
-                }
-                if *step_immediately {
-                    followed_by.requires(v);
-                }
-            }
-        }
+    require_by_match! {
+        // `_ = source` requires the value to be assigned.
+        Self::Let { source, .. } => source;
+        // Assertion is a wrapper.
+        Self::Assert(e) => e;
+        // Dependency is reversed: PutRegister *requires* the register to be already used.
+        Self::PutRegister { id, init, followed_by: _ } => id, init;
     }
 }
 
@@ -334,6 +335,7 @@ impl Depends for expr::Expr {
         Self::Substep { args, .. } => args;
         Self::Clock { inner, activate, .. } => inner, activate;
         Self::Merge { switch, on, off } => switch, on, off;
+        Self::Flip { initial, continued, .. } => initial, continued;
         // Nothing here !
         Self::FetchRegister { .. } => ;
     }

@@ -338,7 +338,21 @@ pub mod var {
 
     impl fmt::Display for Register {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-            write!(f, "{}", self.id)
+            write!(f, "reg{}", self.id)
+        }
+    }
+
+    crate::sp::derive_with_span!(Flip);
+    /// A register for delayed values.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+    pub struct Flip {
+        /// Unique identifier (this is the id'th flip created for this node).
+        pub id: Sp<usize>,
+    }
+
+    impl fmt::Display for Flip {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            write!(f, "flip{}", self.id)
         }
     }
 
@@ -578,7 +592,7 @@ pub mod expr {
             /// Value to evaluate after `delay`.
             after: Sp<Box<Expr>>,
         },
-        /// Alternative to `Later` and `Pre`, provides a delay by enabling
+        /// Alternative to `Fby` and `Pre`, provides a delay by enabling
         /// a read before a write.
         FetchRegister {
             /// Unique identifier.
@@ -587,8 +601,16 @@ pub mod expr {
             dummy_init: Option<Sp<Box<Expr>>>,
             /// Remember the follow-up value for checking (ignored during codegen).
             dummy_followed_by: Sp<Box<Expr>>,
-            /// Whether this node introduces a unit delay.
-            step_immediately: bool,
+        },
+        /// Alternative to `Later`, provides an internal 0-then-1 not bound to
+        /// the global node clock.
+        Flip {
+            /// Unique identifier.
+            id: Sp<var::Flip>,
+            /// Expression to return on the first evaluation.
+            initial: Sp<Box<Expr>>,
+            /// Following values without unit delay.
+            continued: Sp<Box<Expr>>,
         },
         /// A conditional expression `if b then x else y`
         Ifx {
@@ -630,10 +652,12 @@ pub mod expr {
                 Self::Bin { op, lhs, rhs } => write!(f, "{lhs} {op} {rhs}"),
                 Self::Un { op, inner } => write!(f, "{op} {inner}"),
                 Self::Cmp { op, lhs, rhs } => write!(f, "{lhs} {op} {rhs}"),
-                Self::Bin { op, lhs, rhs } => write!(f, "({lhs} {op} {rhs})"),
-                Self::Un { op, inner } => write!(f, "({op} {inner})"),
-                Self::Cmp { op, lhs, rhs } => write!(f, "({lhs} {op} {rhs})"),
                 Self::FetchRegister { id, .. } => write!(f, "!{id}"),
+                Self::Flip {
+                    id,
+                    initial,
+                    continued,
+                } => write!(f, "{initial} ->@{id} {continued}"),
                 Self::Later {
                     delay,
                     before,
@@ -707,8 +731,6 @@ pub mod stmt {
             init: Option<Sp<expr::Expr>>,
             /// Follow-up value.
             followed_by: Sp<expr::Expr>,
-            /// Whether this introduces a unit delay.
-            step_immediately: bool,
         },
     }
 }
@@ -769,6 +791,13 @@ pub mod decl {
         /// Registers can contain values of arbitrary types because they don't
         /// need to be duplicated.
         pub typ: Option<Sp<ty::Tuple>>,
+    }
+
+    /// 0-then-1 boolean to perform an initialization exactly once.
+    #[derive(Debug, Clone)]
+    pub struct FlipInstance {
+        /// Unique identifier.
+        pub id: Sp<var::Flip>,
     }
 
     /// A node declaration `node foo(x) returns (y); var z; let <body> tel`.
