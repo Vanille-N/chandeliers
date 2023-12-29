@@ -149,6 +149,7 @@ impl CheckPositive for expr::Expr {
             Self::Lit(_) => Some(()),
             Self::Tuple(tup) => tup.check_positive(eaccum, depths),
             Self::DummyPre(e) => e.check_positive(eaccum, depths),
+            Self::DummyParen(inner) => inner.check_positive(eaccum, depths),
             Self::Bin { lhs, rhs, .. } => {
                 lhs.check_positive(eaccum, fork!(depths))?;
                 rhs.check_positive(eaccum, fork!(depths))?;

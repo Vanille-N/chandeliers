@@ -330,6 +330,7 @@ impl TypeCheckExpr for ast::expr::Expr {
             Self::Lit(inner) => Some(inner.typecheck(eaccum, ctx)?.t),
             Self::Reference(inner) => Some(inner.typecheck(eaccum, ctx)?.t),
             Self::DummyPre(inner) => Some(inner.typecheck(eaccum, ctx)?.t),
+            Self::DummyParen(inner) => Some(inner.typecheck(eaccum, ctx)?.t),
             Self::Tuple(es) => {
                 es.as_ref()
                     .map(|span, es| {
@@ -452,6 +453,10 @@ impl TypeCheckExpr for ast::expr::Expr {
                 let rhs = rhs.is_const(eaccum);
                 lhs?;
                 rhs?;
+                Some(())
+            }
+            Self::DummyParen(inner) => {
+                inner.is_const(eaccum)?;
                 Some(())
             }
             Self::Un { inner, .. } => {

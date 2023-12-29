@@ -262,6 +262,7 @@ impl ClockCheckExpr for expr::Expr {
         match self {
             Self::Lit(l) => Some(l.clockcheck(eaccum, ctx)?.t),
             Self::Reference(r) => Some(r.clockcheck(eaccum, ctx)?.t),
+            Self::DummyParen(inner) => Some(inner.clockcheck(eaccum, ctx)?.t),
             Self::DummyPre(e) => {
                 let clk = e.clockcheck(eaccum, ctx)?;
                 clk.as_ref().is_implicit(

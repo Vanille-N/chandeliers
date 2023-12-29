@@ -515,6 +515,9 @@ pub mod expr {
         /// We push `pre` to the variables so this is just a marker
         /// of where a `pre` used to be.
         DummyPre(Sp<Box<Expr>>),
+        /// Where parentheses used to be (useless for semantics but useful
+        /// for pretty-printing)
+        DummyParen(Sp<Box<Expr>>),
         /// Application of a binary operator `a + b`.
         Bin {
             /// Binary operator (e.g. `+`).
@@ -594,10 +597,11 @@ pub mod expr {
                 Self::Lit(l) => write!(f, "{l}"),
                 Self::Reference(r) => write!(f, "{r}"),
                 Self::Tuple(t) => write!(f, "{t}"),
+                Self::DummyParen(inner) => write!(f, "({inner})"),
                 Self::DummyPre(t) => write!(f, "{t}"),
-                Self::Bin { op, lhs, rhs } => write!(f, "({lhs} {op} {rhs})"),
-                Self::Un { op, inner } => write!(f, "({op} {inner})"),
-                Self::Cmp { op, lhs, rhs } => write!(f, "({lhs} {op} {rhs})"),
+                Self::Bin { op, lhs, rhs } => write!(f, "{lhs} {op} {rhs}"),
+                Self::Un { op, inner } => write!(f, "{op} {inner}"),
+                Self::Cmp { op, lhs, rhs } => write!(f, "{lhs} {op} {rhs}"),
                 Self::Later {
                     delay,
                     before,

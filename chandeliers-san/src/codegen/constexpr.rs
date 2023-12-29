@@ -62,6 +62,10 @@ impl ConstExprTokens for expr::Expr {
                 let v = e.const_expr_tokens();
                 quote!( #v )
             }
+            Self::DummyParen(e) => {
+                let v = e.const_expr_tokens();
+                quote!( #v )
+            }
             Self::Bin { op, lhs, rhs } => {
                 let lhs = lhs.const_expr_tokens();
                 let rhs = rhs.const_expr_tokens();

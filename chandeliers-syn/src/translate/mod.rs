@@ -1460,7 +1460,12 @@ impl Translate for src::expr::Paren {
             es.push(e.translate(eaccum, run_uid, fork!(ctx))?);
         }
         if es.len() == 1 && !trail {
-            Some(es.into_iter().next().unwrap_or_else(|| err::malformed!()).t)
+            Some(tgt::expr::Expr::DummyParen(
+                es.into_iter()
+                    .next()
+                    .unwrap_or_else(|| err::malformed!())
+                    .boxed(),
+            ))
         } else {
             Some(tgt::expr::Expr::Tuple(es.with_span(span)))
         }
