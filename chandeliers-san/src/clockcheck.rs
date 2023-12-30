@@ -512,10 +512,14 @@ where
 {
     type Ctx<'i> = &'i mut ExprClkCtx;
     fn clockcheck(&self, eaccum: &mut EAccum, span: Span, ctx: Self::Ctx<'_>) -> Option<Clk> {
-        let mut global = Clk::Adaptative.with_span(span);
+        let mut its = self.iter();
+        let Some(fst) = its.next() else {
+            return Some(Clk::Adaptative);
+        };
+        let global = fst.clockcheck(eaccum, &mut *ctx)?;
         for e in self.iter() {
             let clk = e.clockcheck(eaccum, &mut *ctx)?;
-            global.refine(eaccum, clk, span)?;
+            global.identical(eaccum, clk, span)?;
         }
         Some(global.t)
     }
