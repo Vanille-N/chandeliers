@@ -235,9 +235,10 @@ impl decl::Node {
             deptys,
             options,
             registers,
+            flips,
         } = self;
         if !registers.is_empty() {
-            unimplemented!()
+            unimplemented!("Registers")
         }
         let inputs = inputs.as_ref();
         let outputs = outputs.as_ref();
@@ -298,6 +299,7 @@ impl decl::Node {
                 #[doc = " Subnodes of"]
                 #[doc = #doc_name]
                 __nodes: ( #( #blocks , )* ),
+                __flips: ( #( #flips , )* ),
             }
         };
 
@@ -312,6 +314,7 @@ impl decl::Node {
                         #( #pos_outputs_default: Default::default() , )*
                         #( #pos_locals_default: Default::default() , )*
                         __nodes: Default::default(),
+                        __flips: Default::default(),
                     }
                 }
             }
@@ -450,6 +453,12 @@ impl decl::Node {
             #ext_annotated_declaration
             #ext_step_impl
         }
+    }
+}
+
+impl ToTokens for decl::FlipInstance {
+    fn to_tokens(&self, toks: &mut TokenStream) {
+        toks.extend(quote! { ::chandeliers_sem::registers::Flip })
     }
 }
 
@@ -952,10 +961,34 @@ impl ToTokens for expr::Expr {
             Self::FetchRegister { .. } => {
                 unimplemented!("FetchRegister codegen")
             }
-            Self::Flip { .. } => {
-                unimplemented!("Flip codegen")
+            Self::Flip {
+                id,
+                initial,
+                continued,
+            } => {
+                quote! {
+                    {
+                        let continued = #continued;
+                        if continued.first_is_nil() {
+                            AllNil::auto_size()
+                        } else {
+                            if self.__flips.#id.tas() {
+                                #initial
+                            } else {
+                                continued
+                            }
+                        }
+                    }
+                }
             }
         });
+    }
+}
+
+impl ToTokens for var::Flip {
+    fn to_tokens(&self, toks: &mut TokenStream) {
+        let Self { id } = self;
+        toks.extend(quote! { #id })
     }
 }
 

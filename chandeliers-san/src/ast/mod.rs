@@ -821,6 +821,8 @@ pub mod decl {
         pub stmts: Vec<Sp<stmt::Statement>>,
         /// Delayed values stored in registers.
         pub registers: Vec<RegisterInstance>,
+        /// Performed initializations.
+        pub flips: Vec<FlipInstance>,
     }
 
     /// A global constant `const X : int = 0`.

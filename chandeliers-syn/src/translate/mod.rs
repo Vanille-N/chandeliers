@@ -555,6 +555,7 @@ impl Translate for src::Node {
             blocks,
             stmts,
             registers,
+            flips,
             ..
         } = ectx;
         Some(tgt::decl::Node {
@@ -567,6 +568,7 @@ impl Translate for src::Node {
             deptys,
             stmts,
             registers,
+            flips,
         })
     }
 }

@@ -30,6 +30,8 @@ pub mod time_travel;
 
 pub mod stepping;
 
+pub mod registers;
+
 #[macro_use]
 pub mod candle;
 

@@ -72,6 +72,7 @@ impl Causality for ast::decl::Node {
             deptys,
             stmts,
             registers,
+            flips,
         } = self;
         let mut g = Graph::default();
         for i in inputs.t.iter() {
@@ -101,6 +102,7 @@ impl Causality for ast::decl::Node {
             deptys,
             stmts,
             registers,
+            flips,
         })
     }
 }
