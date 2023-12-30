@@ -1,0 +1,24 @@
+extern node random_bool() returns (b : bool);
+
+node random_incr() returns (i : int);
+let
+    i = if random_bool() then 1 else 0;
+tel;
+
+node cumulative_sum(n : int) returns (s : int);
+let
+    s = (0 fby s) + n;
+tel;
+
+node increasing(n : int) returns (ok : bool);
+let
+    ok = true -> (n >= pre n);
+tel;
+
+node system() returns ();
+var s : int;
+let
+    s = cumulative_sum(random_incr());
+    assert increasing(s);
+tel;
+
