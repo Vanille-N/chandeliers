@@ -969,8 +969,9 @@ impl ToTokens for expr::Expr {
                 quote! {
                     {
                         let continued = #continued;
+                        use ::chandeliers_sem::nillable::FirstIsNil;
                         if continued.first_is_nil() {
-                            AllNil::auto_size()
+                            ::chandeliers_sem::traits::AllNil::auto_size()
                         } else {
                             if self.__flips.#id.tas() {
                                 #initial
@@ -988,6 +989,7 @@ impl ToTokens for expr::Expr {
 impl ToTokens for var::Flip {
     fn to_tokens(&self, toks: &mut TokenStream) {
         let Self { id } = self;
+        let id = syn::Index::from(id.t);
         toks.extend(quote! { #id })
     }
 }

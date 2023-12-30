@@ -701,6 +701,17 @@ pub mod stmt {
         Multiple(Sp<Tuple<Sp<VarTuple>>>),
     }
 
+    impl VarTuple {
+        /// Determine if this tuple binds any variables, or if it's a unit
+        /// assignment.
+        pub fn is_empty(&self) -> bool {
+            match self {
+                Self::Single(_) => false,
+                Self::Multiple(tup) => tup.t.is_empty(),
+            }
+        }
+    }
+
     impl fmt::Display for VarTuple {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
             match self {

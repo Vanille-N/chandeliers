@@ -317,12 +317,13 @@ impl ClockCheckExpr for expr::Expr {
                 initial,
                 continued,
             } => {
+                // Rhs dictates the rythm, and lhs needs to be at least as fast.
                 let lhs = initial.clockcheck(eaccum, ctx);
                 let rhs = continued.clockcheck(eaccum, ctx);
-                let mut lhs = lhs?;
                 let rhs = rhs?;
-                lhs.refine(eaccum, rhs, span)?;
-                Some(lhs.t)
+                let lhs = lhs?;
+                rhs.identical(eaccum, lhs, span)?;
+                Some(rhs.t)
             }
 
             Self::Clock {
@@ -378,10 +379,10 @@ impl ClockCheckExpr for expr::Expr {
                 dummy_followed_by,
             } => {
                 let followed_by = dummy_followed_by.clockcheck(eaccum, ctx);
-                let mut followed_by = followed_by?;
+                let followed_by = followed_by?;
                 if let Some(init) = dummy_init {
                     let init = init.clockcheck(eaccum, ctx)?;
-                    followed_by.refine(eaccum, init, span);
+                    followed_by.identical(eaccum, init, span)?;
                 }
                 Some(followed_by.t)
             }
@@ -444,6 +445,23 @@ impl Sp<&Clk> {
 }
 
 impl Sp<Clk> {
+    /// Check that two clocks are identical.
+    /// Whether we need identical or compatible clocks is up to each operator,
+    /// as some are sensitive to when a value is actually defined or nil.
+    fn identical(&self, eaccum: &mut EAccum, other: Self, whole: Span) -> Option<()> {
+        #[expect(clippy::enum_glob_use, reason = "Fine in local scope")]
+        use Clk::*;
+        match (&self.t, &other.t) {
+            (Adaptative | Implicit, Adaptative | Implicit) => Some(()),
+            (OnExplicit(l), OnExplicit(r)) | (OffExplicit(l), OffExplicit(r)) if l == r => Some(()),
+            _ => eaccum.error(err::ClkNotIdentical {
+                first: &*self,
+                second: &other,
+                whole,
+            }),
+        }
+    }
+
     /// Specialize `self` to be at least as precise as `other`.
     /// This will check and accumulate compatibility, so to check that all clocks in a tuple
     /// are compatible you can do something to the effect of
@@ -524,10 +542,15 @@ impl ClockCheckDecl for stmt::Statement {
                 Some(())
             }
             Self::Let { target, source } => {
-                let mut target = target.clockcheck(eaccum, ctx)?;
+                let is_empty = target.t.is_empty();
+                let target = target.clockcheck(eaccum, ctx)?;
                 let source = source.clockcheck(eaccum, ctx)?;
-                target.refine(eaccum, source, span)?;
-                Some(())
+                if is_empty {
+                    Some(())
+                } else {
+                    target.identical(eaccum, source, span)?;
+                    Some(())
+                }
             }
             Self::PutRegister { .. } => {
                 // All checks already completed by `FetchRegister`.

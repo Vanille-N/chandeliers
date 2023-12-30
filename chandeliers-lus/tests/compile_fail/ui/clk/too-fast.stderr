@@ -1,16 +1,23 @@
-error: This expression is too slow: expected the implicit clock 'self, found 'when b
+error: Two subexpressions have different clocks: 'when b and 'self are incompatible
+ --> tests/compile_fail/ui/clk/too-fast.rs:7:9
+  |
+7 |         n = if b then 1 else 2;
+  |         ^^^^^^^^^^^^^^^^^^^^^^
+  |
+note: This is clocked by 'when b
  --> tests/compile_fail/ui/clk/too-fast.rs:7:9
   |
 7 |         n = if b then 1 else 2;
   |         ^
-  |
-note: Found 'when b here
+note: defined here
  --> tests/compile_fail/ui/clk/too-fast.rs:4:22
   |
 4 |         n : int when b;
   |                      ^
-note: Expected because this expression moves at the implicit pace
+note: This is clocked by 'self
  --> tests/compile_fail/ui/clk/too-fast.rs:7:13
   |
 7 |         n = if b then 1 else 2;
   |             ^^^^^^^^^^^^^^^^^^
+  = note: some operations (notably assignment) have stricter requirements than others on clock equality
+  = note: you may need to insert a `when` operator

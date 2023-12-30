@@ -561,6 +561,23 @@ error_message! {
 }
 
 error_message! {
+    ["When two clocks should have been identical."]
+    struct ClkNotIdentical where {
+        ["First clock."] first: {Display + TrySpan + TryDefSite},
+        ["Second clock."] second: {Display + TrySpan + TryDefSite},
+        ["Span of the whole expression that contains both."] whole: {TrySpan},
+    } impl {
+        "Two subexpressions have different clocks: {first} and {second} are incompatible" @ whole;
+        "This is clocked by {first}" @ first;
+        "defined here" @* if first;
+        "This is clocked by {second}" @ second;
+        "defined here" @* if second;
+        "some operations (notably assignment) have stricter requirements than others on clock equality";
+        "you may need to insert a `when` operator";
+    }
+}
+
+error_message! {
     ["When a generic type variable is unused and thus not inferrable"]
     struct UnusedGeneric where {
         ["Type variable that is absent from the inputs declaration."] unused: {Display + TrySpan},

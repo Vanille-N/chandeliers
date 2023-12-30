@@ -1,4 +1,4 @@
-error: Two subexpressions have incomparable clocks: 'when b0 and 'when b1a are incompatible
+error: Two subexpressions have different clocks: 'when b0 and 'when b1a are incompatible
   --> tests/compile_fail/ui/clk/reclock.rs:11:9
    |
 11 |         b1b = true when b1a; // Error
@@ -24,6 +24,8 @@ note: defined here
    |
 11 |         b1b = true when b1a; // Error
    |                         ^^^
+   = note: some operations (notably assignment) have stricter requirements than others on clock equality
+   = note: you may need to insert a `when` operator
 
 error: This expression is too slow: expected the implicit clock 'self, found 'when b0
   --> tests/compile_fail/ui/clk/reclock.rs:16:29

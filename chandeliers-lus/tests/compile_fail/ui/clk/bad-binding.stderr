@@ -1,4 +1,4 @@
-error: Two subexpressions have incomparable clocks: 'when b1 and 'when b2 are incompatible
+error: Two subexpressions have different clocks: 'when b1 and 'when b2 are incompatible
   --> tests/compile_fail/ui/clk/bad-binding.rs:10:9
    |
 10 |         _n = 1 when b2;
@@ -24,3 +24,5 @@ note: defined here
    |
 10 |         _n = 1 when b2;
    |                     ^^
+   = note: some operations (notably assignment) have stricter requirements than others on clock equality
+   = note: you may need to insert a `when` operator

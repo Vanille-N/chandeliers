@@ -386,14 +386,16 @@ fn test_count1() {
     }
 }
 
-chandeliers_lus::decl! {
-    #[main]
-    node foo() returns ();
-    var n : int;
-    let
-        n = 0 fby n + 1;
-        assert n < 10;
-    tel;
+mod foo {
+    chandeliers_lus::decl! {
+        #[main]
+        node foo() returns ();
+        var n : int;
+        let
+            n = 0 fby n + 1;
+            assert n < 10;
+        tel;
+    }
 }
 
 mod testing {
@@ -617,3 +619,13 @@ chandeliers_lus::decl! {
 
 }
 */
+
+chandeliers_lus::decl! {
+    #[main(100)]
+    #[trace("{i}")]
+    node zero_then_one() returns ();
+    var i : int;
+    let
+        i = 0 -> 1;
+    tel;
+}

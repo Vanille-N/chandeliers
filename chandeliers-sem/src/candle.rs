@@ -304,12 +304,11 @@ macro_rules! float {
 #[macro_export]
 macro_rules! later {
     ($this:ident <~ $dt:expr ; $lhs:expr, $rhs:expr) => {{
-        let lhs = $lhs;
         let rhs = $rhs;
         if $this.__clock > $dt {
             rhs
         } else {
-            lhs
+            $lhs
         }
     }};
 }
