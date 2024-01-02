@@ -40,11 +40,15 @@ impl ToTokens for decl::Decl {
 }
 
 /// Unit marker for `AsTy`.
-//struct LustreTy;
+/// Types in Lustre are `int`, `float`, etc.
+struct LustreTy;
 /// Unit marker for `AsTy`.
+/// Defined types are the underlying Rust types `i64`, `f64`, `(i64, i64)`, etc.
 struct DefinedTy;
 /// Unit marker for `AsTy`.
-//struct EmbeddedTy;
+/// Embedded types are the nillable types `Nillable<i64>`, `Nillable<f64>`,
+/// `(Nillable<i64>, Nillable<i64>)`, etc.
+struct EmbeddedTy;
 trait AsTy<T> {
     fn as_ty(&self, marker: T, span: Option<Span>) -> TokenStream;
 }
@@ -71,10 +75,67 @@ impl AsTy<DefinedTy> for ty::Base {
             Self::Other(t) => {
                 let id = Ident::new(
                     &format!("{t}"),
-                    span.unwrap(/* Transparent<Span> */).unwrap(/* Span */),
+                    span.unwrap_or_else(|| err::malformed!()/* Transparent<Span> */).unwrap(/* Span */),
                 );
                 quote!( #id )
             }
+        }
+    }
+}
+
+impl AsTy<LustreTy> for ty::Base {
+    fn as_ty(&self, _marker: LustreTy, span: Option<Span>) -> TokenStream {
+        let id = Ident::new(
+            &format!("{self}"),
+            span.unwrap_or_else(|| err::malformed!()).unwrap(),
+        );
+        quote!( #id )
+    }
+}
+
+impl AsTy<DefinedTy> for ty::Tuple {
+    fn as_ty(&self, _marker: DefinedTy, _span: Option<Span>) -> TokenStream {
+        match self {
+            Self::Single(t) => t.as_ref().as_ty(DefinedTy, None),
+            Self::Multiple(tup) => {
+                let tys = tup.t.iter().map(|it| it.as_ref().as_ty(DefinedTy, None));
+                quote! {
+                    ( #( #tys ,)* )
+                }
+            }
+        }
+    }
+}
+
+impl AsTy<DefinedTy> for decl::TyVar {
+    fn as_ty(&self, _marker: DefinedTy, span: Option<Span>) -> TokenStream {
+        self.base_type_of(span.unwrap_or_else(|| err::malformed!()))
+            .as_ty(DefinedTy, span)
+    }
+}
+
+impl<T: AsTy<DefinedTy>> AsTy<DefinedTy> for Tuple<T> {
+    /// Get the type tuple pre-embedding (no `Nillable`s).
+    fn as_ty(&self, _marker: DefinedTy, _span: Option<Span>) -> TokenStream {
+        let mut tup = self.iter().map(|sv| sv.as_ty(DefinedTy, None));
+        if self.len() == 1 {
+            tup.next().unwrap_or_else(|| chandeliers_err::malformed!())
+        } else {
+            quote! {
+                ( #( #tup ),* )
+            }
+        }
+    }
+}
+
+impl<T: AsTy<DefinedTy>> AsTy<EmbeddedTy> for Tuple<T> {
+    fn as_ty(&self, _marker: EmbeddedTy, span: Option<Span>) -> TokenStream {
+        let tys = self.as_ty(DefinedTy, span);
+        // It may look like this `quote_spanned` is redundant if the
+        // parent `Sp` sets the span, but for some reason removing it
+        // messus up the error messages.
+        quote_spanned! {span.unwrap().unwrap()=>
+            <#tys as ::chandeliers_sem::traits::Embed>::Target
         }
     }
 }
@@ -386,13 +447,11 @@ impl decl::Node {
         let pos_outputs_default = outputs.strictly_positive_sanitized_names();
         let pos_locals_default = locals.strictly_positive_sanitized_names();
 
-        //let inputs_ty_3 = inputs.as_defined_tys();
-        let expected_input_tys_impl = inputs.as_embedded_tys();
-        let expected_output_tys_impl = outputs.as_embedded_tys();
+        let expected_input_tys_impl = inputs.as_ty(EmbeddedTy, None);
+        let expected_output_tys_impl = outputs.as_ty(EmbeddedTy, None);
 
         let inputs_vs_asst = inputs.as_assignment_target();
 
-        //let outputs_ty_3 = outputs.as_defined_tys();
         let outputs_vs_2 = outputs.as_values();
 
         let pub_qualifier = options.pub_qualifier(/*trait*/ false);
@@ -505,15 +564,15 @@ impl decl::Node {
         let ext_name = name.as_ident(RawIdent, None);
         let uid_name = name.as_ident(SanitizedIdent, None);
 
-        let expected_input_tys_decl = inputs.as_embedded_tys();
-        let expected_output_tys_decl = outputs.as_embedded_tys();
+        let expected_input_tys_decl = inputs.as_ty(EmbeddedTy, None);
+        let expected_output_tys_decl = outputs.as_ty(EmbeddedTy, None);
 
         let docs = options.docs();
 
         let must_impl_trait = *options.impl_trait.fetch::<This>();
         let (impl_trait, trait_input, trait_output) = if must_impl_trait {
-            let inputs = inputs.as_defined_tys();
-            let outputs = outputs.as_defined_tys();
+            let inputs = inputs.as_ty(DefinedTy, None);
+            let outputs = outputs.as_ty(DefinedTy, None);
             (
                 quote!( ::chandeliers_sem::stepping::Step for ),
                 quote!( type Input = #inputs ; ),
@@ -596,7 +655,7 @@ impl ToTokens for decl::FlipInstance {
 impl ToTokens for decl::RegisterInstance {
     fn to_tokens(&self, toks: &mut TokenStream) {
         let Self { id: _, typ } = self;
-        let typ = typ.as_ref().unwrap().as_ref().as_defined_ty();
+        let typ = typ.as_ref().unwrap().as_ref().as_ty(DefinedTy, None);
         toks.extend(quote! {
             ::chandeliers_sem::registers::Register<
                 <#typ as ::chandeliers_sem::traits::Embed>::Target
@@ -605,47 +664,7 @@ impl ToTokens for decl::RegisterInstance {
     }
 }
 
-impl Sp<&ty::Tuple> {
-    fn as_defined_ty(self) -> TokenStream {
-        match self.t {
-            ty::Tuple::Single(t) => {
-                let ty = t.as_ref().as_ty(DefinedTy, None);
-                quote_spanned! {self.span.unwrap()=> #ty }
-            }
-            ty::Tuple::Multiple(tup) => {
-                let tys = tup.t.iter().map(|it| it.as_ref().as_defined_ty());
-                quote_spanned! {self.span.unwrap()=>
-                    ( #( #tys ,)* )
-                }
-            }
-        }
-    }
-}
-
 impl Sp<&Tuple<Sp<decl::TyVar>>> {
-    /// Get the type tuple pre-embedding (no `Nillable`s).
-    fn as_defined_tys(&self) -> TokenStream {
-        let mut tup = self
-            .t
-            .iter()
-            .map(|sv| sv.base_type_of().as_ref().as_ty(DefinedTy, None));
-        if self.t.len() == 1 {
-            tup.next().unwrap_or_else(|| chandeliers_err::malformed!())
-        } else {
-            quote_spanned! {self.span.unwrap()=>
-                ( #( #tup ),* )
-            }
-        }
-    }
-
-    /// Get the type tuple post-embedding (with `Nillable` everywhere).
-    fn as_embedded_tys(&self) -> TokenStream {
-        let tys = self.as_defined_tys();
-        quote_spanned! {self.span.unwrap()=>
-            <#tys as ::chandeliers_sem::traits::Embed>::Target
-        }
-    }
-
     /// Produce the corresponding destructuring tuple.
     fn as_values(&self) -> TokenStream {
         let mut tup = self
@@ -734,8 +753,8 @@ impl ToTokens for decl::ExtNode {
         let ext_name = name.as_ident(RawIdent, None);
         let uid_name = name.as_ident(SanitizedIdent, None);
 
-        let expected_output_tys = outputs.as_embedded_tys();
-        let expected_input_tys = inputs.as_embedded_tys();
+        let expected_output_tys = outputs.as_ty(EmbeddedTy, None);
+        let expected_input_tys = inputs.as_ty(EmbeddedTy, None);
         let actual_inputs = quote_spanned! {inputs.span.unwrap()=> inputs };
         let rustc_allow_1 = options.rustc_allow.fetch::<This>().iter();
         let rustc_allow_2 = options.rustc_allow.fetch::<This>().iter();
@@ -882,7 +901,6 @@ impl ToTokens for decl::TyVar {
     }
 }
 
-crate::sp::transparent_impl!(fn base_type_of return ty::Base where decl::TyVar);
 crate::sp::transparent_impl!(fn name_of return var::Local where decl::TyVar);
 impl decl::TyVar {
     /// A `TyVar` is a pair of a name and a type. This extracts the type.
@@ -907,7 +925,7 @@ impl decl::TyVar {
 /// This is the type that it has in function arguments and return values.
 impl ToTokens for ty::Stream {
     fn to_tokens(&self, toks: &mut TokenStream) {
-        let ty = self.ty.t.inner.as_ref().as_lustre_ty();
+        let ty = self.ty.t.inner.as_ref().as_ty(LustreTy, None);
         let mut pluses = Vec::new();
         for _ in 0..self.depth.t.dt {
             pluses.push(quote!( + ));
@@ -915,17 +933,6 @@ impl ToTokens for ty::Stream {
         toks.extend(quote! {
             #ty #(#pluses)*
         });
-    }
-}
-
-crate::sp::transparent_impl!(fn as_lustre_ty return TokenStream where &ty::Base);
-impl ty::Base {
-    /// Pass a type through `ty_mapping` to get `i64`/`f64`/`bool`.
-
-    /// Print a type as the `ty_mapping` macro would expect it: `int`/`float`/`bool`.
-    fn as_lustre_ty(&self, span: Span) -> TokenStream {
-        let id = Ident::new(&format!("{self}"), span.unwrap());
-        quote!( #id )
     }
 }
 
