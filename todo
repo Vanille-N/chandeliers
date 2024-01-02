@@ -7,3 +7,6 @@ Feature: clippy_allow
 Feature: warning if #[export] without #[doc]
 Feature: #[test]
 lint plugin ?
+
+IMPORTANT: check that we don't have an issue of `->` with Flip going at the wrong speed.
+We're going to need the clocks to be *identical* not compatible.

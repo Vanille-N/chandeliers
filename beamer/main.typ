@@ -28,12 +28,21 @@
 
   - compiled language
   - strong type system
-  - extensible via macros \
-    Custom parser, arbitrary code execution, unsanitized identifiers. \
-    What I did for Lustre is an instance of a more general fact:
-    you can embed inside Rust *any language* if it "agrees" with Rust on
-    - types, ownership and safety #sym.arrow language must be memory-safe
-    - tokens and parentheses #sym.arrow macro expansion is post-tokenization
+  - extensible via macros
+]
+
+#slide[
+  == Extending Rust with macros
+  #box[
+  - Custom parser,
+  - Arbitrary code execution,
+  - Unsanitized identifiers.
+  ]
+
+  What I did for Lustre is an instance of a more general fact:
+  you can embed inside Rust *any language* if it "agrees" with Rust on
+  - types, ownership and safety #sym.arrow language must be memory-safe
+  - tokens and parentheses #sym.arrow macro expansion is post-tokenization
 ]
 
 #slide[
@@ -102,7 +111,7 @@
   #v(2em)
 
   #sym.arrow Chandeliers consists of one macro that contains a parser,
-  typechecker, and code generrator
+  typechecker, and code generator
 ]
 
 #centered-slide[
@@ -115,7 +124,7 @@
   ```toml
   # Cargo.toml
   [dependencies]
-  chandeliers-lus = "0.5.0"
+  chandeliers-lus = "0.5"
   ```
   ```rs
   // main.rs
@@ -141,6 +150,8 @@
   }
   // [...]
   ```
+
+  Every `node` is expanded to (at least) one `struct` with a `step` function.
 ]
 
 #slide[
@@ -178,7 +189,7 @@
     - can be uploaded to `crates.io`
     - can be downloaded by `cargo`
     - documentation available on `docs.rs`
-    - builtin test framework available
+    - builtin test framework available (nodes annotated `#[test]`)
 ]
 
 #slide[
@@ -283,7 +294,7 @@
 
   - no control over the tokenizer
     - program must be well-parenthesized (not an issue)
-    - comments _must_ be Rust-style: `// ...` and `/* ... */`
+    - comments must be Rust-style: `// ...` and `/* ... */`
     - Rust reserved keywords can't be used as Lustre variables
   - macro output must be self-contained
   - 1 node = 1 step function (glue code requires stable API)
@@ -294,4 +305,17 @@
   = A full example
 
   (coding demo)
+]
+
+#slide[
+  == General porting procedure
+
+  0. `cargo new`
+  1. Create `Cargo.toml` and depend on `chandeliers-{std,sem,lus}`
+  2. wrap code in `chandeliers_lus::decl! { ... }`
+  3. rename variables if they conflict with Rust reserved keywords
+  4. fix Chandeliers-specific semantic choices
+  5. add annotations
+    - `#[main]`, `#[test]` on your toplevel functions
+    - `#[trace(...)]` everywhere relevant
 ]
