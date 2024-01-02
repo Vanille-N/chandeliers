@@ -153,7 +153,6 @@
 //! - `pre n ~~> n` (`n` a literal or constant)
 //! - `pre (e1 + e2) ~~> (pre e1) + (pre e2)`
 //! - `pre (-e) ~~> -(pre e)`
-//! - `pre float(e) ~~> float(pre e)`
 //! - `pre (e1 or e2) ~~> (pre e1) or (pre e2)`
 //! - `pre (e1 ->{n} e2) ~~> (pre e1) ->{n-1} (pre e2)`
 //! - etc...
@@ -1357,13 +1356,15 @@ impl Translate for src::expr::Pre {
         ctx: Self::Ctx<'_>,
     ) -> Option<tgt::expr::Expr> {
         if ctx.use_registers {
-            let id: Sp<tgt::var::Register> = tgt::var::Register {
+            let id = tgt::var::Register {
                 id: ctx.registers.len().with_span(span),
             }
             .with_span(span);
             ctx.registers
                 .push(tgt::decl::RegisterInstance { id, typ: None });
-            let inner = self.inner.translate(eaccum, run_uid, fork!(ctx).incr())?;
+            // We don't increment the depth here because nodes with
+            // registers don't have variables in the past.
+            let inner = self.inner.translate(eaccum, run_uid, fork!(ctx))?;
             ctx.stmts.push(
                 tgt::stmt::Statement::PutRegister {
                     id,

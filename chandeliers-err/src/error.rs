@@ -494,6 +494,16 @@ error_message! {
 }
 
 error_message! {
+    ["Attempted to use a `pre` in register mode without any depth available"]
+    struct ShallowPre where {
+        ["Expression to compute"] expr: {TrySpan},
+    } impl {
+        "Cannot compute the `pre` of this expression because the context does not provide an initialization value" @ expr;
+        "Maybe add a `->` in front of the expression to increase the depth ?";
+    }
+}
+
+error_message! {
     ["Error for a literal that is not supported."]
     ["Lustre only has `float`, `int`, and `bool` literals, so e.g. a `&str` will trigger this error."]
     struct UnhandledLitType where {

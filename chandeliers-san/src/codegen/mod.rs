@@ -237,9 +237,6 @@ impl decl::Node {
             registers,
             flips,
         } = self;
-        if !registers.is_empty() {
-            unimplemented!("Registers")
-        }
         let inputs = inputs.as_ref();
         let outputs = outputs.as_ref();
         let locals = locals.as_ref();
@@ -300,8 +297,11 @@ impl decl::Node {
                 #[doc = #doc_name]
                 __nodes: ( #( #blocks , )* ),
                 __flips: ( #( #flips , )* ),
+                __regs: ( #( #registers , )* ),
             }
         };
+
+        let reg_inits = registers.iter().map(|t| t.initial_value());
 
         let implementation = quote_spanned! {name.span.unwrap()=>
             #[allow(clippy::derivable_impls)] // This is, in fact, not always derivable.
@@ -315,6 +315,7 @@ impl decl::Node {
                         #( #pos_locals_default: Default::default() , )*
                         __nodes: Default::default(),
                         __flips: Default::default(),
+                        __regs: ( #( #reg_inits ,)* ),
                     }
                 }
             }
@@ -459,6 +460,31 @@ impl decl::Node {
 impl ToTokens for decl::FlipInstance {
     fn to_tokens(&self, toks: &mut TokenStream) {
         toks.extend(quote! { ::chandeliers_sem::registers::Flip })
+    }
+}
+
+impl ToTokens for decl::RegisterInstance {
+    fn to_tokens(&self, toks: &mut TokenStream) {
+        let Self { id: _, typ } = self;
+        let typ = typ.as_ref().unwrap().as_ref().as_defined_ty();
+        toks.extend(quote! { ::chandeliers_sem::registers::Register<<#typ as ::chandeliers_sem::traits::Embed>::Target> })
+    }
+}
+
+impl Sp<&ty::Tuple> {
+    fn as_defined_ty(self) -> TokenStream {
+        match self.t {
+            ty::Tuple::Single(t) => {
+                let ty = t.t.as_defined_ty(t.span);
+                quote_spanned! {self.span.unwrap()=> #ty }
+            }
+            ty::Tuple::Multiple(tup) => {
+                let tys = tup.t.iter().map(|it| it.as_ref().as_defined_ty());
+                quote_spanned! {self.span.unwrap()=>
+                    ( #( #tys ,)* )
+                }
+            }
+        }
     }
 }
 
@@ -861,9 +887,13 @@ impl ToTokens for stmt::Statement {
                     ::chandeliers_sem::truth!(#e, #s);
                 });
             }
-            Self::PutRegister { .. } => {
-                unimplemented!("PutRegister codegen")
-            }
+            Self::PutRegister {
+                id,
+                init: _,
+                followed_by,
+            } => toks.extend(quote! {
+                self.__regs.#id.try_set(#followed_by);
+            }),
         }
     }
 }
@@ -958,8 +988,8 @@ impl ToTokens for expr::Expr {
                 // `#op` expands to `when` or `whenot` which are Candle macros.
                 quote!(::chandeliers_sem::#op!(#activate; #inner))
             }
-            Self::FetchRegister { .. } => {
-                unimplemented!("FetchRegister codegen")
+            Self::FetchRegister { id, .. } => {
+                quote! { self.__regs.#id.get() }
             }
             Self::Flip {
                 id,
@@ -987,6 +1017,14 @@ impl ToTokens for expr::Expr {
 }
 
 impl ToTokens for var::Flip {
+    fn to_tokens(&self, toks: &mut TokenStream) {
+        let Self { id } = self;
+        let id = syn::Index::from(id.t);
+        toks.extend(quote! { #id })
+    }
+}
+
+impl ToTokens for var::Register {
     fn to_tokens(&self, toks: &mut TokenStream) {
         let Self { id } = self;
         let id = syn::Index::from(id.t);

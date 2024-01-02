@@ -190,10 +190,9 @@ impl CheckPositive for expr::Expr {
                 continued,
             } => {
                 initial.check_positive(eaccum, fork!(depths))?;
-                continued.check_positive(eaccum, fork!(depths).with(1))?;
+                continued.check_positive(eaccum, fork!(depths).with(depths.current + 1))?;
                 Some(())
             }
-
             Self::Substep { args, .. } => args.check_positive(eaccum, depths),
             // Reference is also an interesting case, but its impl is separate.
             Self::Reference(refer) => refer.check_positive(eaccum, depths),
@@ -218,10 +217,21 @@ impl CheckPositive for expr::Expr {
                 dummy_followed_by,
             } => {
                 if let Some(init) = dummy_init {
-                    assert!(depths.current > 0);
-                    init.check_positive(eaccum, fork!(depths).with(depths.current - 1))?;
+                    // This is a `fby`: we get `init` at the current depth, and
+                    // don't increment `followed_by`.
+                    init.check_positive(eaccum, fork!(depths).with(depths.current))?;
+                    dummy_followed_by.check_positive(eaccum, fork!(depths))
+                } else {
+                    // This is a `pre`: we immediately lose one level.
+                    if depths.current > 0 {
+                        dummy_followed_by
+                            .check_positive(eaccum, fork!(depths).with(depths.current - 1))
+                    } else {
+                        eaccum.error(err::ShallowPre {
+                            expr: dummy_followed_by,
+                        })
+                    }
                 }
-                dummy_followed_by.check_positive(eaccum, fork!(depths).with(depths.current + 1))
             }
         }
     }

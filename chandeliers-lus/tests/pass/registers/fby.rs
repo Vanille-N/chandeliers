@@ -5,7 +5,7 @@ chandeliers_lus::decl! {
     let y = 0 fby x; tel;
 
     #[trace("witness {x}\n")]
-    node prev_witness(x: int) returns (y: int);
+    node fby_witness(x: int) returns (y: int);
     let y = 0 fby x; tel;
 
     #[main(10)]
