@@ -1,35 +1,7 @@
-error: Variable i is not positive at this depth
-  --> tests/compile_fail/ui/causality/reg-positivity.rs:27:17
-   |
-27 |         o = pre i;
-   |                 ^
-   |
-   = note: tried to reach 1 steps into the past, with only 0 available
-   = note: Maybe add a `->` in front of the expression to increase the depth ?
-
-error: Variable i is not positive at this depth
-  --> tests/compile_fail/ui/causality/reg-positivity.rs:34:35
-   |
-34 |         o = 0 -> 0 -> pre pre pre i;
-   |                                   ^
-   |
-   = note: tried to reach 3 steps into the past, with only 2 available
-   = note: Maybe add a `->` in front of the expression to increase the depth ?
-
-error: Variable i is not positive at this depth
-  --> tests/compile_fail/ui/causality/reg-positivity.rs:41:80
-   |
-41 |         o = 0 -> 0 -> 0 -> 0 -> 0 -> 0 -> 0 -> pre pre pre pre pre pre pre pre i;
-   |                                                                                ^
-   |
-   = note: tried to reach 8 steps into the past, with only 7 available
-   = note: Maybe add a `->` in front of the expression to increase the depth ?
-
-error: Variable i is not positive at this depth
-  --> tests/compile_fail/ui/causality/reg-positivity.rs:48:59
-   |
-48 |         o = 0 -> 0 -> pre pre pre pre pre pre pre pre pre i;
-   |                                                           ^
-   |
-   = note: tried to reach 9 steps into the past, with only 2 available
-   = note: Maybe add a `->` in front of the expression to increase the depth ?
+error: Cannot compute the `pre` of this expression because the context does not provide an initialization value
+ --> tests/compile_fail/ui/causality/reg-positivity.rs:4:17
+  |
+4 |     let o = pre i; tel;
+  |                 ^
+  |
+  = note: Maybe add a `->` in front of the expression to increase the depth ?
