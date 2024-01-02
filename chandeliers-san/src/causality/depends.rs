@@ -282,7 +282,11 @@ impl Depends for decl::NodeName {
     require_this!(|this: &Self| Reference::FunName(this.repr.clone()));
 }
 
+/// Transparent wrapper to distinguish the initialization phase of registers
+/// from the update phase.
+/// We want `init -> use -> update` and thus have two relationships to enforce.
 struct InitRegister<'i>(&'i Sp<var::Register>);
+/// Complement of `InitRegister` for the second phase.
 struct UpdateRegister<'i>(&'i Sp<var::Register>);
 
 /// `Register` is a leaf element, this concerns its initialization.

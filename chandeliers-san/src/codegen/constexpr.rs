@@ -13,6 +13,8 @@ use chandeliers_err as err;
 use crate::ast::{expr, var};
 use crate::sp::{Sp, Span, WithSpan};
 
+use super::{AsIdent, SanitizedIdent};
+
 /// Trait to generate `const` expressions.
 pub trait ConstExprTokens {
     /// Generate a `const` value for this expression.
@@ -58,11 +60,8 @@ impl ConstExprTokens for expr::Expr {
                 let refer = refer.const_expr_tokens();
                 quote!( #refer )
             }
-            Self::DummyPre(e) => {
-                let v = e.const_expr_tokens();
-                quote!( #v )
-            }
-            Self::DummyParen(e) => {
+            // `Expr` wrappers.
+            Self::DummyPre(e) | Self::DummyParen(e) => {
                 let v = e.const_expr_tokens();
                 quote!( #v )
             }
@@ -129,7 +128,7 @@ impl ConstExprTokens for var::Reference {
                 "Var is invalid in const contexts, which should have been caught during typecheck"
             ),
             Self::Global(v) => {
-                let g = v.as_sanitized_ident();
+                let g = v.as_ident(SanitizedIdent, None);
                 quote!( #g )
             }
         }

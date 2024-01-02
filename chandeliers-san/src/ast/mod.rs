@@ -704,6 +704,7 @@ pub mod stmt {
     impl VarTuple {
         /// Determine if this tuple binds any variables, or if it's a unit
         /// assignment.
+        #[must_use]
         pub fn is_empty(&self) -> bool {
             match self {
                 Self::Single(_) => false,

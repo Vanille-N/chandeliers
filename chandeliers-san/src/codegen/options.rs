@@ -8,6 +8,8 @@ use crate::ast::options::usage::Codegen as This;
 use crate::ast::options::{Allow, Const, ExtNode, Node, TraceFile, TraceFormat};
 use crate::sp::Sp;
 
+use super::{AsIdent, RawIdent, SanitizedIdent};
+
 impl ToTokens for Allow {
     fn to_tokens(&self, toks: &mut TokenStream) {
         toks.extend(match self {
@@ -145,7 +147,7 @@ generic_option! {
         from main return &Option<usize>;
         fn fn_main(&self, name: &Sp<ast::decl::NodeName>, rustc_allow: &Vec<Allow>) -> TokenStream {
             if let Some(nb_iter) = self.fetch() {
-                let ext_name = name.as_sanitized_ident();
+                let ext_name = name.as_ident(SanitizedIdent, None);
 
                 let doc = format!(
                     "Main function automatically generated from {name} (runs for {nb_iter} steps)"
@@ -182,8 +184,8 @@ generic_option! {
         from test return &Option<usize>;
         fn fn_test(&self, name: &Sp<ast::decl::NodeName>, rustc_allow: &Vec<Allow>) -> TokenStream {
             if let Some(nb_iter) = self.fetch() {
-                let priv_name = name.as_sanitized_ident();
-                let pub_name = name.as_raw_ident();
+                let priv_name = name.as_ident(SanitizedIdent, None);
+                let pub_name = name.as_ident(RawIdent, None);
 
                 let doc = format!(
                     "Test function automatically generated from {name} (runs for {nb_iter} steps)"

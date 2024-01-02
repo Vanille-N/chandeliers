@@ -173,6 +173,7 @@ use crate::ast as src;
 
 mod options;
 
+/// Current compiler pass for options manager (see [`chandeliers_san::ast::options`] for details).
 type This = tgt::options::usage::Parsing;
 
 /// Trait to translate from the parsing AST to the analysis AST.
@@ -539,8 +540,10 @@ impl Translate for src::Node {
         let inputs = self.inputs.translate(eaccum, run_uid, &mut deptys)?;
         let outputs = self.outputs.translate(eaccum, run_uid, &mut deptys)?;
         let locals = self.locals.translate(eaccum, run_uid, &mut deptys)?;
-        let mut ectx = ExprCtx::default();
-        ectx.use_registers = *options.universal_pre.fetch::<This>();
+        let mut ectx = ExprCtx {
+            use_registers: *options.universal_pre.fetch::<This>(),
+            ..Default::default()
+        };
         for shadows in &[&inputs, &outputs, &locals] {
             for s in shadows.t.iter() {
                 ectx.shadow_glob.insert(s.t.name.t.repr.t.clone());
@@ -968,6 +971,7 @@ mod assoc {
 
     /// Descriptor for a translation.
     pub struct Descr<'i, Label, Convert, Compose> {
+        /// Parent context.
         pub ctx: super::ExprCtxView<'i>,
         /// Text to print if there is an error. Typically the name of the type
         /// being translated.

@@ -322,7 +322,7 @@ impl ClockCheckExpr for expr::Expr {
                 let rhs = continued.clockcheck(eaccum, ctx);
                 let rhs = rhs?;
                 let lhs = lhs?;
-                rhs.identical(eaccum, lhs, span)?;
+                rhs.identical(eaccum, &lhs, span)?;
                 Some(rhs.t)
             }
 
@@ -382,7 +382,7 @@ impl ClockCheckExpr for expr::Expr {
                 let followed_by = followed_by?;
                 if let Some(init) = dummy_init {
                     let init = init.clockcheck(eaccum, ctx)?;
-                    followed_by.identical(eaccum, init, span)?;
+                    followed_by.identical(eaccum, &init, span)?;
                 }
                 Some(followed_by.t)
             }
@@ -448,14 +448,14 @@ impl Sp<Clk> {
     /// Check that two clocks are identical.
     /// Whether we need identical or compatible clocks is up to each operator,
     /// as some are sensitive to when a value is actually defined or nil.
-    fn identical(&self, eaccum: &mut EAccum, other: Self, whole: Span) -> Option<()> {
+    fn identical(&self, eaccum: &mut EAccum, other: &Self, whole: Span) -> Option<()> {
         #[expect(clippy::enum_glob_use, reason = "Fine in local scope")]
         use Clk::*;
         match (&self.t, &other.t) {
             (Adaptative | Implicit, Adaptative | Implicit) => Some(()),
             (OnExplicit(l), OnExplicit(r)) | (OffExplicit(l), OffExplicit(r)) if l == r => Some(()),
             _ => eaccum.error(err::ClkNotIdentical {
-                first: &*self,
+                first: self,
                 second: &other,
                 whole,
             }),
@@ -519,7 +519,7 @@ where
         let global = fst.clockcheck(eaccum, &mut *ctx)?;
         for e in self.iter() {
             let clk = e.clockcheck(eaccum, &mut *ctx)?;
-            global.identical(eaccum, clk, span)?;
+            global.identical(eaccum, &clk, span)?;
         }
         Some(global.t)
     }
@@ -552,7 +552,7 @@ impl ClockCheckDecl for stmt::Statement {
                 if is_empty {
                     Some(())
                 } else {
-                    target.identical(eaccum, source, span)?;
+                    target.identical(eaccum, &source, span)?;
                     Some(())
                 }
             }

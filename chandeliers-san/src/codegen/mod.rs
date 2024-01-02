@@ -39,6 +39,136 @@ impl ToTokens for decl::Decl {
     }
 }
 
+/// Unit marker for `AsTy`.
+//struct LustreTy;
+/// Unit marker for `AsTy`.
+struct DefinedTy;
+/// Unit marker for `AsTy`.
+//struct EmbeddedTy;
+trait AsTy<T> {
+    fn as_ty(&self, marker: T, span: Option<Span>) -> TokenStream;
+}
+
+impl<T, U: AsTy<T>> AsTy<T> for Sp<U> {
+    fn as_ty(&self, marker: T, _span: Option<Span>) -> TokenStream {
+        let ty = self.t.as_ty(marker, Some(self.span));
+        quote_spanned! {self.span.unwrap()=> #ty }
+    }
+}
+
+impl<T, U: AsTy<T>> AsTy<T> for &U {
+    fn as_ty(&self, marker: T, span: Option<Span>) -> TokenStream {
+        (*self).as_ty(marker, span)
+    }
+}
+
+impl AsTy<DefinedTy> for ty::Base {
+    fn as_ty(&self, _marker: DefinedTy, span: Option<Span>) -> TokenStream {
+        match self {
+            Self::Int => quote!(i64),
+            Self::Float => quote!(f64),
+            Self::Bool => quote!(bool),
+            Self::Other(t) => {
+                let id = Ident::new(
+                    &format!("{t}"),
+                    span.unwrap(/* Transparent<Span> */).unwrap(/* Span */),
+                );
+                quote!( #id )
+            }
+        }
+    }
+}
+
+/// Unit marker for `AsIdent`.
+struct SanitizedIdent;
+/// Unit marker for `AsIdent`.
+struct RawIdent;
+
+trait IdentGeneration {
+    fn new_ident(name: &str, span: Span) -> Ident;
+}
+
+impl IdentGeneration for SanitizedIdent {
+    fn new_ident(name: &str, span: Span) -> Ident {
+        Ident::new(name, span.unwrap())
+    }
+}
+
+impl IdentGeneration for RawIdent {
+    fn new_ident(name: &str, span: Span) -> Ident {
+        Ident::new_raw(name, span.unwrap())
+    }
+}
+
+trait AsIdent<T>
+where
+    T: IdentGeneration,
+{
+    fn name(&self) -> String;
+    fn respan(&self, span: Option<Span>) -> Span {
+        span.unwrap()
+    }
+    fn as_ident(&self, _marker: T, span: Option<Span>) -> TokenStream {
+        let span = self.respan(span);
+        let ident = T::new_ident(&self.name(), span);
+        quote_spanned!(span.unwrap()=> #ident)
+    }
+}
+
+impl<T: IdentGeneration, U: AsIdent<T>> AsIdent<T> for Sp<U> {
+    fn name(&self) -> String {
+        self.t.name()
+    }
+    fn respan(&self, _span: Option<Span>) -> Span {
+        self.span
+    }
+}
+
+impl<T: IdentGeneration, U: AsIdent<T>> AsIdent<T> for &U {
+    fn name(&self) -> String {
+        (*self).name()
+    }
+    fn respan(&self, span: Option<Span>) -> Span {
+        (*self).respan(span)
+    }
+}
+
+impl AsIdent<SanitizedIdent> for decl::NodeName {
+    fn name(&self) -> String {
+        format!("{}__lus_{}_node", &self.repr.t, self.run_uid)
+    }
+}
+
+impl AsIdent<RawIdent> for decl::NodeName {
+    fn name(&self) -> String {
+        self.repr.t.to_string()
+    }
+}
+
+impl AsIdent<SanitizedIdent> for var::Global {
+    fn name(&self) -> String {
+        format!("{}__lus_{}_global", &self.repr.t, self.run_uid)
+    }
+}
+
+impl AsIdent<RawIdent> for var::Global {
+    fn name(&self) -> String {
+        self.repr.t.to_string()
+    }
+}
+
+impl AsIdent<SanitizedIdent> for var::Local {
+    fn name(&self) -> String {
+        format!("{}__lus_local", &self.repr.t)
+    }
+}
+
+impl AsIdent<RawIdent> for var::Local {
+    fn name(&self) -> String {
+        self.repr.t.to_string()
+    }
+}
+
 /// Global constant.
 ///
 /// This is straightforward generation of the components, apart from the
@@ -55,10 +185,10 @@ impl ToTokens for decl::Const {
             value,
         } = self;
         let span = name.span;
-        let ext_name = name.as_raw_ident();
-        let glob = name.as_sanitized_ident();
+        let ext_name = name.as_ident(RawIdent, None);
+        let glob = name.as_ident(SanitizedIdent, None);
         let value = value.const_expr_tokens();
-        let rs_ty = ty.as_ref().as_defined_ty();
+        let rs_ty = ty.as_ref().as_ty(DefinedTy, None);
         let pub_qualifier = options.pub_qualifier(/*trait*/ false);
         let rustc_allow_1 = options.rustc_allow.fetch::<This>().iter();
         let rustc_allow_2 = options.rustc_allow.fetch::<This>().iter();
@@ -117,9 +247,9 @@ impl ToTokens for decl::Const {
 impl ToTokens for decl::ExtConst {
     fn to_tokens(&self, toks: &mut TokenStream) {
         let Self { name, ty, options } = self;
-        let ext_name = name.as_raw_ident();
-        let expected = ty.as_ref().as_defined_ty();
-        let glob = name.as_sanitized_ident();
+        let ext_name = name.as_ident(RawIdent, None);
+        let expected = ty.as_ref().as_ty(DefinedTy, None);
+        let glob = name.as_ident(SanitizedIdent, None);
         let real = quote_spanned!(name.span.unwrap()=> real );
         let expected_wrapped = quote_spanned!(ty.span.unwrap()=> Type<#expected> );
         let rustc_allow = options.rustc_allow.fetch::<This>().iter();
@@ -197,14 +327,14 @@ impl ToTokens for decl::Node {
 impl ToTokens for decl::NodeInstance {
     fn to_tokens(&self, toks: &mut TokenStream) {
         let Self { name, generics } = self;
-        let name = name.as_sanitized_ident();
+        let name = name.as_ident(SanitizedIdent, None);
         let generics = generics
             .as_ref()
             .unwrap_or_else(|| err::abort!("Generics are not sufficiently instanciated"));
         let generics = if generics.is_empty() {
             quote!()
         } else {
-            let generics = generics.iter().map(|t| t.t.as_defined_ty(t.span));
+            let generics = generics.iter().map(|t| t.as_ty(DefinedTy, None));
             quote! {
                 < #( #generics ),* >
             }
@@ -241,9 +371,9 @@ impl decl::Node {
         let outputs = outputs.as_ref();
         let locals = locals.as_ref();
 
-        let deptys = deptys.iter().map(|v| v.as_sanitized_ident());
+        let deptys = deptys.iter().map(|v| v.as_ident(SanitizedIdent, None));
 
-        let uid_name = name.as_sanitized_ident();
+        let uid_name = name.as_ident(SanitizedIdent, None);
 
         let pos_inputs_decl = inputs.strictly_positive();
         let pos_outputs_decl = outputs.strictly_positive();
@@ -372,8 +502,8 @@ impl decl::Node {
         let inputs = inputs.as_ref();
         let outputs = outputs.as_ref();
 
-        let ext_name = name.as_raw_ident();
-        let uid_name = name.as_sanitized_ident();
+        let ext_name = name.as_ident(RawIdent, None);
+        let uid_name = name.as_ident(SanitizedIdent, None);
 
         let expected_input_tys_decl = inputs.as_embedded_tys();
         let expected_output_tys_decl = outputs.as_embedded_tys();
@@ -457,7 +587,9 @@ impl decl::Node {
 
 impl ToTokens for decl::FlipInstance {
     fn to_tokens(&self, toks: &mut TokenStream) {
-        toks.extend(quote! { ::chandeliers_sem::registers::Flip })
+        toks.extend(quote! {
+            ::chandeliers_sem::registers::Flip
+        });
     }
 }
 
@@ -465,7 +597,11 @@ impl ToTokens for decl::RegisterInstance {
     fn to_tokens(&self, toks: &mut TokenStream) {
         let Self { id: _, typ } = self;
         let typ = typ.as_ref().unwrap().as_ref().as_defined_ty();
-        toks.extend(quote! { ::chandeliers_sem::registers::Register<<#typ as ::chandeliers_sem::traits::Embed>::Target> })
+        toks.extend(quote! {
+            ::chandeliers_sem::registers::Register<
+                <#typ as ::chandeliers_sem::traits::Embed>::Target
+            >
+        })
     }
 }
 
@@ -473,7 +609,7 @@ impl Sp<&ty::Tuple> {
     fn as_defined_ty(self) -> TokenStream {
         match self.t {
             ty::Tuple::Single(t) => {
-                let ty = t.t.as_defined_ty(t.span);
+                let ty = t.as_ref().as_ty(DefinedTy, None);
                 quote_spanned! {self.span.unwrap()=> #ty }
             }
             ty::Tuple::Multiple(tup) => {
@@ -492,7 +628,7 @@ impl Sp<&Tuple<Sp<decl::TyVar>>> {
         let mut tup = self
             .t
             .iter()
-            .map(|sv| sv.base_type_of().as_ref().as_defined_ty());
+            .map(|sv| sv.base_type_of().as_ref().as_ty(DefinedTy, None));
         if self.t.len() == 1 {
             tup.next().unwrap_or_else(|| chandeliers_err::malformed!())
         } else {
@@ -512,7 +648,10 @@ impl Sp<&Tuple<Sp<decl::TyVar>>> {
 
     /// Produce the corresponding destructuring tuple.
     fn as_values(&self) -> TokenStream {
-        let mut tup = self.t.iter().map(|sv| sv.name_of().as_sanitized_ident());
+        let mut tup = self
+            .t
+            .iter()
+            .map(|sv| sv.name_of().as_ident(SanitizedIdent, None));
         if self.t.len() == 1 {
             let first = tup.next().unwrap_or_else(|| chandeliers_err::malformed!());
             quote_spanned! {self.span.unwrap()=>
@@ -528,8 +667,8 @@ impl Sp<&Tuple<Sp<decl::TyVar>>> {
     /// Simply a comma-separated flat tuple.
     fn self_assigned(&self) -> TokenStream {
         let tup = self.t.iter().map(|sv| {
-            let san = sv.name_of().as_sanitized_ident();
-            let raw = sv.name_of().as_raw_ident();
+            let san = sv.name_of().as_ident(SanitizedIdent, None);
+            let raw = sv.name_of().as_ident(RawIdent, None);
             quote!( let #raw = #san; )
         });
         quote_spanned! {self.span.unwrap()=>
@@ -567,7 +706,7 @@ impl Sp<&Tuple<Sp<decl::TyVar>>> {
     /// Get the sanitized identifiers for a tuple of typed variables.
     fn strictly_positive_sanitized_names(&self) -> impl Iterator<Item = TokenStream> + '_ {
         self.strictly_positive()
-            .map(|v| v.name_of().as_sanitized_ident())
+            .map(|v| v.name_of().as_ident(SanitizedIdent, None))
     }
 }
 
@@ -592,8 +731,8 @@ impl ToTokens for decl::ExtNode {
         let outputs = outputs.as_ref();
         let locals = Tuple::default().with_span(inputs.span);
 
-        let ext_name = name.as_raw_ident();
-        let uid_name = name.as_sanitized_ident();
+        let ext_name = name.as_ident(RawIdent, None);
+        let uid_name = name.as_ident(SanitizedIdent, None);
 
         let expected_output_tys = outputs.as_embedded_tys();
         let expected_input_tys = inputs.as_embedded_tys();
@@ -660,70 +799,6 @@ impl ToTokens for decl::ExtNode {
     }
 }
 
-crate::sp::transparent_impl!(fn as_sanitized_ident return TokenStream where decl::NodeName);
-crate::sp::transparent_impl!(fn as_raw_ident return TokenStream where decl::NodeName);
-impl decl::NodeName {
-    /// Format as a name that cannot have collisions with other global
-    /// variables, including those of the same name in other invocations of
-    /// the macro.
-    fn as_sanitized_ident(&self, _span: Span) -> TokenStream {
-        let id = Ident::new(
-            &format!("{}__lus_{}_node", &self.repr.t, self.run_uid),
-            self.repr.span.unwrap(),
-        );
-        quote!( #id )
-    }
-
-    /// Format the name without sanitization. Still needs to be raw
-    /// because it could be a Rust keyword.
-    fn as_raw_ident(&self, _span: Span) -> TokenStream {
-        let id = Ident::new_raw(&self.repr.t.to_string(), self.repr.span.unwrap());
-        quote!( #id )
-    }
-}
-
-crate::sp::transparent_impl!(fn as_sanitized_ident return TokenStream where var::Global);
-crate::sp::transparent_impl!(fn as_raw_ident return TokenStream where var::Global);
-impl var::Global {
-    /// Format as a name that cannot have collisions with other global
-    /// variables, including those of the same name in other invocations of
-    /// the macro.
-    fn as_sanitized_ident(&self, _span: Span) -> TokenStream {
-        let id = Ident::new(
-            &format!("{}__lus_{}_global", &self.repr.t, self.run_uid),
-            self.repr.span.unwrap(),
-        );
-        quote!( #id )
-    }
-
-    /// Format the name without sanitization. Still needs to be raw
-    /// because it could be a Rust keyword.
-    fn as_raw_ident(&self, _span: Span) -> TokenStream {
-        let id = Ident::new_raw(&self.repr.t.to_string(), self.repr.span.unwrap());
-        quote!( #id )
-    }
-}
-
-crate::sp::transparent_impl!(fn as_sanitized_ident return TokenStream where var::Local);
-crate::sp::transparent_impl!(fn as_raw_ident return TokenStream where var::Local);
-impl var::Local {
-    /// Format as a name that cannot have collisions with existing global variables.
-    fn as_sanitized_ident(&self, _span: Span) -> TokenStream {
-        let id = Ident::new(
-            &format!("{}__lus_local", &self.repr.t),
-            self.repr.span.unwrap(),
-        );
-        quote!( #id )
-    }
-
-    /// Format the name without sanitization. Still needs to be raw
-    /// because it could be a Rust keyword.
-    fn as_raw_ident(&self, _span: Span) -> TokenStream {
-        let id = Ident::new_raw(&self.repr.t.to_string(), self.repr.span.unwrap());
-        quote!( #id )
-    }
-}
-
 impl ToTokens for op::Bin {
     fn to_tokens(&self, toks: &mut TokenStream) {
         toks.extend(match self {
@@ -775,7 +850,7 @@ impl ToTokens for var::Reference {
                 toks.extend(quote!( #v ));
             }
             Self::Global(v) => {
-                let g = v.as_sanitized_ident();
+                let g = v.as_ident(SanitizedIdent, None);
                 toks.extend(quote! {
                     ::chandeliers_sem::lit!(#g)
                 });
@@ -789,7 +864,7 @@ impl ToTokens for var::Reference {
 impl ToTokens for var::Past {
     fn to_tokens(&self, toks: &mut TokenStream) {
         let Self { var, depth } = self;
-        let var = var.as_sanitized_ident();
+        let var = var.as_ident(SanitizedIdent, None);
         let depth = depth.as_lit();
         toks.extend(quote! {
             ::chandeliers_sem::var!(self <~ #depth; #var)
@@ -800,7 +875,7 @@ impl ToTokens for var::Past {
 impl ToTokens for decl::TyVar {
     fn to_tokens(&self, toks: &mut TokenStream) {
         let Self { name, ty } = self;
-        let name = name.as_sanitized_ident();
+        let name = name.as_ident(SanitizedIdent, None);
         toks.extend(quote! {
             #name : ::chandeliers_sem::ty!(#ty)
         });
@@ -843,21 +918,9 @@ impl ToTokens for ty::Stream {
     }
 }
 
-crate::sp::transparent_impl!(fn as_defined_ty return TokenStream where &ty::Base);
 crate::sp::transparent_impl!(fn as_lustre_ty return TokenStream where &ty::Base);
 impl ty::Base {
     /// Pass a type through `ty_mapping` to get `i64`/`f64`/`bool`.
-    fn as_defined_ty(&self, span: Span) -> TokenStream {
-        match self {
-            Self::Int => quote!(i64),
-            Self::Float => quote!(f64),
-            Self::Bool => quote!(bool),
-            Self::Other(t) => {
-                let id = Ident::new(&format!("{t}"), span.unwrap());
-                quote!( #id )
-            }
-        }
-    }
 
     /// Print a type as the `ty_mapping` macro would expect it: `int`/`float`/`bool`.
     fn as_lustre_ty(&self, span: Span) -> TokenStream {
@@ -897,6 +960,7 @@ impl ToTokens for stmt::Statement {
 }
 
 crate::sp::transparent_impl!(fn as_assignment_target return TokenStream where stmt::VarTuple);
+#[expect(clippy::multiple_inherent_impl, reason = "This impl is local")]
 impl stmt::VarTuple {
     /// An assignment tuple.
     ///
@@ -909,7 +973,7 @@ impl stmt::VarTuple {
     )] // FIXME: make it a trait
     fn as_assignment_target(&self, _span: Span) -> TokenStream {
         match self {
-            Self::Single(s) => s.as_sanitized_ident(),
+            Self::Single(s) => s.as_ident(SanitizedIdent, None),
             Self::Multiple(m) if m.t.is_empty() => {
                 quote!(_)
             }

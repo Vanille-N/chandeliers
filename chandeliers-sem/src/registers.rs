@@ -6,6 +6,7 @@ use crate::nillable::{AllNil, FirstIsNil};
 pub struct Flip(bool);
 
 impl Default for Flip {
+    #[inline]
     fn default() -> Self {
         Self(true)
     }
@@ -13,6 +14,7 @@ impl Default for Flip {
 
 impl Flip {
     /// Test and set: returns `true` once and `false` permanently afterwards.
+    #[inline]
     pub fn tas(&mut self) -> bool {
         let res = self.0;
         self.0 = false;
@@ -22,6 +24,7 @@ impl Flip {
 
 /// A device that can store an arbitrary value in between executions.
 pub struct Register<T> {
+    /// Value saved for the next execution.
     inner: T,
 }
 
@@ -29,6 +32,7 @@ impl<T> Default for Register<T>
 where
     T: AllNil,
 {
+    #[inline]
     fn default() -> Self {
         Self {
             inner: T::auto_size(),
@@ -38,6 +42,7 @@ where
 
 impl<T> Register<T> {
     /// Store a value that can then be obtained later exactly once.
+    #[inline]
     pub fn try_set(&mut self, t: T)
     where
         T: FirstIsNil,
@@ -48,16 +53,18 @@ impl<T> Register<T> {
     }
 
     /// Store the very first value of the register.
+    #[inline]
     pub fn try_initialize(&mut self, t: T)
     where
         T: FirstIsNil,
     {
         if self.inner.first_is_nil() {
-            self.try_set(t)
+            self.try_set(t);
         }
     }
 
     /// Extract the inner value.
+    #[inline]
     pub fn get(&mut self) -> T
     where
         T: Clone,
