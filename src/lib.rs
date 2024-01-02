@@ -629,3 +629,23 @@ chandeliers_lus::decl! {
         i = 0 -> 1;
     tel;
 }
+
+mod univpre {
+    chandeliers_lus::decl! {
+        #[universal_pre]
+        node prev_testing(x: int) returns (y: int);
+        let y = 0 -> pre x; tel;
+
+        node prev_witness(x: int) returns (y: int);
+        let y = 0 -> pre x; tel;
+
+        #[main]
+        node main_prev() returns ();
+        var n: int;
+        let
+            n = 0 -> 5 -> 4 -> 3 -> (pre n + pre pre n * pre pre pre n) % 100;
+            assert prev_testing(n) = prev_witness(n);
+        tel;
+
+    }
+}

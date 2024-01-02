@@ -556,7 +556,7 @@ impl ClockCheckDecl for stmt::Statement {
                     Some(())
                 }
             }
-            Self::PutRegister { .. } => {
+            Self::UpdateRegister { .. } | Self::InitRegister { .. } => {
                 // All checks already completed by `FetchRegister`.
                 Some(())
             }

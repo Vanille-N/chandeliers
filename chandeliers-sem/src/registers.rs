@@ -1,6 +1,6 @@
 //! Stateful expressions
 
-use crate::nillable::FirstIsNil;
+use crate::nillable::{AllNil, FirstIsNil};
 
 /// A device that returns true exactly once and then always false.
 pub struct Flip(bool);
@@ -22,15 +22,16 @@ impl Flip {
 
 /// A device that can store an arbitrary value in between executions.
 pub struct Register<T> {
-    inner: Option<T>,
-    has_been_set: bool,
+    inner: T,
 }
 
-impl<T> Default for Register<T> {
+impl<T> Default for Register<T>
+where
+    T: AllNil,
+{
     fn default() -> Self {
         Self {
-            inner: None,
-            has_been_set: false,
+            inner: T::auto_size(),
         }
     }
 }
@@ -42,8 +43,7 @@ impl<T> Register<T> {
         T: FirstIsNil,
     {
         if !t.first_is_nil() {
-            self.inner = Some(t);
-            self.has_been_set = true;
+            self.inner = t;
         }
     }
 
@@ -52,13 +52,16 @@ impl<T> Register<T> {
     where
         T: FirstIsNil,
     {
-        if !self.has_been_set {
+        if self.inner.first_is_nil() {
             self.try_set(t)
         }
     }
 
     /// Extract the inner value.
-    pub fn get(&mut self) -> T {
-        self.inner.take().unwrap()
+    pub fn get(&mut self) -> T
+    where
+        T: Clone,
+    {
+        self.inner.clone()
     }
 }

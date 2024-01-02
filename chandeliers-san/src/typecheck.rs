@@ -320,7 +320,7 @@ impl TypeCheckStmt for ast::stmt::Statement {
                 t.as_ref().is_bool(eaccum, "The argument of assert", span)?;
                 Some(())
             }
-            Self::PutRegister { .. } => {
+            Self::UpdateRegister { .. } | Self::InitRegister { .. } => {
                 // This whole thing has already been verified by `TypeCheckExpr`
                 // for `FetchRegister`
                 Some(())

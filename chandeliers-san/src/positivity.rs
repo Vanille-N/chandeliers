@@ -138,7 +138,7 @@ impl CheckPositive for stmt::Statement {
         match self {
             Self::Let { source, .. } => source.check_positive(eaccum, depths),
             Self::Assert(e) => e.check_positive(eaccum, depths),
-            Self::PutRegister { .. } => {
+            Self::UpdateRegister { .. } | Self::InitRegister { .. } => {
                 // Already checked by `FetchRegister`.
                 Some(())
             }

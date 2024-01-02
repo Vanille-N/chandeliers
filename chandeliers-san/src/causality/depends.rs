@@ -58,7 +58,9 @@ pub enum Reference {
     /// A global constant.
     GlobalVarName(Sp<String>),
     /// A value register.
-    Register(Sp<usize>),
+    UpdateRegister(Sp<usize>),
+    /// The initial value of a register.
+    InitRegister(Sp<usize>),
 }
 
 impl fmt::Display for Reference {
@@ -67,7 +69,8 @@ impl fmt::Display for Reference {
             Self::FunName(fun) => write!(f, "Node `{fun}`"),
             Self::LocalVarName(var) => write!(f, "Variable `{var}`"),
             Self::GlobalVarName(var) => write!(f, "Global `{var}`"),
-            Self::Register(rid) => write!(f, "Register `#{rid}`"),
+            Self::UpdateRegister(rid) => write!(f, "Register `#{rid}`"),
+            Self::InitRegister(rid) => write!(f, "Initialize register `#{rid}`"),
         }
     }
 }
@@ -78,14 +81,14 @@ impl err::TrySpan for Reference {
             Reference::FunName(i) | Reference::LocalVarName(i) | Reference::GlobalVarName(i) => {
                 i.try_span()
             }
-            Reference::Register(rid) => rid.try_span(),
+            Reference::UpdateRegister(rid) | Reference::InitRegister(rid) => rid.try_span(),
         }
     }
 }
 
 /// Implement `provide` by recursing into all given branches of the match.
 macro_rules! provide_by_match {
-    ( $( $pat:pat => $($y:ident),* ; )* ) => {
+    ( $( $pat:pat => $($y:expr),* ; )* ) => {
         fn provides(&self, v: &mut Vec<Self::Output>) {
             match self {
                 $( $pat => { $( $y.provides(v); )* } )*
@@ -96,7 +99,7 @@ macro_rules! provide_by_match {
 
 /// Implement `require` by recursing into all given branches of the match.
 macro_rules! require_by_match {
-    ( $( $pat:pat => $($y:ident),* ; )* ) => {
+    ( $( $pat:pat => $($y:expr),* ; )* ) => {
         fn requires(&self, v: &mut Vec<Self::Output>) {
             match self {
                 $( $pat => { $( $y.requires(v); )* } )*
@@ -279,11 +282,21 @@ impl Depends for decl::NodeName {
     require_this!(|this: &Self| Reference::FunName(this.repr.clone()));
 }
 
-//// `Register` is a leaf element.
-impl Depends for var::Register {
+struct InitRegister<'i>(&'i Sp<var::Register>);
+struct UpdateRegister<'i>(&'i Sp<var::Register>);
+
+/// `Register` is a leaf element, this concerns its initialization.
+impl Depends for InitRegister<'_> {
     type Output = Reference;
-    provide_this!(|this: &Self| Reference::Register(this.id));
-    require_this!(|this: &Self| Reference::Register(this.id));
+    provide_this!(|this: &Self| Reference::InitRegister(this.0.t.id));
+    require_this!(|this: &Self| Reference::InitRegister(this.0.t.id));
+}
+
+/// `Register` is a leaf element, this concerns its update.
+impl Depends for UpdateRegister<'_> {
+    type Output = Reference;
+    provide_this!(|this: &Self| Reference::UpdateRegister(this.0.t.id));
+    require_this!(|this: &Self| Reference::UpdateRegister(this.0.t.id));
 }
 
 /// Statement recurses differently in both methods.
@@ -297,8 +310,9 @@ impl Depends for stmt::Statement {
         Self::Let { target, .. } => target;
         // Pure, provides nothing.
         Self::Assert(_) => ;
-        // Dependency is reversed: PutRegister *requires* the register to be set
-        Self::PutRegister { .. } => ;
+        // Dependency is reversed: UpdateRegister *requires* the register to be set
+        Self::UpdateRegister { .. } => ;
+        Self::InitRegister { id, .. } => InitRegister(id);
     }
     require_by_match! {
         // `_ = source` requires the value to be assigned.
@@ -306,7 +320,8 @@ impl Depends for stmt::Statement {
         // Assertion is a wrapper.
         Self::Assert(e) => e;
         // Dependency is reversed: PutRegister *requires* the register to be already used.
-        Self::PutRegister { id, init, followed_by: _ } => id, init;
+        Self::UpdateRegister { id, val } => UpdateRegister(id), val;
+        Self::InitRegister { id: _, val } => val;
     }
 }
 
@@ -316,7 +331,7 @@ impl Depends for stmt::Statement {
 impl Depends for expr::Expr {
     type Output = Reference;
     provide_by_match! {
-        Self::FetchRegister { id, .. } => id; // Note: nothing provided or required by
+        Self::FetchRegister { id, .. } => UpdateRegister(id); // Note: nothing provided or required by
                                               // dummy fields obviously. Those are only
                                               // handled in `PutRegister`'s `Depends`.
         _ => ;
@@ -336,8 +351,7 @@ impl Depends for expr::Expr {
         Self::Clock { inner, activate, .. } => inner, activate;
         Self::Merge { switch, on, off } => switch, on, off;
         Self::Flip { initial, continued, .. } => initial, continued;
-        // Nothing here !
-        Self::FetchRegister { .. } => ;
+        Self::FetchRegister { id, .. } => InitRegister(id);
     }
 }
 

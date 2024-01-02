@@ -734,14 +734,19 @@ pub mod stmt {
         },
         /// Perform an assertion.
         Assert(Sp<expr::Expr>),
-        /// Perform the write to an already read register.
-        PutRegister {
+        /// Set the initial value of a register.
+        InitRegister {
             /// Unique identifier.
             id: Sp<var::Register>,
-            /// Value at time 0.
-            init: Option<Sp<expr::Expr>>,
-            /// Follow-up value.
-            followed_by: Sp<expr::Expr>,
+            /// Initial value.
+            val: Option<Sp<expr::Expr>>,
+        },
+        /// Perform the write to an already read register.
+        UpdateRegister {
+            /// Unique identifier.
+            id: Sp<var::Register>,
+            /// New value.
+            val: Sp<expr::Expr>,
         },
     }
 }

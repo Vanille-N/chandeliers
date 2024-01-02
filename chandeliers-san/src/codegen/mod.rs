@@ -301,8 +301,6 @@ impl decl::Node {
             }
         };
 
-        let reg_inits = registers.iter().map(|t| t.initial_value());
-
         let implementation = quote_spanned! {name.span.unwrap()=>
             #[allow(clippy::derivable_impls)] // This is, in fact, not always derivable.
             impl #generics Default for #uid_name #generics #bounds {
@@ -315,7 +313,7 @@ impl decl::Node {
                         #( #pos_locals_default: Default::default() , )*
                         __nodes: Default::default(),
                         __flips: Default::default(),
-                        __regs: ( #( #reg_inits ,)* ),
+                        __regs: Default::default(),
                     }
                 }
             }
@@ -887,13 +885,13 @@ impl ToTokens for stmt::Statement {
                     ::chandeliers_sem::truth!(#e, #s);
                 });
             }
-            Self::PutRegister {
-                id,
-                init: _,
-                followed_by,
-            } => toks.extend(quote! {
-                self.__regs.#id.try_set(#followed_by);
+            Self::UpdateRegister { id, val } => toks.extend(quote! {
+                self.__regs.#id.try_set(#val);
             }),
+            Self::InitRegister { id, val: Some(val) } => toks.extend(quote! {
+                self.__regs.#id.try_initialize(#val);
+            }),
+            Self::InitRegister { id: _, val: None } => {}
         }
     }
 }
@@ -998,14 +996,18 @@ impl ToTokens for expr::Expr {
             } => {
                 quote! {
                     {
+                        let initial = #initial;
                         let continued = #continued;
                         use ::chandeliers_sem::nillable::FirstIsNil;
-                        if continued.first_is_nil() {
+                        if initial.first_is_nil() {
+                            // off-clock
                             ::chandeliers_sem::traits::AllNil::auto_size()
                         } else {
                             if self.__flips.#id.tas() {
-                                #initial
+                                // first on-clock iteration
+                                initial
                             } else {
+                                // following on-clock iterations
                                 continued
                             }
                         }

@@ -9,6 +9,6 @@ chandeliers_lus::decl! {
     var
         i : int;
     let
-        i = 99 -> f();
+        i = 99 -> pre f();
     tel;
 }

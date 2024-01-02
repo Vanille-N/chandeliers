@@ -1298,10 +1298,16 @@ impl Translate for src::expr::Fby {
                     ctx.registers
                         .push(tgt::decl::RegisterInstance { id, typ: None });
                     ctx.stmts.push(
-                        tgt::stmt::Statement::PutRegister {
+                        tgt::stmt::Statement::UpdateRegister {
                             id,
-                            init: Some(before.clone()),
-                            followed_by: after.clone(),
+                            val: after.clone(),
+                        }
+                        .with_span(span),
+                    );
+                    ctx.stmts.push(
+                        tgt::stmt::Statement::InitRegister {
+                            id,
+                            val: Some(before.clone()),
                         }
                         .with_span(span),
                     );
@@ -1366,13 +1372,14 @@ impl Translate for src::expr::Pre {
             // registers don't have variables in the past.
             let inner = self.inner.translate(eaccum, run_uid, fork!(ctx))?;
             ctx.stmts.push(
-                tgt::stmt::Statement::PutRegister {
+                tgt::stmt::Statement::UpdateRegister {
                     id,
-                    init: None,
-                    followed_by: inner.clone(),
+                    val: inner.clone(),
                 }
                 .with_span(span),
             );
+            ctx.stmts
+                .push(tgt::stmt::Statement::InitRegister { id, val: None }.with_span(span));
             Some(tgt::expr::Expr::FetchRegister {
                 id,
                 dummy_init: None,
