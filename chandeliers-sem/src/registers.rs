@@ -26,6 +26,10 @@ impl Flip {
 pub struct Register<T> {
     /// Value saved for the next execution.
     inner: T,
+    /// Not yet commited next value.
+    next: T,
+    /// Whether the clock is currently active.
+    on_clock: bool,
 }
 
 impl<T> Default for Register<T>
@@ -36,6 +40,8 @@ where
     fn default() -> Self {
         Self {
             inner: T::auto_size(),
+            next: T::auto_size(),
+            on_clock: false,
         }
     }
 }
@@ -43,13 +49,19 @@ where
 impl<T> Register<T> {
     /// Store a value that can then be obtained later exactly once.
     #[inline]
-    pub fn try_set(&mut self, t: T)
+    pub fn schedule(&mut self, t: T)
     where
         T: FirstIsNil,
     {
         if !t.first_is_nil() {
-            self.inner = t;
+            self.next = t;
         }
+    }
+
+    /// Activate or not this register for this round.
+    #[inline]
+    pub fn with_clock(&mut self, clk: crate::nillable::Nillable<bool>) {
+        self.on_clock = clk.is(crate::nillable::Nillable::Defined(true));
     }
 
     /// Store the very first value of the register.
@@ -59,16 +71,29 @@ impl<T> Register<T> {
         T: FirstIsNil,
     {
         if self.inner.first_is_nil() {
-            self.try_set(t);
+            self.inner = t;
         }
+    }
+
+    /// Move `next` to become the current value.
+    #[inline]
+    pub fn commit(&mut self)
+    where
+        T: Clone,
+    {
+        self.inner = self.next.clone();
     }
 
     /// Extract the inner value.
     #[inline]
     pub fn get(&mut self) -> T
     where
-        T: Clone,
+        T: Clone + AllNil,
     {
-        self.inner.clone()
+        if self.on_clock {
+            self.inner.clone()
+        } else {
+            T::auto_size()
+        }
     }
 }

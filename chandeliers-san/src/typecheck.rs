@@ -1415,8 +1415,6 @@ impl TypeCheckExpr for ty::Clock {
                     id.as_ref()
                         .map(|span, repr| var::Local {
                             repr: repr.clone().with_span(span),
-                            run_uid: Transparent::forge(err::here!()), // We can forge the `run_uid` since it's not relevant in
-                                                                       // the `impl PartialEq` and `impl Hash`.
                         })
                         .as_ref(),
                 )?;

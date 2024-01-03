@@ -325,7 +325,7 @@ impl Depends for stmt::Statement {
         Self::Assert(e) => e;
         // Dependency is reversed: PutRegister *requires* the register to be already used.
         Self::UpdateRegister { id, val } => UpdateRegister(id), val;
-        Self::InitRegister { id: _, val } => val;
+        Self::InitRegister { id: _, val, clk: _ } => val;
     }
 }
 

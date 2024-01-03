@@ -282,8 +282,6 @@ pub mod var {
     pub struct Local {
         /// Name.
         pub repr: Sp<String>,
-        /// Number to generate unique identifiers.
-        pub run_uid: Transparent<usize>,
     }
 
     crate::sp::derive_with_span!(Global);
@@ -741,6 +739,8 @@ pub mod stmt {
             id: Sp<var::Register>,
             /// Initial value.
             val: Option<Sp<expr::Expr>>,
+            /// Clock of the node.
+            clk: Option<Sp<expr::Expr>>,
         },
         /// Perform the write to an already read register.
         UpdateRegister {

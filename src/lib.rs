@@ -649,3 +649,12 @@ mod univpre {
 
     }
 }
+
+mod chained_fbys {
+    chandeliers_lus::decl! {
+        #[universal_pre]
+        #[trace("testing {b}\n")]
+        node testing() returns (b : bool);
+        let b = true fby false fby false fby b; tel;
+    }
+}

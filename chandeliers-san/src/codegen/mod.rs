@@ -446,6 +446,7 @@ impl decl::Node {
         let pos_inputs_default = inputs.strictly_positive_sanitized_names();
         let pos_outputs_default = outputs.strictly_positive_sanitized_names();
         let pos_locals_default = locals.strictly_positive_sanitized_names();
+        let register_ids = registers.iter().map(|reg| reg.id);
 
         let expected_input_tys_impl = inputs.as_ty(EmbeddedTy, None);
         let expected_output_tys_impl = outputs.as_ty(EmbeddedTy, None);
@@ -535,6 +536,7 @@ impl decl::Node {
                     #( ::chandeliers_sem::update!(self, #pos_inputs_use ); )*
                     #( ::chandeliers_sem::update!(self, #pos_outputs_use ); )*
                     #( ::chandeliers_sem::update!(self, #pos_locals_use ); )*
+                    #( self.__regs.#register_ids.commit() ; )*
                     "Ghost reads to tell the Rustc dead code analysis about dependent types";
                     #( let _ = #deptys; )*
                     "Finish by returning the outputs";
@@ -956,12 +958,21 @@ impl ToTokens for stmt::Statement {
                 });
             }
             Self::UpdateRegister { id, val } => toks.extend(quote! {
-                self.__regs.#id.try_set(#val);
+                self.__regs.#id.schedule(#val);
             }),
-            Self::InitRegister { id, val: Some(val) } => toks.extend(quote! {
-                self.__regs.#id.try_initialize(#val);
-            }),
-            Self::InitRegister { id: _, val: None } => {}
+            Self::InitRegister { id, val, clk } => {
+                let Some(clk) = clk else {
+                    unreachable!();
+                };
+                toks.extend(quote! {
+                    self.__regs.#id.with_clock(#clk);
+                });
+                if let Some(val) = val {
+                    toks.extend(quote! {
+                    self.__regs.#id.try_initialize(#val);
+                    })
+                }
+            }
         }
     }
 }
@@ -1093,7 +1104,7 @@ impl ToTokens for var::Flip {
     fn to_tokens(&self, toks: &mut TokenStream) {
         let Self { id } = self;
         let id = syn::Index::from(id.t);
-        toks.extend(quote! { #id })
+        toks.extend(quote! { #id });
     }
 }
 
@@ -1101,7 +1112,7 @@ impl ToTokens for var::Register {
     fn to_tokens(&self, toks: &mut TokenStream) {
         let Self { id } = self;
         let id = syn::Index::from(id.t);
-        toks.extend(quote! { #id })
+        toks.extend(quote! { #id });
     }
 }
 

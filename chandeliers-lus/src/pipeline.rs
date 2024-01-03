@@ -150,7 +150,7 @@ impl Apply for stage::Typecheck {
 impl Apply for stage::Clockcheck {
     fn apply(
         eaccum: &mut EAccum,
-        prog: Sp<sanitizer::ast::decl::Prog>,
+        mut prog: Sp<sanitizer::ast::decl::Prog>,
     ) -> Option<Sp<sanitizer::ast::decl::Prog>> {
         use sanitizer::clockcheck::ClockCheck;
         prog.clockcheck(eaccum)?;

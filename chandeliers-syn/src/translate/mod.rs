@@ -650,7 +650,7 @@ impl Translate for src::Decls {
     fn translate(
         self,
         _eaccum: &mut EAccum,
-        run_uid: Transparent<usize>,
+        _run_uid: Transparent<usize>,
         _span: Span,
         (vars, ty): Self::Ctx<'_>,
     ) -> Option<()> {
@@ -659,7 +659,6 @@ impl Translate for src::Decls {
                 tgt::decl::TyVar {
                     name: tgt::var::Local {
                         repr: id.to_string().with_span(span),
-                        run_uid,
                     }
                     .with_span(span),
                     ty: ty.clone().map(|span, ty| {
@@ -739,14 +738,13 @@ impl Translate for src::ty::When {
     fn translate(
         self,
         _eaccum: &mut EAccum,
-        run_uid: Transparent<usize>,
+        _run_uid: Transparent<usize>,
         _span: Span,
         ctx: Self::Ctx<'_>,
     ) -> Option<Self::Output> {
         ctx.push(
             tgt::var::Local {
                 repr: self.clock.as_ref().map(|_, c| format!("{c}")),
-                run_uid,
             }
             .with_span(self.clock.span),
         );
@@ -763,14 +761,13 @@ impl Translate for src::ty::Whenot {
     fn translate(
         self,
         _eaccum: &mut EAccum,
-        run_uid: Transparent<usize>,
+        _run_uid: Transparent<usize>,
         _span: Span,
         ctx: Self::Ctx<'_>,
     ) -> Option<Self::Output> {
         ctx.push(
             tgt::var::Local {
                 repr: self.clock.as_ref().map(|_, c| format!("{c}")),
-                run_uid,
             }
             .with_span(self.clock.span),
         );
@@ -878,7 +875,6 @@ impl Translate for src::TargetExpr {
             Self::Var(i) => Some(tgt::stmt::VarTuple::Single(
                 tgt::var::Local {
                     repr: i.map(|_, t| t.to_string()),
-                    run_uid,
                 }
                 .with_span(span),
             )),
@@ -1312,6 +1308,7 @@ impl Translate for src::expr::Fby {
                         tgt::stmt::Statement::InitRegister {
                             id,
                             val: Some(before.clone()),
+                            clk: None,
                         }
                         .with_span(span),
                     );
@@ -1382,8 +1379,14 @@ impl Translate for src::expr::Pre {
                 }
                 .with_span(span),
             );
-            ctx.stmts
-                .push(tgt::stmt::Statement::InitRegister { id, val: None }.with_span(span));
+            ctx.stmts.push(
+                tgt::stmt::Statement::InitRegister {
+                    id,
+                    val: None,
+                    clk: None,
+                }
+                .with_span(span),
+            );
             Some(tgt::expr::Expr::FetchRegister {
                 id,
                 dummy_init: None,
@@ -1743,7 +1746,7 @@ impl Translate for src::expr::Var {
             Some(tgt::expr::Expr::Reference(
                 tgt::var::Reference::Var(
                     tgt::var::Past {
-                        var: tgt::var::Local { repr, run_uid }.with_span(span),
+                        var: tgt::var::Local { repr }.with_span(span),
                         depth: tgt::past::Depth { dt: ctx.depth }.with_span(span),
                     }
                     .with_span(span),

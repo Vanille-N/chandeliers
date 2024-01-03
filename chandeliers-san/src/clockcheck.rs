@@ -16,7 +16,7 @@ use std::fmt;
 use chandeliers_err::{self as err, EAccum};
 
 use crate::ast::ty::Clock;
-use crate::ast::{decl, expr, op, stmt, ty, var, Tuple};
+use crate::ast::{decl, expr, op, past, stmt, ty, var, Tuple};
 use crate::sp::{Sp, Span, WithDefSite, WithSpan};
 
 crate::sp::derive_with_span!(Clk);
@@ -87,6 +87,8 @@ impl Sp<&ty::Clock> {
 struct ExprClkCtx {
     /// Known clocked variables.
     local: HashMap<var::Local, WithDefSite<Sp<Clock>>>,
+    /// Clocks to propagate upwards so that registers can be on time.
+    clock_of_register: HashMap<var::Register, Sp<expr::Expr>>,
 }
 
 impl ExprClkCtx {
@@ -125,7 +127,7 @@ trait ClockCheckDecl {
     /// Clock context (typically obtained by the `signature` on local variables and toplevel declarations)
     type Ctx<'node>;
     /// Verify internal consistency of the clocks.
-    fn clockcheck(&self, eaccum: &mut EAccum, span: Span, ctx: Self::Ctx<'_>) -> Option<()>;
+    fn clockcheck(&mut self, eaccum: &mut EAccum, span: Span, ctx: Self::Ctx<'_>) -> Option<()>;
 }
 
 /// Helper trait for `Sp` to implement `ClockCheckStmt`.
@@ -133,7 +135,7 @@ trait ClockCheckSpanDecl {
     /// Projection to the inner `Ctx`.
     type Ctx<'node>;
     /// Projection to the inner `clockcheck`.
-    fn clockcheck(&self, eaccum: &mut EAccum, ctx: Self::Ctx<'_>) -> Option<()>;
+    fn clockcheck(&mut self, eaccum: &mut EAccum, ctx: Self::Ctx<'_>) -> Option<()>;
 }
 
 /// Clock typing interface.
@@ -141,7 +143,7 @@ pub trait ClockCheck {
     /// Verify internal consistency of the clocks.
     /// # Errors
     /// Cannot verify that all clocks match.
-    fn clockcheck(&self, eaccum: &mut EAccum) -> Option<()>;
+    fn clockcheck(&mut self, eaccum: &mut EAccum) -> Option<()>;
 }
 
 impl<T: ClockCheckExpr> ClockCheckSpanExpr for Sp<T> {
@@ -161,8 +163,8 @@ impl<T: ClockCheckExpr> ClockCheckExpr for Box<T> {
 
 impl<T: ClockCheckDecl> ClockCheckSpanDecl for Sp<T> {
     type Ctx<'node> = T::Ctx<'node>;
-    fn clockcheck<'i>(&self, eaccum: &mut EAccum, ctx: Self::Ctx<'_>) -> Option<()> {
-        self.as_ref()
+    fn clockcheck<'i>(&mut self, eaccum: &mut EAccum, ctx: Self::Ctx<'_>) -> Option<()> {
+        self.as_ref_mut()
             .map(|span, t| t.clockcheck(eaccum, span, ctx))
             .transpose()?;
         Some(())
@@ -374,7 +376,7 @@ impl ClockCheckExpr for expr::Expr {
                 Some(switch.t)
             }
             Self::FetchRegister {
-                id: _,
+                id,
                 dummy_init,
                 dummy_followed_by,
             } => {
@@ -384,8 +386,53 @@ impl ClockCheckExpr for expr::Expr {
                     let init = init.clockcheck(eaccum, ctx)?;
                     followed_by.identical(eaccum, &init, span)?;
                 }
+                ctx.clock_of_register
+                    .insert(id.t, followed_by.forge_as_expr());
                 Some(followed_by.t)
             }
+        }
+    }
+}
+
+impl Sp<Clk> {
+    fn forge_as_expr(&self) -> Sp<expr::Expr> {
+        match &self.t {
+            Clk::Implicit | Clk::Adaptative => {
+                expr::Expr::Lit(expr::Lit::Bool(true).with_span(self.span)).with_span(self.span)
+            }
+            Clk::OffExplicit(var) => expr::Expr::Un {
+                op: op::Un::Not,
+                inner: expr::Expr::Reference(
+                    var::Reference::Var(
+                        var::Past {
+                            var: var::Local {
+                                repr: var.data.clone(),
+                            }
+                            .with_span(self.span),
+                            depth: past::Depth { dt: 0 }.with_span(self.span),
+                        }
+                        .with_span(self.span),
+                    )
+                    .with_span(self.span),
+                )
+                .with_span(self.span)
+                .boxed(),
+            }
+            .with_span(self.span),
+            Clk::OnExplicit(var) => expr::Expr::Reference(
+                var::Reference::Var(
+                    var::Past {
+                        var: var::Local {
+                            repr: var.data.clone(),
+                        }
+                        .with_span(self.span),
+                        depth: past::Depth { dt: 0 }.with_span(self.span),
+                    }
+                    .with_span(self.span),
+                )
+                .with_span(self.span),
+            )
+            .with_span(self.span),
         }
     }
 }
@@ -537,7 +584,7 @@ impl ClockCheckExpr for stmt::VarTuple {
 
 impl ClockCheckDecl for stmt::Statement {
     type Ctx<'node> = &'node mut ExprClkCtx;
-    fn clockcheck(&self, eaccum: &mut EAccum, span: Span, ctx: Self::Ctx<'_>) -> Option<()> {
+    fn clockcheck(&mut self, eaccum: &mut EAccum, span: Span, ctx: Self::Ctx<'_>) -> Option<()> {
         match self {
             Self::Assert(e) => {
                 let clk = e.clockcheck(eaccum, ctx)?;
@@ -566,7 +613,7 @@ impl ClockCheckDecl for stmt::Statement {
 
 impl ClockCheckDecl for decl::Node {
     type Ctx<'node> = ();
-    fn clockcheck(&self, eaccum: &mut EAccum, _span: Span, _ctx: Self::Ctx<'_>) -> Option<()> {
+    fn clockcheck(&mut self, eaccum: &mut EAccum, _span: Span, _ctx: Self::Ctx<'_>) -> Option<()> {
         // First the interface must be homogeneous
         for vs in [&self.inputs.t, &self.outputs.t] {
             for v in vs.iter() {
@@ -580,6 +627,7 @@ impl ClockCheckDecl for decl::Node {
         // locals
         let mut ectx = ExprClkCtx {
             local: HashMap::new(),
+            clock_of_register: HashMap::new(),
         };
         for vs in [&self.inputs.t, &self.outputs.t, &self.locals.t] {
             for v in vs.iter() {
@@ -590,16 +638,29 @@ impl ClockCheckDecl for decl::Node {
             }
         }
         let mut scope = eaccum.scope();
-        for stmt in &self.stmts {
+        for stmt in &mut self.stmts {
             scope.compute(|eaccum| stmt.clockcheck(eaccum, &mut ectx));
         }
-        scope.close()
+        scope.close()?;
+        // We have learned the clock of each register, now we save it so
+        // that the register is permanently aware of it.
+        // The definition of the clock should already come before, so we don't need
+        // to add a new dependency at this stage.
+        for stmt in &mut self.stmts {
+            match &mut stmt.t {
+                stmt::Statement::InitRegister { id, val: _, clk } => {
+                    *clk = Some(ectx.clock_of_register.get(&id.t).unwrap().clone());
+                }
+                _ => {}
+            }
+        }
+        Some(())
     }
 }
 
 impl ClockCheckDecl for decl::ExtNode {
     type Ctx<'i> = ();
-    fn clockcheck(&self, eaccum: &mut EAccum, _: Span, (): ()) -> Option<()> {
+    fn clockcheck(&mut self, eaccum: &mut EAccum, _: Span, (): ()) -> Option<()> {
         for vs in [&self.inputs.t, &self.outputs.t] {
             for v in vs.iter() {
                 v.t.ty.t.ty.t.clk.as_ref().into_clk().as_ref().is_implicit(
@@ -613,10 +674,10 @@ impl ClockCheckDecl for decl::ExtNode {
 }
 
 impl ClockCheck for Sp<decl::Prog> {
-    fn clockcheck(&self, eaccum: &mut EAccum) -> Option<()> {
+    fn clockcheck(&mut self, eaccum: &mut EAccum) -> Option<()> {
         use decl::Decl;
-        for decl in &self.t.decls {
-            match &decl.t {
+        for decl in &mut self.t.decls {
+            match &mut decl.t {
                 Decl::Const(_) | Decl::ExtConst(_) => {}
                 Decl::Node(n) => {
                     n.clockcheck(eaccum, ())?;
