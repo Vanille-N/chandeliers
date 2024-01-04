@@ -104,6 +104,9 @@ The following options are available:
   Can be specified multiple times and all messages will be concatenated in order.
 - `#[generic[T, U]]` (any `node`): declare new opaque type variables.
     See: [#generics](#generics)
+- `#[universal_pre]` (`node`): use a representation of temporal operators that
+  allows arbitrary expressions under `pre` and `fby`.
+    See: [#temporals](#temporals)
 
 ### Formatting
 
@@ -223,6 +226,90 @@ And you are then free to use `swap` with arguments of any type:
 
 
 
+### Temporals
+
+Related to the role of `#[universal_pre]`, let us discuss a bit the encoding
+of temporal operators in Chandeliers.
+
+There are two important constructs needded:
+- the ability to remember a past value from one iteration to the next
+- the ability to evaluate one of two values conditionally on whether this is
+  the first execution or not.
+
+Chandeliers has the following constructs available:
+
+| Name     | Internal representation              | Lustre interpretation              | Delay | Branching |
+|----------|--------------------------------------|------------------------------------|-------|-----------|
+| Past     | `Past { var, depth }`                | `pre ..{depth}.. pre var`          | Yes   | No        |
+| Later    | `Later { delay, before, after }`     | `before -> after` at depth `delay` | No    | Yes       |
+| Register | `FetchRegister { id }`               | `pre update` if `init` is empty    | Yes   | Yes       |
+|          | `InitRegister { id, val: init }`     | `init fby update` otherwise        |       |           |
+|          | `UpdateRegister { id, val: update }` |                                    |       |           |
+| Flip     | `Flip { id, initial, continued }`    | `initial -> continued`             | No    | Yes       |
+
+Registers are self-sufficient and can optionally work with Flips,
+while Past/Later go hand-in-hand.
+
+By default the constructs Past and Later are used, but the `#[universal_pre]` annotation
+locally switches the node to use Registers (and Flips if needed).
+
+#### Default mode
+
+By default Chandeliers uses an encoding of temporal operators that is provably optimal in
+space and amount of copies by a certain metric, which is the least amount of copies when there
+are an unbounded amount of `pre` in parallel (as in `pre x + pre x + pre x + ...` requires exactly
+*one* saved value).
+
+In this encoding, we only have access to `pre` on the variables, and `pre` must be
+pushed down through other expression constructs. The translation phase (in `chandeliers-syn`)
+implements this pushing
+- `[n]x ~~> past(n) x` base construct: value of variable `x` n instants ago
+- `[n](pre x) ~~> [n+1]x`: `pre` increments the depth
+- `[n](a + b) ~~> [n]a + [n]b` <br>
+  `[n](not x) ~~> not [n]x` <br>
+  `[n](if b then t else f) ~~> if [n]b then [n]t else [n]f` <br>
+  `[n](a, b, c) ~~> ([n]a, [n]b, [n]c)`
+  etc. (non-temporal operators)
+- `[n](a fby b) ~~> then(n) [n]a [n+1]b` will evaluate to `[n] a` for the first `n` instants, then `[n+1] b`.
+- `[n](a -> b) ~~> then(n) [n]a [n]b`
+- `[n]f(x) ~~> after(n) f([n]x)` will wait `n` instants before evaluating `f([n]x)`
+
+This works great for all the above constructs and requires only memorizing
+scalar values (no past values of tuples saved natively).
+
+The main limitation of this method is that it does not handle clocked values correctly!
+Indeed `[n](merge b x y) ~~> merge [n]b [n]x [n]y` is only sound if you consider
+`[n]x` to be the value `n` iterations ago, and not the `n`'th past value of `x`
+when `x` is an expression that does not have a value on all iterations.
+
+In this default mode, it is thus forbidden to use temporal operators (`pre`, `->`, `fby`)
+on clocked values (`when`, `whenot`).
+
+#### Extended mode
+
+Because the above mode has better performance it is used by default, but you may
+want to use a `fby` or other temporal operator on a clocked value.
+This requires opting in to the extended mode of temporal operators with is
+activated by the `#[universal_pre]` node annotation.
+
+In this mode
+- computing `a fby b` produces a new register and invoques three operations per iteration:
+    - `InitRegister` with `a` to initialize the value
+    - `FetchRegister` to get the current value
+    - `UpdateRegister` with `b` to step to the next value
+- `->` involves a Flip that works exactly like `Later` except that it has its own
+  clock instead of using the clock-wide clock, making it suitable for slower expressions
+  as well.
+- `pre x` is simply `nil fby x`.
+
+Important: in this mode there is a significant additional change to the semantics of `->`.
+Previously `->` was a n-ary operator with `a -> b -> c -> d` evaluating to
+`a1, b2, c3, d4, d5, d6, ...`.
+In this mode instead, `->` has normal associativity and `a -> b -> c -> d`
+is equivalent to `a -> (b -> (c -> d))` which just means `a -> d`.
+It is thus *not sufficient* to just insert `#[universal_pre]` to your node
+if you want past values of clocked expressions, you also might need to check
+your usage of `->`.
 
 
 ## Examples

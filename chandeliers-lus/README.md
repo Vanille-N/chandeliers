@@ -154,5 +154,7 @@ In addition, the following choices have been made with regards to the semantics:
   neither `a -> (b -> c)` (a1, c2, c3, c4, c5, c6, ...)
   nor `(a -> b) -> c` (a1, c2, c3, c4, c5, c6, ...).
 - temporal operators `_ -> _`, `pre _`, `_ fby _` are only available for expressions
-  with the implicit clock of the node.
+  with the implicit clock of the node. This restriction is lifted by using the annotation
+  `#[universal_pre]` which uses a different encoding of temporal operators that is compatible
+  with clocked expressions, but this may come at a slight performance cost.
 

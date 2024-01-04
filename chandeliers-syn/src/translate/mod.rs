@@ -162,6 +162,10 @@
 //! operators propagate the same depth to their arguments, and temporal operators
 //! act upon the depth: `pre` increases it by one, `fby` evaluates its two arguments
 //! on different depths, etc.
+//!
+//! Alternatively, temporal operators are translated differently when
+//! the `universal_pre` option is set, and this generates `Register` and `Flip`
+//! instead of `Pre` and `Then`.
 
 use std::collections::HashSet;
 
