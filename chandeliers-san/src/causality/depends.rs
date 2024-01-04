@@ -165,6 +165,7 @@ impl<T: Depends> Depends for Sp<T> {
     require_in_fields!(t);
 }
 
+/// Transparent implementation.
 impl<T: Depends> Depends for Box<T> {
     type Output = T::Output;
     fn provides(&self, v: &mut Vec<Self::Output>) {
@@ -175,6 +176,7 @@ impl<T: Depends> Depends for Box<T> {
     }
 }
 
+/// Transparent implementation.
 impl<T: Depends> Depends for Option<T> {
     type Output = T::Output;
     provide_by_match! {

@@ -1,3 +1,4 @@
+//! Assignments with tuple unpacking and trailing commas.
 #![allow(unused_variables)]
 // Increasingly weird but very valid assignment tuples.
 chandeliers_lus::decl! {

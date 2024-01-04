@@ -1,23 +1,23 @@
 error: Two subexpressions have different clocks: 'when b and '_ are incompatible
-  --> tests/compile_fail/ui/clk/clock-cast.rs:12:9
+  --> tests/compile_fail/ui/clk/clock-cast.rs:15:9
    |
-12 |         n = 1;
+15 |         n = 1;
    |         ^^^^^
    |
 note: This is clocked by 'when b
-  --> tests/compile_fail/ui/clk/clock-cast.rs:12:9
+  --> tests/compile_fail/ui/clk/clock-cast.rs:15:9
    |
-12 |         n = 1;
+15 |         n = 1;
    |         ^
 note: defined here
-  --> tests/compile_fail/ui/clk/clock-cast.rs:9:25
+  --> tests/compile_fail/ui/clk/clock-cast.rs:12:25
    |
-9  |         n, m : int when b;
+12 |         n, m : int when b;
    |                         ^
 note: This is clocked by '_
-  --> tests/compile_fail/ui/clk/clock-cast.rs:12:13
+  --> tests/compile_fail/ui/clk/clock-cast.rs:15:13
    |
-12 |         n = 1;
+15 |         n = 1;
    |             ^
    = note: some operations (notably assignment) have stricter requirements than others on clock equality
    = note: you may need to insert a `when` operator

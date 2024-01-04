@@ -1,3 +1,5 @@
+//! Testing generation of constants.
+
 const E: i64 = 42;
 
 chandeliers_lus::decl! {

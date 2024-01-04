@@ -1,3 +1,5 @@
+//! The cast of `(())` to `()` also works for function calls, where
+//! the output of a function can be implicitly unpacked.
 use chandeliers_sem::traits::*;
 
 chandeliers_lus::decl! {

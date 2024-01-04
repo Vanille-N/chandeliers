@@ -1,35 +1,35 @@
 error: The condition of if should be of type bool
- --> tests/compile_fail/ui/tc/if-int.rs:4:16
+ --> tests/compile_fail/ui/tc/if-int.rs:5:16
   |
-4 |         assert if 1 then true else false;
+5 |         assert if 1 then true else false;
   |                ^^^^^^^^^^^^^^^^^^^^^^^^^
   |
 note: The argument is found to be of type int
- --> tests/compile_fail/ui/tc/if-int.rs:4:19
+ --> tests/compile_fail/ui/tc/if-int.rs:5:19
   |
-4 |         assert if 1 then true else false;
+5 |         assert if 1 then true else false;
   |                   ^
 
 error: Expected a scalar type, found a tuple (int, int, int)
-  --> tests/compile_fail/ui/tc/if-int.rs:11:19
+  --> tests/compile_fail/ui/tc/if-int.rs:12:19
    |
-11 |         assert if (1, 2, 3) then true else false;
+12 |         assert if (1, 2, 3) then true else false;
    |                   ^^^^^^^^^
 
 error: The argument of assert should be of type bool
-  --> tests/compile_fail/ui/tc/if-int.rs:18:9
+  --> tests/compile_fail/ui/tc/if-int.rs:19:9
    |
-18 |         assert 1;
+19 |         assert 1;
    |         ^^^^^^^^
    |
 note: The argument is found to be of type int
-  --> tests/compile_fail/ui/tc/if-int.rs:18:16
+  --> tests/compile_fail/ui/tc/if-int.rs:19:16
    |
-18 |         assert 1;
+19 |         assert 1;
    |                ^
 
 error: Expected a scalar type, found a tuple (int, int, int)
-  --> tests/compile_fail/ui/tc/if-int.rs:25:16
+  --> tests/compile_fail/ui/tc/if-int.rs:26:16
    |
-25 |         assert (1, 2, 3);
+26 |         assert (1, 2, 3);
    |                ^^^^^^^^^

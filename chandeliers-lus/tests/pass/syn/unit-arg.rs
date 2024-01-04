@@ -1,3 +1,5 @@
+//! Unit assignments and tuple unpackings.
+//! Also testing trailing commas.
 chandeliers_lus::decl! {
     node foo() returns ();
     let

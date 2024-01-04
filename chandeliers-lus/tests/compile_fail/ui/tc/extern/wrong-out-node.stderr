@@ -1,7 +1,7 @@
 error[E0308]: mismatched types
-  --> tests/compile_fail/ui/tc/extern/wrong-out-node.rs:15:17
+  --> tests/compile_fail/ui/tc/extern/wrong-out-node.rs:16:17
    |
-15 |     extern node wrong_step_sig(i, j : int) returns (b: bool);
+16 |     extern node wrong_step_sig(i, j : int) returns (b: bool);
    |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^--------
    |                 |                                   |
    |                 |                                   expected `Nillable<bool>` because of return type

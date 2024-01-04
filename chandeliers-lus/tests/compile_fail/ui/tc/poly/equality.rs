@@ -1,3 +1,4 @@
+//! Can't do equality tests or binary operations on generic type.
 chandeliers_lus::decl! {
     #[generic[T]]
     node eq(t, u: T) returns (b : bool);

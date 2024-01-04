@@ -1,11 +1,11 @@
 error: Node `bar` was found to be part of a dependency cycle
- --> tests/compile_fail/ui/causality/cycle-node.rs:5:10
+ --> tests/compile_fail/ui/causality/cycle-node.rs:6:10
   |
-5 |     node bar(i : int) returns (o : int);
+6 |     node bar(i : int) returns (o : int);
   |          ^^^
   |
 note: The cycle also goes through Node `foo`
- --> tests/compile_fail/ui/causality/cycle-node.rs:2:10
+ --> tests/compile_fail/ui/causality/cycle-node.rs:3:10
   |
-2 |     node foo(i : int) returns (o : int);
+3 |     node foo(i : int) returns (o : int);
   |          ^^^

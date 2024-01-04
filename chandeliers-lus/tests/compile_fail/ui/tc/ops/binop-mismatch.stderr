@@ -1,50 +1,50 @@
 error: Binary operator `+` expects arguments of the same type
- --> tests/compile_fail/ui/tc/ops/binop-mismatch.rs:2:21
+ --> tests/compile_fail/ui/tc/ops/binop-mismatch.rs:3:21
   |
-2 |     const N : int = 5 + 0.1;
+3 |     const N : int = 5 + 0.1;
   |                     ^^^^^^^
   |
 note: The left-hand-side is found to be of type int
- --> tests/compile_fail/ui/tc/ops/binop-mismatch.rs:2:21
+ --> tests/compile_fail/ui/tc/ops/binop-mismatch.rs:3:21
   |
-2 |     const N : int = 5 + 0.1;
+3 |     const N : int = 5 + 0.1;
   |                     ^
 note: The right-hand-side is found to be of type float
- --> tests/compile_fail/ui/tc/ops/binop-mismatch.rs:2:25
+ --> tests/compile_fail/ui/tc/ops/binop-mismatch.rs:3:25
   |
-2 |     const N : int = 5 + 0.1;
+3 |     const N : int = 5 + 0.1;
   |                         ^^^
 
 error: Binary operator `+` expects arguments of the same type
- --> tests/compile_fail/ui/tc/ops/binop-mismatch.rs:8:13
+ --> tests/compile_fail/ui/tc/ops/binop-mismatch.rs:9:13
   |
-8 |         o = i + 1 + 4 + 0.5;
+9 |         o = i + 1 + 4 + 0.5;
   |             ^^^^^^^^^^^^^^^
   |
 note: The left-hand-side is found to be of type int
- --> tests/compile_fail/ui/tc/ops/binop-mismatch.rs:8:13
+ --> tests/compile_fail/ui/tc/ops/binop-mismatch.rs:9:13
   |
-8 |         o = i + 1 + 4 + 0.5;
+9 |         o = i + 1 + 4 + 0.5;
   |             ^^^^^^^^^
 note: The right-hand-side is found to be of type float
- --> tests/compile_fail/ui/tc/ops/binop-mismatch.rs:8:25
+ --> tests/compile_fail/ui/tc/ops/binop-mismatch.rs:9:25
   |
-8 |         o = i + 1 + 4 + 0.5;
+9 |         o = i + 1 + 4 + 0.5;
   |                         ^^^
 
 error: Binary operator `=` expects arguments of the same type
-  --> tests/compile_fail/ui/tc/ops/binop-mismatch.rs:13:23
+  --> tests/compile_fail/ui/tc/ops/binop-mismatch.rs:14:23
    |
-13 |     const B : bool = (1 + 1 = (true or false))
+14 |     const B : bool = (1 + 1 = (true or false))
    |                       ^^^^^^^^^^^^^^^^^^^^^^^
    |
 note: The left-hand-side is found to be of type int
-  --> tests/compile_fail/ui/tc/ops/binop-mismatch.rs:13:23
+  --> tests/compile_fail/ui/tc/ops/binop-mismatch.rs:14:23
    |
-13 |     const B : bool = (1 + 1 = (true or false))
+14 |     const B : bool = (1 + 1 = (true or false))
    |                       ^^^^^
 note: The right-hand-side is found to be of type bool
-  --> tests/compile_fail/ui/tc/ops/binop-mismatch.rs:13:31
+  --> tests/compile_fail/ui/tc/ops/binop-mismatch.rs:14:31
    |
-13 |     const B : bool = (1 + 1 = (true or false))
+14 |     const B : bool = (1 + 1 = (true or false))
    |                               ^^^^^^^^^^^^^^^

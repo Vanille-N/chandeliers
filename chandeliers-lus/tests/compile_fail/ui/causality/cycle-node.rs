@@ -1,3 +1,4 @@
+//! Cyclic defitition of nodes.
 chandeliers_lus::decl! {
     node foo(i : int) returns (o : int);
     let o = bar(i); tel;

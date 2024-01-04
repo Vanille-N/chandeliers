@@ -1,7 +1,7 @@
 error: Malformed attribute mai: no such attribute
- --> tests/compile_fail/ui/options/malformed.rs:2:5
+ --> tests/compile_fail/ui/options/malformed.rs:3:5
   |
-2 |     #[mai]
+3 |     #[mai]
   |     ^^^^^^
   |
   = note: See the available options and their definition at https://github.com/Vanille-N/chandeliers#compilation-options

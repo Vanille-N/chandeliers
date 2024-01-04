@@ -1,3 +1,4 @@
+//! Unary operators with wrong typed operands.
 chandeliers_lus::decl! {
     const X : float = not 4.0;
 }

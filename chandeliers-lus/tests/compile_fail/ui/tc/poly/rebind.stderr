@@ -1,16 +1,16 @@
 error: Cannot satisfy constraint T = bool introduced here...
-  --> tests/compile_fail/ui/tc/poly/rebind.rs:11:26
+  --> tests/compile_fail/ui/tc/poly/rebind.rs:13:26
    |
-11 |     let v = alternate(1, true); tel;
+13 |     let v = alternate(1, true); tel;
    |                          ^^^^
    |
 note: ...because a previous bound already enforces T = int
-  --> tests/compile_fail/ui/tc/poly/rebind.rs:11:23
+  --> tests/compile_fail/ui/tc/poly/rebind.rs:13:23
    |
-11 |     let v = alternate(1, true); tel;
+13 |     let v = alternate(1, true); tel;
    |                       ^
 note: Unable to satisfy the generic bounds on T
-  --> tests/compile_fail/ui/tc/poly/rebind.rs:3:20
+  --> tests/compile_fail/ui/tc/poly/rebind.rs:5:20
    |
-3  |     node alternate(x, y: T) returns (t: T);
+5  |     node alternate(x, y: T) returns (t: T);
    |                    ^^^^^^^^

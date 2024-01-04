@@ -1,3 +1,4 @@
+//! Testing the `#[main]` annotation on an `extern node`.
 chandeliers_lus::decl! {
     #[export]
     node system() returns ();

@@ -1,3 +1,4 @@
+//! Checking the topological sort on node declarations.
 chandeliers_lus::decl! {
     node f() returns ();
     let () = g(); tel;

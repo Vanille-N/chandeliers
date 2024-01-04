@@ -1,7 +1,7 @@
 error: Variable X not found in the context.
- --> tests/compile_fail/ui/tc/not-found.rs:6:13
+ --> tests/compile_fail/ui/tc/not-found.rs:7:13
   |
-6 |         i = X;
+7 |         i = X;
   |             ^
   |
   = note: Perhaps you meant one of the local variables: i

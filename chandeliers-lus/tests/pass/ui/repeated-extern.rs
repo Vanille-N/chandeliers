@@ -1,3 +1,4 @@
+//! No collision between several imports of the same extern variable.
 const T: i64 = 0;
 
 chandeliers_lus::decl! {

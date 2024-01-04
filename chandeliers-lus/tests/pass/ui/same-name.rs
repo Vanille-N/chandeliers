@@ -1,3 +1,5 @@
+//! Thanks to proper name sanitization, there's no issue with having a variable
+//! of the node have the same name as the node itself.
 chandeliers_lus::decl! {
     #[export]
     const X : int = 0;

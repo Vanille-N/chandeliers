@@ -1,11 +1,11 @@
 error: Attempt to redefine a, when a prior item already defines it
- --> tests/compile_fail/ui/causality/redef-var-ov.rs:3:9
+ --> tests/compile_fail/ui/causality/redef-var-ov.rs:5:9
   |
-3 |     var a : int;
+5 |     var a : int;
   |         ^
   |
 note: Already defined here
- --> tests/compile_fail/ui/causality/redef-var-ov.rs:2:25
+ --> tests/compile_fail/ui/causality/redef-var-ov.rs:4:25
   |
-2 |     node foo() returns (a : bool);
+4 |     node foo() returns (a : bool);
   |                         ^

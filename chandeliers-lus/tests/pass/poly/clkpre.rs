@@ -1,3 +1,5 @@
+//! Testing a way to have `pre` on arbitrary expressions by using
+//! generics.
 chandeliers_lus::decl! {
     #[generic[T]]
     node ipre(t, init: T) returns (pt: T);

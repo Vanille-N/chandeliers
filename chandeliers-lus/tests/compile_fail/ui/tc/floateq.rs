@@ -1,3 +1,5 @@
+//! `f64` famously doesn't implement `Eq`, and for good reason.
+//! We keep this behavior here.
 chandeliers_lus::decl! {
     node rounding_error() returns ();
     let

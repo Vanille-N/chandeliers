@@ -1,11 +1,11 @@
 error: Attempt to redefine Variable `a`, when a prior item already defines it
- --> tests/compile_fail/ui/causality/redef-var-def.rs:5:9
+ --> tests/compile_fail/ui/causality/redef-var-def.rs:8:9
   |
-5 |         a = 7;
+8 |         a = 7;
   |         ^^^^^
   |
 note: Already defined here
- --> tests/compile_fail/ui/causality/redef-var-def.rs:4:9
+ --> tests/compile_fail/ui/causality/redef-var-def.rs:7:9
   |
-4 |         a = 42;
+7 |         a = 42;
   |         ^^^^^^

@@ -1,3 +1,4 @@
+//! `_n` is clocked by the wrong expression.
 chandeliers_lus::decl! {
     extern node random_bool() returns (b : bool);
 

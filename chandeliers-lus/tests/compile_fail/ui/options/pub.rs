@@ -1,3 +1,5 @@
+//! Not enough visibility on `PRIVATE` and `private`.
+//! Need `pub` for them to escape their module.
 #![allow(unused_imports)]
 
 mod vis {

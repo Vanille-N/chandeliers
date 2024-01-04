@@ -1,3 +1,7 @@
+//! Swap as a generic node.
+//! Testing that `swap(swap(...))` is the identity is a good way to check
+//! all at once that the generic instanciation works properly, and the
+//! cast of `f((...))` to `f(...)`.
 chandeliers_lus::decl! {
     #[generic[T, U]]
     #[trace("{t0} <-> {u0}\n")]

@@ -1,34 +1,34 @@
 error: Variable i is not positive at this depth
-  --> tests/compile_fail/ui/causality/positivity.rs:27:17
+  --> tests/compile_fail/ui/causality/positivity.rs:29:17
    |
-27 |         o = pre i;
+29 |         o = pre i;
    |                 ^
    |
    = note: tried to reach 1 steps into the past, with only 0 available
    = note: Maybe add a `->` in front of the expression to increase the depth ?
 
 error: Variable i is not positive at this depth
-  --> tests/compile_fail/ui/causality/positivity.rs:34:35
+  --> tests/compile_fail/ui/causality/positivity.rs:36:35
    |
-34 |         o = 0 -> 0 -> pre pre pre i;
+36 |         o = 0 -> 0 -> pre pre pre i;
    |                                   ^
    |
    = note: tried to reach 3 steps into the past, with only 2 available
    = note: Maybe add a `->` in front of the expression to increase the depth ?
 
 error: Variable i is not positive at this depth
-  --> tests/compile_fail/ui/causality/positivity.rs:41:80
+  --> tests/compile_fail/ui/causality/positivity.rs:43:80
    |
-41 |         o = 0 -> 0 -> 0 -> 0 -> 0 -> 0 -> 0 -> pre pre pre pre pre pre pre pre i;
+43 |         o = 0 -> 0 -> 0 -> 0 -> 0 -> 0 -> 0 -> pre pre pre pre pre pre pre pre i;
    |                                                                                ^
    |
    = note: tried to reach 8 steps into the past, with only 7 available
    = note: Maybe add a `->` in front of the expression to increase the depth ?
 
 error: Variable i is not positive at this depth
-  --> tests/compile_fail/ui/causality/positivity.rs:48:59
+  --> tests/compile_fail/ui/causality/positivity.rs:50:59
    |
-48 |         o = 0 -> 0 -> pre pre pre pre pre pre pre pre pre i;
+50 |         o = 0 -> 0 -> pre pre pre pre pre pre pre pre pre i;
    |                                                           ^
    |
    = note: tried to reach 9 steps into the past, with only 2 available

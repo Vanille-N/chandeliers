@@ -1,7 +1,7 @@
 error: Variable b is not available yet at this point of the typechecking.
- --> tests/compile_fail/ui/tc/when-missing.rs:2:27
+ --> tests/compile_fail/ui/tc/when-missing.rs:3:27
   |
-2 |     node foo(x : int when b) returns ();
+3 |     node foo(x : int when b) returns ();
   |                           ^
   |
   = note: During this incremental typechecking, you cannot access global
@@ -11,9 +11,9 @@ error: Variable b is not available yet at this point of the typechecking.
   = note: These are the variables that are already useable: (none declared)
 
 error: Variable b is not available yet at this point of the typechecking.
- --> tests/compile_fail/ui/tc/when-missing.rs:7:27
+ --> tests/compile_fail/ui/tc/when-missing.rs:8:27
   |
-7 |     node foo(x : int when b) returns (b : bool);
+8 |     node foo(x : int when b) returns (b : bool);
   |                           ^
   |
   = note: During this incremental typechecking, you cannot access global

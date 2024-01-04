@@ -1,3 +1,4 @@
+//! Cyclic definition of local variables.
 chandeliers_lus::decl! {
     node foo(i : int) returns (o : int);
     var v, w : int;

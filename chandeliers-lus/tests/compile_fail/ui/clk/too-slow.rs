@@ -1,3 +1,4 @@
+//! `_n` is not initialized enough.
 chandeliers_lus::decl! {
     node system() returns ();
     var b : bool; _n : int;

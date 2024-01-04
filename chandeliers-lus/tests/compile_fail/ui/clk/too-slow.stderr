@@ -1,23 +1,23 @@
 error: Two subexpressions have different clocks: 'self and 'when b are incompatible
- --> tests/compile_fail/ui/clk/too-slow.rs:6:9
+ --> tests/compile_fail/ui/clk/too-slow.rs:7:9
   |
-6 |         _n = 1 when b;
+7 |         _n = 1 when b;
   |         ^^^^^^^^^^^^^
   |
 note: This is clocked by 'self
- --> tests/compile_fail/ui/clk/too-slow.rs:6:9
+ --> tests/compile_fail/ui/clk/too-slow.rs:7:9
   |
-6 |         _n = 1 when b;
+7 |         _n = 1 when b;
   |         ^^
 note: This is clocked by 'when b
- --> tests/compile_fail/ui/clk/too-slow.rs:6:14
+ --> tests/compile_fail/ui/clk/too-slow.rs:7:14
   |
-6 |         _n = 1 when b;
+7 |         _n = 1 when b;
   |              ^^^^^^^^
 note: defined here
- --> tests/compile_fail/ui/clk/too-slow.rs:6:21
+ --> tests/compile_fail/ui/clk/too-slow.rs:7:21
   |
-6 |         _n = 1 when b;
+7 |         _n = 1 when b;
   |                     ^
   = note: some operations (notably assignment) have stricter requirements than others on clock equality
   = note: you may need to insert a `when` operator

@@ -1,5 +1,5 @@
 error: No definition provided for Variable `i` which is required
- --> tests/compile_fail/ui/causality/undef.rs:2:25
+ --> tests/compile_fail/ui/causality/undef.rs:5:25
   |
-2 |     node foo() returns (i : int);
+5 |     node foo() returns (i : int);
   |                         ^

@@ -1,3 +1,4 @@
+//! Showcase of importing randomness from a crate.
 use chandeliers_sem::traits::*;
 use chandeliers_sem::*;
 use rand::Rng;

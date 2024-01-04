@@ -1,3 +1,4 @@
+//! A fun test to showcase what `#[trace]` enables accidentally.
 chandeliers_lus::decl! {
     #[trace("Fizz")]
     node fizz() returns ();

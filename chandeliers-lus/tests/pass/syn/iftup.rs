@@ -1,3 +1,4 @@
+//! If can accept arbitrary types.
 use chandeliers_sem::traits::*;
 
 chandeliers_lus::decl! {

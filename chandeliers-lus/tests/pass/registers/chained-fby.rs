@@ -1,3 +1,4 @@
+//! Chaining `fby` operators.
 chandeliers_lus::decl! {
     #[trace("witness {b}\n")]
     node witness() returns (b : bool);

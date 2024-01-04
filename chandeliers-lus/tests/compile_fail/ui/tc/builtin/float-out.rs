@@ -1,3 +1,4 @@
+//! Wrong output type.
 chandeliers_lus::decl! {
     extern node float_of_int(i : int) returns (f : float);
 

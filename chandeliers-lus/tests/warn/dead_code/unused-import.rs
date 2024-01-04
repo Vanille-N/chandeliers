@@ -1,3 +1,4 @@
+//! Dead code analysis for extern imports.
 #![deny(dead_code)]
 
 chandeliers_lus::decl! {

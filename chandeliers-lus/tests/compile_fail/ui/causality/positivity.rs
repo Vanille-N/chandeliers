@@ -1,4 +1,6 @@
-// Trying many combinations of depths.
+//! Trying many combinations of depths.
+//! Testing the correctness of the positivity checker by having
+//! tests that are exactly off-by-one in both directions for positivity.
 
 chandeliers_lus::decl! {
     node normal(i : int) returns (o : int);

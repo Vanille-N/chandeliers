@@ -1,5 +1,5 @@
 error: expected `=`
- --> tests/compile_fail/ui/tc/when-on-const.rs:2:19
+ --> tests/compile_fail/ui/tc/when-on-const.rs:3:19
   |
-2 |     const X : int when b = 0;
+3 |     const X : int when b = 0;
   |                   ^^^^

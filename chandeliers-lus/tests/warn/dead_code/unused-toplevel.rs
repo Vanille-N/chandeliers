@@ -1,3 +1,4 @@
+//! Dead code analysis for toplevel definitions.
 #![deny(dead_code)]
 
 chandeliers_lus::decl! {

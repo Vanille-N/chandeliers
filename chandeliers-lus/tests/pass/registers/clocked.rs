@@ -1,3 +1,5 @@
+//! Testing `#[universal_pre]` by comparing its output to the
+//! -- at this point trusted -- output of a node in the default temporal mode.
 chandeliers_lus::decl! {
     node foo() returns (i : int);
     let i = 0 fby i + 1; tel;

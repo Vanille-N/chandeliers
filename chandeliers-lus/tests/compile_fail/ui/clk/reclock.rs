@@ -1,3 +1,5 @@
+//! Attempts to use bad clocks, including
+//! clocks at level 2 (when the clock expression is itself clocked).
 chandeliers_lus::decl! {
     node foo() returns ();
     var b0 : bool;

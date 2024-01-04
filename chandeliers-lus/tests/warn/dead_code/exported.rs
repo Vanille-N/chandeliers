@@ -1,3 +1,4 @@
+//! Checking that `#[export]` connects with rustc's dead code analysis.
 #![deny(dead_code)]
 
 mod hidden {

@@ -1,3 +1,5 @@
+//! Other types provided where booleans are expected.
+//! (`assert` and `if`).
 chandeliers_lus::decl! {
     node foo(i : int) returns (b : bool);
     let

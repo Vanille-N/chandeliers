@@ -1,7 +1,7 @@
 error: Cannot compute the `pre` of this expression because the context does not provide an initialization value
- --> tests/compile_fail/ui/causality/reg-positivity.rs:4:17
+ --> tests/compile_fail/ui/causality/reg-positivity.rs:5:17
   |
-4 |     let o = pre i; tel;
+5 |     let o = pre i; tel;
   |                 ^
   |
   = note: Maybe add a `->` in front of the expression to increase the depth ?

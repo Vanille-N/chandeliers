@@ -1,3 +1,5 @@
+//! This is an abandonned test from an attempt to make more
+//! complex clock management.
 chandeliers_lus::decl! {
     node foo(b1 : bool) returns (i : int when b1);
     let

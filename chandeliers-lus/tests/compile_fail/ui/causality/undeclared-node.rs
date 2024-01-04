@@ -1,3 +1,6 @@
+//! Undeclared node `fby_witness`.
+//! This test is just copy-pasted from an actual example that had a bug.
+//! This should be caught by chandeliers, not rustc.
 chandeliers_lus::decl! {
     #[trace("testing {x}\n")]
     node fby_testing(x: int) returns (y: int);

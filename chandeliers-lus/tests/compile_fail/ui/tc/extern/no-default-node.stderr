@@ -1,22 +1,22 @@
 error[E0277]: the trait bound `no_default: Default` is not satisfied
- --> tests/compile_fail/ui/tc/extern/no-default-node.rs:5:17
+ --> tests/compile_fail/ui/tc/extern/no-default-node.rs:7:17
   |
-5 |     extern node no_default() returns ();
+7 |     extern node no_default() returns ();
   |                 ^^^^^^^^^^ the trait `Default` is not implemented for `no_default`
   |
 help: consider annotating `no_default` with `#[derive(Default)]`
   |
-3 + #[derive(Default)]
-4 | struct no_default {}
+4 + #[derive(Default)]
+5 | struct no_default {}
   |
 
 error[E0599]: no method named `step` found for struct `no_default` in the current scope
- --> tests/compile_fail/ui/tc/extern/no-default-node.rs:5:17
+ --> tests/compile_fail/ui/tc/extern/no-default-node.rs:7:17
   |
-3 | struct no_default {}
+4 | struct no_default {}
   | ----------------- method `step` not found for this struct
-4 | chandeliers_lus::decl! {
-5 |     extern node no_default() returns ();
+...
+7 |     extern node no_default() returns ();
   |                 ^^^^^^^^^^ method not found in `no_default`
   |
   = help: items from traits can only be used if the trait is implemented and in scope

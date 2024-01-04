@@ -1,7 +1,7 @@
 error: Variable b is not available yet at this point of the typechecking.
- --> tests/compile_fail/ui/tc/when-self.rs:2:28
+ --> tests/compile_fail/ui/tc/when-self.rs:3:28
   |
-2 |     node foo(b : bool when b) returns ();
+3 |     node foo(b : bool when b) returns ();
   |                            ^
   |
   = note: During this incremental typechecking, you cannot access global

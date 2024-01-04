@@ -83,6 +83,7 @@ impl Causality for ast::decl::Node {
         for stmt in stmts {
             g.insert(stmt);
         }
+        // Define interface
         for l in locals.t.iter() {
             let unit = Reference::LocalVarName(l.t.name.as_ref().map(|_, t| t.repr.t.clone()));
             g.must_provide(eaccum, &unit)?;
@@ -91,6 +92,7 @@ impl Causality for ast::decl::Node {
             let unit = Reference::LocalVarName(o.t.name.as_ref().map(|_, t| t.repr.t.clone()));
             g.must_provide(eaccum, &unit)?;
         }
+        // Sort internals
         let stmts = g.scheduling(eaccum)?;
         Some(Self {
             name,

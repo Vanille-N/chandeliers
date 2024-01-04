@@ -1,50 +1,50 @@
 error: Type mismatch between the left and right sides: Base types should be unifiable: expected bool, got int
- --> tests/compile_fail/ui/tc/all-tup.rs:3:9
+ --> tests/compile_fail/ui/tc/all-tup.rs:5:9
   |
-3 |     let (a, b, c) = (x, y, z); tel
+5 |     let (a, b, c) = (x, y, z); tel
   |         ^^^^^^^^^^^^^^^^^^^^^
   |
 note: This element has type bool
- --> tests/compile_fail/ui/tc/all-tup.rs:3:10
+ --> tests/compile_fail/ui/tc/all-tup.rs:5:10
   |
-3 |     let (a, b, c) = (x, y, z); tel
+5 |     let (a, b, c) = (x, y, z); tel
   |          ^
 note: While this element has type int
- --> tests/compile_fail/ui/tc/all-tup.rs:3:22
+ --> tests/compile_fail/ui/tc/all-tup.rs:5:22
   |
-3 |     let (a, b, c) = (x, y, z); tel
+5 |     let (a, b, c) = (x, y, z); tel
   |                      ^
 
 error: Type mismatch between the left and right sides: Base types should be unifiable: expected bool, got int
- --> tests/compile_fail/ui/tc/all-tup.rs:3:9
+ --> tests/compile_fail/ui/tc/all-tup.rs:5:9
   |
-3 |     let (a, b, c) = (x, y, z); tel
+5 |     let (a, b, c) = (x, y, z); tel
   |         ^^^^^^^^^^^^^^^^^^^^^
   |
 note: This element has type bool
- --> tests/compile_fail/ui/tc/all-tup.rs:3:13
+ --> tests/compile_fail/ui/tc/all-tup.rs:5:13
   |
-3 |     let (a, b, c) = (x, y, z); tel
+5 |     let (a, b, c) = (x, y, z); tel
   |             ^
 note: While this element has type int
- --> tests/compile_fail/ui/tc/all-tup.rs:3:25
+ --> tests/compile_fail/ui/tc/all-tup.rs:5:25
   |
-3 |     let (a, b, c) = (x, y, z); tel
+5 |     let (a, b, c) = (x, y, z); tel
   |                         ^
 
 error: Type mismatch between the left and right sides: Base types should be unifiable: expected bool, got int
- --> tests/compile_fail/ui/tc/all-tup.rs:3:9
+ --> tests/compile_fail/ui/tc/all-tup.rs:5:9
   |
-3 |     let (a, b, c) = (x, y, z); tel
+5 |     let (a, b, c) = (x, y, z); tel
   |         ^^^^^^^^^^^^^^^^^^^^^
   |
 note: This element has type bool
- --> tests/compile_fail/ui/tc/all-tup.rs:3:16
+ --> tests/compile_fail/ui/tc/all-tup.rs:5:16
   |
-3 |     let (a, b, c) = (x, y, z); tel
+5 |     let (a, b, c) = (x, y, z); tel
   |                ^
 note: While this element has type int
- --> tests/compile_fail/ui/tc/all-tup.rs:3:28
+ --> tests/compile_fail/ui/tc/all-tup.rs:5:28
   |
-3 |     let (a, b, c) = (x, y, z); tel
+5 |     let (a, b, c) = (x, y, z); tel
   |                            ^

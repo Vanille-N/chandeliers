@@ -1,3 +1,4 @@
+//! `if`'s condition isn't of the right type.
 chandeliers_lus::decl! {
     node foo() returns ();
     let

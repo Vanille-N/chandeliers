@@ -1,11 +1,11 @@
 error: Attempt to redefine Global `X`, when a prior item already defines it
- --> tests/compile_fail/ui/causality/redef-const.rs:3:5
+ --> tests/compile_fail/ui/causality/redef-const.rs:4:5
   |
-3 |     const X : float = 0.0;
+4 |     const X : float = 0.0;
   |     ^^^^^^^^^^^^^^^^^^^^^
   |
 note: Already defined here
- --> tests/compile_fail/ui/causality/redef-const.rs:2:5
+ --> tests/compile_fail/ui/causality/redef-const.rs:3:5
   |
-2 |     const X : int = 0;
+3 |     const X : int = 0;
   |     ^^^^^^^^^^^^^^^^^

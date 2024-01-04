@@ -1,3 +1,4 @@
+//! Trying no name variables with reserved keywords.
 chandeliers_lus::decl! {
     const crate : int = 0;
 }

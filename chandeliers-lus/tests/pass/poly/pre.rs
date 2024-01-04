@@ -1,3 +1,5 @@
+// Yet another generic `pre` operator.
+// There are a lot of those.
 chandeliers_lus::decl! {
     #[generic[T]]
     node ipre(t, i: T) returns (o: T);

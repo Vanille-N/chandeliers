@@ -1,7 +1,7 @@
 error: Variable A not found in the context.
- --> tests/compile_fail/ui/causality/undeclared-const.rs:2:20
+ --> tests/compile_fail/ui/causality/undeclared-const.rs:5:20
   |
-2 |     const B: int = A;
+5 |     const B: int = A;
   |                    ^
   |
   = note: Perhaps you meant one of the local variables: (none declared)

@@ -1,3 +1,4 @@
+//! Associativity tests.
 chandeliers_lus::decl! {
     #[export]
     node assoc() returns ();

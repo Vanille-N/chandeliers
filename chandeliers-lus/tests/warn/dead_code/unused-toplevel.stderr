@@ -1,17 +1,17 @@
 error: method `step` is never used
- --> tests/warn/dead_code/unused-toplevel.rs:4:10
+ --> tests/warn/dead_code/unused-toplevel.rs:5:10
   |
-4 |     node foo() returns ();
+5 |     node foo() returns ();
   |          ^^^ method in this implementation
   |
 note: the lint level is defined here
- --> tests/warn/dead_code/unused-toplevel.rs:1:9
+ --> tests/warn/dead_code/unused-toplevel.rs:2:9
   |
-1 | #![deny(dead_code)]
+2 | #![deny(dead_code)]
   |         ^^^^^^^^^
 
 error: constant `X__lus_0_global` is never used
- --> tests/warn/dead_code/unused-toplevel.rs:7:11
+ --> tests/warn/dead_code/unused-toplevel.rs:8:11
   |
-7 |     const X : int = 0;
+8 |     const X : int = 0;
   |           ^

@@ -1,3 +1,4 @@
+//! Positivity test, but for registers.
 chandeliers_lus::decl! {
     #[universal_pre]
     node foo(i : int) returns (o : int);

@@ -1,3 +1,4 @@
+//! Some standard counters, checked against each other.
 chandeliers_lus::decl! {
     node counting() returns (n : int);
     let n = 0 fby n + 1; tel;

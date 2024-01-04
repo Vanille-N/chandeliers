@@ -1,39 +1,39 @@
 error[E0428]: the name `X` is defined multiple times
- --> tests/compile_fail/ui/tc/extern/dupdef.rs:9:11
-  |
-4 |     const X: int = 0;
-  |           - previous definition of the value `X` here
+  --> tests/compile_fail/ui/tc/extern/dupdef.rs:10:11
+   |
+5  |     const X: int = 0;
+   |           - previous definition of the value `X` here
 ...
-9 |     const X: int = 0;
-  |           ^ `X` redefined here
-  |
-  = note: `X` must be defined only once in the value namespace of this module
+10 |     const X: int = 0;
+   |           ^ `X` redefined here
+   |
+   = note: `X` must be defined only once in the value namespace of this module
 
 error[E0428]: the name `foo` is defined multiple times
-  --> tests/compile_fail/ui/tc/extern/dupdef.rs:20:10
+  --> tests/compile_fail/ui/tc/extern/dupdef.rs:21:10
    |
-14 |     node foo() returns ();
+15 |     node foo() returns ();
    |          --- previous definition of the type `foo` here
 ...
-20 |     node foo() returns ();
+21 |     node foo() returns ();
    |          ^^^ `foo` redefined here
    |
    = note: `foo` must be defined only once in the type namespace of this module
 
 error[E0119]: conflicting implementations of trait `Default` for type `foo`
-  --> tests/compile_fail/ui/tc/extern/dupdef.rs:20:10
+  --> tests/compile_fail/ui/tc/extern/dupdef.rs:21:10
    |
-14 |     node foo() returns ();
+15 |     node foo() returns ();
    |          --- first implementation here
 ...
-20 |     node foo() returns ();
+21 |     node foo() returns ();
    |          ^^^ conflicting implementation for `foo`
 
 error[E0592]: duplicate definitions with name `step`
-  --> tests/compile_fail/ui/tc/extern/dupdef.rs:14:10
+  --> tests/compile_fail/ui/tc/extern/dupdef.rs:15:10
    |
-14 |     node foo() returns ();
+15 |     node foo() returns ();
    |          ^^^^^^^^^^^^^^^^ duplicate definitions for `step`
 ...
-20 |     node foo() returns ();
+21 |     node foo() returns ();
    |          ---------------- other definition for `step`

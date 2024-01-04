@@ -1,3 +1,4 @@
+//! Node doesn't have a closing `tel`.
 chandeliers_lus::decl! {
     node foo() returns ();
     let

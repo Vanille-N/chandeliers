@@ -1,3 +1,4 @@
+//! Simulating `if` with `merge`.
 chandeliers_lus::decl! {
     node foo(b : bool; x, y : int) returns (i : int);
     let

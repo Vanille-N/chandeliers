@@ -1,3 +1,4 @@
+//! Testing the `#[trace]` annotation on extern nodes.
 chandeliers_lus::decl! {
     #[trace[stderr]]
     #[export]

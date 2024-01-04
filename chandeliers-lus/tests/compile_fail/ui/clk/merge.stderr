@@ -1,16 +1,16 @@
 error: This expression is too slow: expected the implicit clock 'self, found 'when b
- --> tests/compile_fail/ui/clk/merge.rs:4:23
+ --> tests/compile_fail/ui/clk/merge.rs:5:23
   |
-4 |         i = if b then x when b else y whenot b;
+5 |         i = if b then x when b else y whenot b;
   |                       ^^^^^^^^
   |
 note: Found 'when b here
- --> tests/compile_fail/ui/clk/merge.rs:4:30
+ --> tests/compile_fail/ui/clk/merge.rs:5:30
   |
-4 |         i = if b then x when b else y whenot b;
+5 |         i = if b then x when b else y whenot b;
   |                              ^
 note: Expected because this expression moves at the implicit pace
- --> tests/compile_fail/ui/clk/merge.rs:4:16
+ --> tests/compile_fail/ui/clk/merge.rs:5:16
   |
-4 |         i = if b then x when b else y whenot b;
+5 |         i = if b then x when b else y whenot b;
   |                ^

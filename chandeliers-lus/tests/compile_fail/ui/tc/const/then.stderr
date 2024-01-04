@@ -1,7 +1,7 @@
 error: The delay operator (-> / fby) is not valid in const contexts
- --> tests/compile_fail/ui/tc/const/then.rs:2:21
+ --> tests/compile_fail/ui/tc/const/then.rs:3:21
   |
-2 |     const X : int = 0 -> 1;
+3 |     const X : int = 0 -> 1;
   |                     ^^^^^^
   |
   = note: You must put this definition inside a node

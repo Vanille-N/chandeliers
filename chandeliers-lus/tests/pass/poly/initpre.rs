@@ -1,3 +1,4 @@
+//! Generic `pre` operator.
 chandeliers_lus::decl! {
     #[generic[T]]
     node ipre(t, i: T) returns (o: T);

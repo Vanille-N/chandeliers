@@ -1,3 +1,4 @@
+//! General dead code analysis tests.
 #![deny(dead_code)]
 
 chandeliers_lus::decl! {

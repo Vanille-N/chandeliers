@@ -111,13 +111,15 @@ macro_rules! compiling {
     };
 }
 
+// Our battery of tests
+// Compile-Fail tests. These should fail to compile.
 compiling!(fail_ui_causality with compile_fail in compile_fail/ui/causality/);
 compiling!(fail_ui_syn with compile_fail in compile_fail/ui/syn/);
 compiling!(fail_ui_tc with compile_fail in compile_fail/ui/tc/);
 compiling!(fail_ui_options with compile_fail in compile_fail/ui/options/);
 compiling!(fail_std with compile_fail in compile_fail/std/);
 compiling!(fail_ui_clk with compile_fail in compile_fail/ui/clk/);
-
+// Pass tests. These should compile and run.
 compiling!(pass_ui with pass in pass/ui/);
 compiling!(pass_syn with pass in pass/syn/);
 compiling!(pass_std with pass in pass/std/);
@@ -126,9 +128,14 @@ compiling!(pass_given with pass in pass/given/);
 compiling!(pass_options with pass in pass/options/);
 compiling!(pass_poly with pass in pass/poly/);
 compiling!(pass_registers with pass in pass/registers/);
-
+// Warn tests, which are technically implemented as fail tests
+// by having `#[deny(warnings)]`.
 compiling!(warn_dead_code with compile_fail in warn/dead_code/);
 compiling!(warn_options with compile_fail in warn/options/);
+// Not shown here: there is one extra test in `tests/` which
+// is a `fail` test.
+// `assert-false` is expected to compile successfully, but fail at runtime.
+// This is not supported by the test framework used here, so it's handled manually.
 
 /// Emit one error message from a sequence of spans and associated hint messages.
 fn emit(elements: Error, level: proc_macro::Level) -> proc_macro2::TokenStream {

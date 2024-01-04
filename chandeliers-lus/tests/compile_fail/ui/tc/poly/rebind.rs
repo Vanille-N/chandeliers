@@ -1,3 +1,5 @@
+//! Expected twice the same type, whatever it is, got two different types.
+//! (`(int, bool)` is not convertible to `(T, T)`).
 chandeliers_lus::decl! {
     #[generic[T]]
     node alternate(x, y: T) returns (t: T);

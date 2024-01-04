@@ -1,3 +1,4 @@
+//! Proper parsing of atomic and positive expressions.
 use chandeliers_std::cast::float_of_int;
 
 chandeliers_lus::decl! {

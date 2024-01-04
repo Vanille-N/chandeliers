@@ -1,3 +1,4 @@
+//! A collection of binary operators with wrong type operands.
 chandeliers_lus::decl! {
     const B : bool = true + true;
 }

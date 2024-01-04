@@ -1,3 +1,4 @@
+//! Testing the cast of `(())` to `()`.
 chandeliers_lus::decl! {
     node zero() returns ();
     let tel;

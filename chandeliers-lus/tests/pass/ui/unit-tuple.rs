@@ -1,3 +1,5 @@
+//! To execute a node that returns nothing but has side-effects
+//! (assertions, printing), assign it to a unit tuple.
 use chandeliers_sem::traits::*;
 
 chandeliers_lus::decl! {

@@ -1,3 +1,4 @@
+//! Annotations defined several times.
 #![deny(warnings)]
 
 chandeliers_lus::decl! {

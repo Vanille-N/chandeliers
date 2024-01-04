@@ -1,3 +1,4 @@
+//! Binary operation has operands of different types.
 chandeliers_lus::decl! {
     const N : int = 5 + 0.1;
 }

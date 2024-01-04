@@ -1,3 +1,6 @@
+//! Names that are also Rust reserved keywords, but are valid when properly
+//! sanitized (`Ident::new_raw`).
+
 use chandeliers_std::cast::float_of_int;
 
 chandeliers_lus::decl! {

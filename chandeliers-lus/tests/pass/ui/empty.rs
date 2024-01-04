@@ -1,3 +1,5 @@
+//! Minimal correct node definitions.
+
 #![allow(unused_variables)]
 
 chandeliers_lus::decl! {

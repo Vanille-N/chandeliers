@@ -1,3 +1,4 @@
+//! Duplicate type variable `T`.
 chandeliers_lus::decl! {
     #[generic[T, T]]
     node id(t0: T) returns (t1: T);

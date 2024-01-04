@@ -267,6 +267,8 @@ impl ClockCheckExpr for expr::Expr {
             Self::Reference(r) => Some(r.clockcheck(eaccum, ctx)?.t),
             Self::DummyParen(inner) => Some(inner.clockcheck(eaccum, ctx)?.t),
             Self::DummyPre(e) => {
+                // This encoding of pre can only handle expressions under the
+                // implicit clock. Use registers for arbitrary clocked expressions.
                 let clk = e.clockcheck(eaccum, ctx)?;
                 clk.as_ref().is_implicit(
                     eaccum,
@@ -274,15 +276,8 @@ impl ClockCheckExpr for expr::Expr {
                 )?;
                 Some(clk.t)
             }
-            Self::Bin { op: _, lhs, rhs } => {
-                let lhs = lhs.clockcheck(eaccum, ctx);
-                let rhs = rhs.clockcheck(eaccum, ctx);
-                let mut lhs = lhs?;
-                let rhs = rhs?;
-                lhs.refine(eaccum, rhs, span)?;
-                Some(lhs.t)
-            }
-            Self::Cmp { op: _, lhs, rhs } => {
+            Self::Bin { op: _, lhs, rhs } | Self::Cmp { op: _, lhs, rhs } => {
+                // Both operands need to have compatible clocks.
                 let lhs = lhs.clockcheck(eaccum, ctx);
                 let rhs = rhs.clockcheck(eaccum, ctx);
                 let mut lhs = lhs?;
@@ -299,6 +294,9 @@ impl ClockCheckExpr for expr::Expr {
                 before,
                 after,
             } => {
+                // This encoding of `->` can only handle expressions under
+                // the implicit clock. Use registers and flips for aribtrary clocked
+                // expressions.
                 let before = before.clockcheck(eaccum, ctx);
                 let after = after.clockcheck(eaccum, ctx);
                 let before = before?;
@@ -320,7 +318,8 @@ impl ClockCheckExpr for expr::Expr {
                 initial,
                 continued,
             } => {
-                // Rhs dictates the rythm, and lhs needs to be at least as fast.
+                // Both operands need to have exactly the same speed, otherwise
+                // we're not sure when to make the switch.
                 let lhs = initial.clockcheck(eaccum, ctx);
                 let rhs = continued.clockcheck(eaccum, ctx);
                 let rhs = rhs?;
@@ -348,11 +347,13 @@ impl ClockCheckExpr for expr::Expr {
                 id: _,
                 args,
             } => {
+                // Function calls transmit the clock as-is.
                 let args = args.clockcheck(eaccum, ctx)?;
                 Some(args.t)
             }
             Self::Tuple(tup) => Some(tup.clockcheck(eaccum, ctx)?.t),
             Self::Ifx { cond, yes, no } => {
+                // If requires all three subexpressions to be compatible.
                 let cond = cond.clockcheck(eaccum, ctx);
                 let yes = yes.clockcheck(eaccum, ctx);
                 let no = no.clockcheck(eaccum, ctx);
@@ -364,6 +365,8 @@ impl ClockCheckExpr for expr::Expr {
                 Some(cond.t)
             }
             Self::Merge { switch, on, off } => {
+                // Need `on` to be clocked exactly by `when switch`,
+                // and `off` to be clocked exactly by `whenot switch`.
                 let expect_on = switch.as_clock(eaccum, op::Clock::When);
                 let expect_off = switch.as_clock(eaccum, op::Clock::Whenot);
                 let switch = switch.clockcheck(eaccum, ctx);
@@ -381,6 +384,9 @@ impl ClockCheckExpr for expr::Expr {
                 dummy_init,
                 dummy_followed_by,
             } => {
+                // Need both operands to have identical clocks or we don't know
+                // when to step. This clock is also saved to `clock_of_register`
+                // to be saved in the `InitRegister`.
                 let followed_by = dummy_followed_by.clockcheck(eaccum, ctx);
                 let followed_by = followed_by?;
                 if let Some(init) = dummy_init {

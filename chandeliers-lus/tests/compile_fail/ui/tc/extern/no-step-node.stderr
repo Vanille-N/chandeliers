@@ -1,10 +1,10 @@
 error[E0599]: no method named `step` found for struct `not_impl_step` in the current scope
- --> tests/compile_fail/ui/tc/extern/no-step-node.rs:5:17
+ --> tests/compile_fail/ui/tc/extern/no-step-node.rs:7:17
   |
-3 | struct not_impl_step {}
+4 | struct not_impl_step {}
   | -------------------- method `step` not found for this struct
-4 | chandeliers_lus::decl! {
-5 |     extern node not_impl_step() returns ();
+...
+7 |     extern node not_impl_step() returns ();
   |                 ^^^^^^^^^^^^^ method not found in `not_impl_step`
   |
   = help: items from traits can only be used if the trait is implemented and in scope

@@ -1,23 +1,23 @@
 error: Two subexpressions have different clocks: '_ and 'when b are incompatible
- --> tests/compile_fail/ui/clk/inhomogeneous-tup.rs:4:18
+ --> tests/compile_fail/ui/clk/inhomogeneous-tup.rs:6:18
   |
-4 |     let (m, n) = (1, 2 when b); tel;
+6 |     let (m, n) = (1, 2 when b); tel;
   |                  ^^^^^^^^^^^^^
   |
 note: This is clocked by '_
- --> tests/compile_fail/ui/clk/inhomogeneous-tup.rs:4:19
+ --> tests/compile_fail/ui/clk/inhomogeneous-tup.rs:6:19
   |
-4 |     let (m, n) = (1, 2 when b); tel;
+6 |     let (m, n) = (1, 2 when b); tel;
   |                   ^
 note: This is clocked by 'when b
- --> tests/compile_fail/ui/clk/inhomogeneous-tup.rs:4:22
+ --> tests/compile_fail/ui/clk/inhomogeneous-tup.rs:6:22
   |
-4 |     let (m, n) = (1, 2 when b); tel;
+6 |     let (m, n) = (1, 2 when b); tel;
   |                      ^^^^^^^^
 note: defined here
- --> tests/compile_fail/ui/clk/inhomogeneous-tup.rs:4:29
+ --> tests/compile_fail/ui/clk/inhomogeneous-tup.rs:6:29
   |
-4 |     let (m, n) = (1, 2 when b); tel;
+6 |     let (m, n) = (1, 2 when b); tel;
   |                             ^
   = note: some operations (notably assignment) have stricter requirements than others on clock equality
   = note: you may need to insert a `when` operator

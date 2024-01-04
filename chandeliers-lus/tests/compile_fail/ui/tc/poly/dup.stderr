@@ -1,7 +1,7 @@
 error: Malformed attribute generic: Gereric parameter `T` is declared twice
- --> tests/compile_fail/ui/tc/poly/dup.rs:2:5
+ --> tests/compile_fail/ui/tc/poly/dup.rs:3:5
   |
-2 |     #[generic[T, T]]
+3 |     #[generic[T, T]]
   |     ^^^^^^^^^^^^^^^^
   |
   = note: Type variables must have mutually distinct names

@@ -1,3 +1,4 @@
+//! Testing associativity of `->`.
 chandeliers_lus::decl! {
     node count() returns (n : int);
     let n = 0 fby n + 1; tel;

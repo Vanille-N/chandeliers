@@ -1,7 +1,7 @@
 error: Malformed attribute generic: This generic parameter would override the builtin type int
- --> tests/compile_fail/ui/tc/poly/shadow.rs:2:5
+ --> tests/compile_fail/ui/tc/poly/shadow.rs:3:5
   |
-2 |     #[generic[int]]
+3 |     #[generic[int]]
   |     ^^^^^^^^^^^^^^^
   |
   = note: Use a type variable that does not conflict with existing names

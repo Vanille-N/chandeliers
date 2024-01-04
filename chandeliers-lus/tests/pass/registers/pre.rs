@@ -1,3 +1,4 @@
+//! Again using normal mode as a witness to test that `#[universal_pre]` works.
 chandeliers_lus::decl! {
     #[universal_pre]
     #[trace("testing {x}\n")]

@@ -162,6 +162,62 @@ impl Condition for bool {
     }
 }
 
+/// Auxiliary arms for `error_message!` to build just the message constructor.
+/// These recursively consume the stream of tokens that describe the message
+/// and produce the appropriate `push` operations.
+///
+/// This implements the syntax of error lines described in the
+/// main [`error_message`].
+macro_rules! error_message_aux_push {
+    ( $constructed:ident, ) => {}; // done
+    ( $constructed:ident, $fmt:tt @ $site:ident ; $($rest:tt)* ) => {
+        // Base case looks like ["foo" @ site]: "foo" is treated as a format
+        // string and `site` gives the `Span`.
+        $constructed.push((format!($fmt), $site.try_span()));
+        error_message_aux_push!($constructed, $($rest)*);
+    };
+    ( $constructed:ident, $fmt:tt @* if $site:ident ; $($rest:tt)* ) => {
+        // Only insert if `try_def_site` is defined.
+        if let Some(site) = $site.try_def_site() {
+            $constructed.push((format!($fmt), Some(site)));
+        }
+        error_message_aux_push!($constructed, $($rest)*);
+    };
+    ( $constructed:ident, for $iterator:ident => $fmt:tt @ $site:expr ; $($rest:tt)* ) => {
+        // Loop over the base case [for items => "foo" @ site]
+        for $iterator in $iterator {
+            $constructed.push((format!($fmt), $site.try_span()));
+        }
+        error_message_aux_push!($constructed, $($rest)*);
+    };
+    ( $constructed:ident, if $cond:ident => $fmt:tt @ $site:expr ; $($rest:tt)* ) => {
+        // Only insert if `cond` holds [if cond => "foo" @ site]
+        if $cond.truth() {
+            $constructed.push((format!($fmt), $site.try_span()));
+        }
+        error_message_aux_push!($constructed, $($rest)*);
+    };
+    ( $constructed:ident, $fmt:tt @ if $site:expr ; $($rest:tt)* ) => {
+        // Only insert if `try_span` is defined.
+        if let Some(site) = $site.try_span() {
+            $constructed.push((format!($fmt), Some(site)));
+        }
+        error_message_aux_push!($constructed, $($rest)*);
+    };
+    ( $constructed:ident, for $iterator:ident => $fmt:tt ; $($rest:tt)* ) => {
+        // Loop over the base case without a span [for items => "foo"]
+        for $iterator in $iterator {
+            $constructed.push((format!($fmt), None));
+        }
+        error_message_aux_push!($constructed, $($rest)*);
+    };
+    ( $constructed:ident, $fmt:tt ; $($rest:tt)* ) => {
+        // Base case without `Span`.
+        $constructed.push((format!($fmt), None));
+        error_message_aux_push!($constructed, $($rest)*);
+    };
+}
+
 /// More macro black magic.
 /// This one is supposed to reduce how repetitive it is to add new error messages.
 /// Describe the error message in a succint format and the macro will generate
@@ -241,64 +297,13 @@ macro_rules! error_message {
             fn into_err(self) -> Error {
                 let Self { $($field),* } = self;
                 let mut constructed = Vec::new();
-                error_message!([constructed]
+                error_message_aux_push!(constructed,
                     $($message)* // more black magic to turn these into statements
                 );
                 constructed
             }
         }
     };
-    // Auxiliary arms to build just the message constructor.
-    // These recursively consume the stream of tokens that describe the message
-    // and produce the appropriate `push` operations.
-    ( [$constructed:ident] ) => {}; // done
-    ( [$constructed:ident] $fmt:tt @ $site:ident ; $($rest:tt)* ) => {
-        // Base case looks like ["foo" @ site]: "foo" is treated as a format
-        // string and `site` gives the `Span`.
-        $constructed.push((format!($fmt), $site.try_span()));
-        error_message!([$constructed] $($rest)*);
-    };
-    ( [$constructed:ident] $fmt:tt @* if $site:ident ; $($rest:tt)* ) => {
-        // Only insert if `try_def_site` is defined.
-        if let Some(site) = $site.try_def_site() {
-            $constructed.push((format!($fmt), Some(site)));
-        }
-        error_message!([$constructed] $($rest)*);
-    };
-    ( [$constructed:ident] for $iterator:ident => $fmt:tt @ $site:expr ; $($rest:tt)* ) => {
-        // Loop over the base case [for items => "foo" @ site]
-        for $iterator in $iterator {
-            $constructed.push((format!($fmt), $site.try_span()));
-        }
-        error_message!([$constructed] $($rest)*);
-    };
-    ( [$constructed:ident] if $cond:ident => $fmt:tt @ $site:expr ; $($rest:tt)* ) => {
-        // Only insert if `cond` holds [if cond => "foo" @ site]
-        if $cond.truth() {
-            $constructed.push((format!($fmt), $site.try_span()));
-        }
-        error_message!([$constructed] $($rest)*);
-    };
-    ( [$constructed:ident] $fmt:tt @ if $site:expr ; $($rest:tt)* ) => {
-        // Only insert if `try_span` is defined.
-        if let Some(site) = $site.try_span() {
-            $constructed.push((format!($fmt), Some(site)));
-        }
-        error_message!([$constructed] $($rest)*);
-    };
-    ( [$constructed:ident] for $iterator:ident => $fmt:tt ; $($rest:tt)* ) => {
-        // Loop over the base case without a span [for items => "foo"]
-        for $iterator in $iterator {
-            $constructed.push((format!($fmt), None));
-        }
-        error_message!([$constructed] $($rest)*);
-    };
-    ( [$constructed:ident] $fmt:tt ; $($rest:tt)* ) => {
-        // Base case without `Span`.
-        $constructed.push((format!($fmt), None));
-        error_message!([$constructed] $($rest)*);
-    };
-
 }
 
 error_message! {

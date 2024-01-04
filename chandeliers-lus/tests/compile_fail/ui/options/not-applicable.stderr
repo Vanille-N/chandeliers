@@ -1,5 +1,5 @@
 error: Attribute #[main(nb_iter)] is not applicable to Const
- --> tests/compile_fail/ui/options/not-applicable.rs:2:5
+ --> tests/compile_fail/ui/options/not-applicable.rs:4:5
   |
-2 |     #[main]
+4 |     #[main]
   |     ^^^^^^^

@@ -1,3 +1,4 @@
+//! Node marked `#[main]` doesn't have the correct signature.
 chandeliers_lus::decl! {
     #[main]
     node main() returns (i: int);

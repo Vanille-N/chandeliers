@@ -1,3 +1,4 @@
+//! Function call is too generic (expects `int`, given `T`).
 chandeliers_lus::decl! {
     node id_int(i0: int) returns (i1: int);
     let i1 = i0; tel;

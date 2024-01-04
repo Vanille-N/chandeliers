@@ -1,12 +1,12 @@
 error: unexpected end of input, expected ident
- --> tests/compile_fail/ui/syn/unclosed.rs:1:1
+ --> tests/compile_fail/ui/syn/unclosed.rs:2:1
   |
-1 | / chandeliers_lus::decl! {
-2 | |     node foo() returns ();
-3 | |     let
-4 | |         x = 9;
-5 | |         y = 2;
-6 | | }
+2 | / chandeliers_lus::decl! {
+3 | |     node foo() returns ();
+4 | |     let
+5 | |         x = 9;
+6 | |         y = 2;
+7 | | }
   | |_^
   |
   = note: this error originates in the macro `chandeliers_lus::decl` (in Nightly builds, run with -Z macro-backtrace for more info)

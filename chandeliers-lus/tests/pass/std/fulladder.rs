@@ -1,3 +1,4 @@
+//! Standard exercise: full adder on 3 bits + carry.
 chandeliers_lus::decl! {
     node full_add(a, b, c : bool) returns (s, co : bool);
     let

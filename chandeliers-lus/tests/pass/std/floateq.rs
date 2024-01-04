@@ -1,3 +1,4 @@
+//! How to properly do an "equality" test on floats.
 chandeliers_lus::decl! {
     node fabs(i : float) returns (o : float);
     let

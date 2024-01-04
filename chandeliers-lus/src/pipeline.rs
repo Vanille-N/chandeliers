@@ -1,7 +1,7 @@
 //! Here we define a wrapper around the AST that makes it impossible for clients
 //! to misuse it or call compiler passes in a wrong order.
 //! The exact contents of this file are deeply connected with the internal
-//! details of `chandeliers_san`.
+//! details of `chandeliers-san`.
 //!
 //! The order of compiler passes is enforced by a state machine with
 //! transitions
@@ -141,7 +141,6 @@ impl Apply for stage::Typecheck {
         eaccum: &mut EAccum,
         mut prog: Sp<sanitizer::ast::decl::Prog>,
     ) -> Option<Sp<sanitizer::ast::decl::Prog>> {
-        // FIXME: trait for this
         prog.typecheck(eaccum)?;
         Some(prog)
     }

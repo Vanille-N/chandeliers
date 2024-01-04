@@ -1,7 +1,7 @@
 error: Variable absent not found in the context.
- --> tests/compile_fail/ui/causality/undeclared-var.rs:3:13
+ --> tests/compile_fail/ui/causality/undeclared-var.rs:5:13
   |
-3 |     let i = absent; tel;
+5 |     let i = absent; tel;
   |             ^^^^^^
   |
   = note: Perhaps you meant one of the local variables: i

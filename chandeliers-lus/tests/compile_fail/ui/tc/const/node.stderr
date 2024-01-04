@@ -1,7 +1,7 @@
 error: Function calls are not valid in const contexts
- --> tests/compile_fail/ui/tc/const/node.rs:2:5
+ --> tests/compile_fail/ui/tc/const/node.rs:4:5
   |
-2 |     const X : float = test(5);
+4 |     const X : float = test(5);
   |     ^^^^^^^^^^^^^^^^^^^^^^^^^
   |
   = note: You must put this definition inside a node

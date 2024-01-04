@@ -1,3 +1,4 @@
+//! Normal usage of an extern generic node.
 chandeliers_lus::decl! {
     #[generic[T]]
     #[export]

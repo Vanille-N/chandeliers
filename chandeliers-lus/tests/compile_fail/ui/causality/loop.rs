@@ -1,3 +1,4 @@
+//! All-in-one cyclic definitions.
 chandeliers_lus::decl! {
     const X: int = X + 1;
 }

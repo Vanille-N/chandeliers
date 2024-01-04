@@ -1,3 +1,4 @@
+//! Slowing down counters with clocks.
 chandeliers_lus::decl! {
     #[trace[stderr]]
     node counter() returns (n : int);

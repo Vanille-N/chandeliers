@@ -1,3 +1,4 @@
+//! Unpacking tuple leads to wrong types.
 chandeliers_lus::decl! {
     node gen() returns (a : int; b : float; c : bool);
     let

@@ -1,3 +1,4 @@
+//! These are not valid clock expressions (only variables can be clocks).
 chandeliers_lus::decl! {
     node ignore() returns ();
     let tel;

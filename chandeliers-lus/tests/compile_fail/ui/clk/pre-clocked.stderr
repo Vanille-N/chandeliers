@@ -1,51 +1,51 @@
 error: This expression is too slow: expected the implicit clock 'self, found 'when b
- --> tests/compile_fail/ui/clk/pre-clocked.rs:6:17
+ --> tests/compile_fail/ui/clk/pre-clocked.rs:8:17
   |
-6 |         w = pre v;
+8 |         w = pre v;
   |                 ^
   |
 note: Found 'when b here
- --> tests/compile_fail/ui/clk/pre-clocked.rs:3:28
+ --> tests/compile_fail/ui/clk/pre-clocked.rs:5:28
   |
-3 |     var v, w, x : int when b;
+5 |     var v, w, x : int when b;
   |                            ^
   = note: The pre operator operates under the nodes's implicit clock
   = note: Delete the extra clock definition or put this in a separate node with its own clock
 
 error: This expression is too slow: expected the implicit clock 'self, found 'when b
- --> tests/compile_fail/ui/clk/pre-clocked.rs:7:18
+ --> tests/compile_fail/ui/clk/pre-clocked.rs:9:18
   |
-7 |         x = 0 -> v;
+9 |         x = 0 -> v;
   |                  ^
   |
 note: Found 'when b here
- --> tests/compile_fail/ui/clk/pre-clocked.rs:3:28
+ --> tests/compile_fail/ui/clk/pre-clocked.rs:5:28
   |
-3 |     var v, w, x : int when b;
+5 |     var v, w, x : int when b;
   |                            ^
   = note: The delay operator (-> / fby) operates under the nodes's implicit clock
   = note: Delete the extra clock definition or put this in a separate node with its own clock
 
 error: Two subexpressions have different clocks: 'when b and '_ are incompatible
- --> tests/compile_fail/ui/clk/pre-clocked.rs:7:9
+ --> tests/compile_fail/ui/clk/pre-clocked.rs:9:9
   |
-7 |         x = 0 -> v;
+9 |         x = 0 -> v;
   |         ^^^^^^^^^^
   |
 note: This is clocked by 'when b
- --> tests/compile_fail/ui/clk/pre-clocked.rs:7:9
+ --> tests/compile_fail/ui/clk/pre-clocked.rs:9:9
   |
-7 |         x = 0 -> v;
+9 |         x = 0 -> v;
   |         ^
 note: defined here
- --> tests/compile_fail/ui/clk/pre-clocked.rs:3:28
+ --> tests/compile_fail/ui/clk/pre-clocked.rs:5:28
   |
-3 |     var v, w, x : int when b;
+5 |     var v, w, x : int when b;
   |                            ^
 note: This is clocked by '_
- --> tests/compile_fail/ui/clk/pre-clocked.rs:7:13
+ --> tests/compile_fail/ui/clk/pre-clocked.rs:9:13
   |
-7 |         x = 0 -> v;
+9 |         x = 0 -> v;
   |             ^^^^^^
   = note: some operations (notably assignment) have stricter requirements than others on clock equality
   = note: you may need to insert a `when` operator

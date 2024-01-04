@@ -1,3 +1,5 @@
+//! Attempts to do binary operations on expressions that don't have
+//! the same speed.
 chandeliers_lus::decl! {
     node ignore(x : int) returns ();
     let tel;

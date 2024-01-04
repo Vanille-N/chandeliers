@@ -1,16 +1,16 @@
 error: Type mismatch between the left and right sides: Base types should be unifiable: expected bool, got int
- --> tests/compile_fail/ui/tc/shadow.rs:4:9
+ --> tests/compile_fail/ui/tc/shadow.rs:6:9
   |
-4 |     let X = 0; tel
+6 |     let X = 0; tel
   |         ^^^^^
   |
 note: This element has type bool
- --> tests/compile_fail/ui/tc/shadow.rs:4:9
+ --> tests/compile_fail/ui/tc/shadow.rs:6:9
   |
-4 |     let X = 0; tel
+6 |     let X = 0; tel
   |         ^
 note: While this element has type int
- --> tests/compile_fail/ui/tc/shadow.rs:4:13
+ --> tests/compile_fail/ui/tc/shadow.rs:6:13
   |
-4 |     let X = 0; tel
+6 |     let X = 0; tel
   |             ^

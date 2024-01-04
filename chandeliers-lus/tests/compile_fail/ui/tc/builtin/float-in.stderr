@@ -1,16 +1,16 @@
 error: Type mismatch between the left and right sides: expected a scalar int, got a tuple (int, int)
- --> tests/compile_fail/ui/tc/builtin/float-in.rs:7:13
+ --> tests/compile_fail/ui/tc/builtin/float-in.rs:8:13
   |
-7 |         x = float_of_int(1, 2);
+8 |         x = float_of_int(1, 2);
   |             ^^^^^^^^^^^^^^^^^^
   |
 note: This element has type int
- --> tests/compile_fail/ui/tc/builtin/float-in.rs:2:30
+ --> tests/compile_fail/ui/tc/builtin/float-in.rs:3:30
   |
-2 |     extern node float_of_int(i : int) returns (f : float);
+3 |     extern node float_of_int(i : int) returns (f : float);
   |                              ^^^^^^^^
 note: While this element has type (int, int)
- --> tests/compile_fail/ui/tc/builtin/float-in.rs:7:25
+ --> tests/compile_fail/ui/tc/builtin/float-in.rs:8:25
   |
-7 |         x = float_of_int(1, 2);
+8 |         x = float_of_int(1, 2);
   |                         ^^^^^^

@@ -1,4 +1,5 @@
-// FIXME: better error
+//! Duplicate definitions.
+//! Known issue: there's some duplication of rustc errors that isn't great.
 chandeliers_lus::decl! {
     #[export]
     const X: int = 0;

@@ -127,6 +127,8 @@ impl<T> Transparent<T> {
 }
 
 impl<T> PartialEq for Transparent<T> {
+    /// Trivial equality. All `Transparent` are indistinguishable
+    /// from each other.
     fn eq(&self, _: &Self) -> bool {
         true
     }
@@ -135,10 +137,12 @@ impl<T> PartialEq for Transparent<T> {
 impl<T> Eq for Transparent<T> {}
 
 impl<T> Hash for Transparent<T> {
+    // Trivial hash. All `Transparent` are transparent to hashing.
     fn hash<H: Hasher>(&self, _: &mut H) {}
 }
 
 impl<T: fmt::Display> fmt::Display for Transparent<T> {
+    /// Almost transparent wrapper for display.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match &self.inner {
             Ok(v) => write!(f, "{v}"),
