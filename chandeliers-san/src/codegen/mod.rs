@@ -39,6 +39,22 @@ impl ToTokens for decl::Decl {
     }
 }
 
+/// Convert the object into a type.
+/// The type parameter controls the target type format, of which there are
+/// at least
+/// - types for Lustre (`int`)
+/// - underlying Rust types (`i64`)
+/// - embedded types in the `step` signature (`Nillable<i64>`)
+trait AsSpanTy<T> {
+    /// Format as a type.
+    fn as_span_ty(&self, marker: T, span: Span) -> TokenStream;
+}
+/// `AsSpanTy` for wrappers that provide their own span.
+trait AsTy<T> {
+    /// Format as a type.
+    fn as_ty(&self, marker: T) -> TokenStream;
+}
+
 /// Unit marker for `AsTy`.
 /// Types in Lustre are `int`, `float`, etc.
 struct LustreTy;
@@ -49,56 +65,52 @@ struct DefinedTy;
 /// Embedded types are the nillable types `Nillable<i64>`, `Nillable<f64>`,
 /// `(Nillable<i64>, Nillable<i64>)`, etc.
 struct EmbeddedTy;
-trait AsTy<T> {
-    fn as_ty(&self, marker: T, span: Option<Span>) -> TokenStream;
-}
 
-impl<T, U: AsTy<T>> AsTy<T> for Sp<U> {
-    fn as_ty(&self, marker: T, _span: Option<Span>) -> TokenStream {
-        let ty = self.t.as_ty(marker, Some(self.span));
+impl<T, U: AsSpanTy<T>> AsTy<T> for Sp<U> {
+    fn as_ty(&self, marker: T) -> TokenStream {
+        let ty = self.t.as_span_ty(marker, self.span);
         quote_spanned! {self.span.unwrap()=> #ty }
     }
 }
 
+impl<T, U: AsSpanTy<T>> AsSpanTy<T> for &U {
+    fn as_span_ty(&self, marker: T, span: Span) -> TokenStream {
+        (*self).as_span_ty(marker, span)
+    }
+}
 impl<T, U: AsTy<T>> AsTy<T> for &U {
-    fn as_ty(&self, marker: T, span: Option<Span>) -> TokenStream {
-        (*self).as_ty(marker, span)
+    fn as_ty(&self, marker: T) -> TokenStream {
+        (*self).as_ty(marker)
     }
 }
 
-impl AsTy<DefinedTy> for ty::Base {
-    fn as_ty(&self, _marker: DefinedTy, span: Option<Span>) -> TokenStream {
+impl AsSpanTy<DefinedTy> for ty::Base {
+    fn as_span_ty(&self, _marker: DefinedTy, span: Span) -> TokenStream {
         match self {
             Self::Int => quote!(i64),
             Self::Float => quote!(f64),
             Self::Bool => quote!(bool),
             Self::Other(t) => {
-                let id = Ident::new(
-                    &format!("{t}"),
-                    span.unwrap_or_else(|| err::malformed!()/* Transparent<Span> */).unwrap(/* Span */),
-                );
+                let id = Ident::new(&format!("{t}"), span.unwrap());
                 quote!( #id )
             }
         }
     }
 }
 
-impl AsTy<LustreTy> for ty::Base {
-    fn as_ty(&self, _marker: LustreTy, span: Option<Span>) -> TokenStream {
-        let id = Ident::new(
-            &format!("{self}"),
-            span.unwrap_or_else(|| err::malformed!()).unwrap(),
-        );
+impl AsSpanTy<LustreTy> for ty::Base {
+    fn as_span_ty(&self, _marker: LustreTy, span: Span) -> TokenStream {
+        let id = Ident::new(&format!("{self}"), span.unwrap());
         quote!( #id )
     }
 }
 
-impl AsTy<DefinedTy> for ty::Tuple {
-    fn as_ty(&self, _marker: DefinedTy, _span: Option<Span>) -> TokenStream {
+impl AsSpanTy<DefinedTy> for ty::Tuple {
+    fn as_span_ty(&self, _marker: DefinedTy, _span: Span) -> TokenStream {
         match self {
-            Self::Single(t) => t.as_ref().as_ty(DefinedTy, None),
+            Self::Single(t) => t.as_ref().as_ty(DefinedTy),
             Self::Multiple(tup) => {
-                let tys = tup.t.iter().map(|it| it.as_ref().as_ty(DefinedTy, None));
+                let tys = tup.t.iter().map(|it| it.as_ref().as_ty(DefinedTy));
                 quote! {
                     ( #( #tys ,)* )
                 }
@@ -107,17 +119,16 @@ impl AsTy<DefinedTy> for ty::Tuple {
     }
 }
 
-impl AsTy<DefinedTy> for decl::TyVar {
-    fn as_ty(&self, _marker: DefinedTy, span: Option<Span>) -> TokenStream {
-        self.base_type_of(span.unwrap_or_else(|| err::malformed!()))
-            .as_ty(DefinedTy, span)
+impl AsSpanTy<DefinedTy> for decl::TyVar {
+    fn as_span_ty(&self, _marker: DefinedTy, span: Span) -> TokenStream {
+        self.base_type_of(span).as_span_ty(DefinedTy, span)
     }
 }
 
-impl<T: AsTy<DefinedTy>> AsTy<DefinedTy> for Tuple<T> {
+impl<T: AsTy<DefinedTy>> AsSpanTy<DefinedTy> for Tuple<T> {
     /// Get the type tuple pre-embedding (no `Nillable`s).
-    fn as_ty(&self, _marker: DefinedTy, _span: Option<Span>) -> TokenStream {
-        let mut tup = self.iter().map(|sv| sv.as_ty(DefinedTy, None));
+    fn as_span_ty(&self, _marker: DefinedTy, _span: Span) -> TokenStream {
+        let mut tup = self.iter().map(|sv| sv.as_ty(DefinedTy));
         if self.len() == 1 {
             tup.next().unwrap_or_else(|| chandeliers_err::malformed!())
         } else {
@@ -128,47 +139,44 @@ impl<T: AsTy<DefinedTy>> AsTy<DefinedTy> for Tuple<T> {
     }
 }
 
-impl<T: AsTy<DefinedTy>> AsTy<EmbeddedTy> for Tuple<T> {
-    fn as_ty(&self, _marker: EmbeddedTy, span: Option<Span>) -> TokenStream {
-        let tys = self.as_ty(DefinedTy, span);
+impl<T: AsTy<DefinedTy>> AsSpanTy<EmbeddedTy> for Tuple<T> {
+    fn as_span_ty(&self, _marker: EmbeddedTy, span: Span) -> TokenStream {
+        let tys = self.as_span_ty(DefinedTy, span);
         // It may look like this `quote_spanned` is redundant if the
         // parent `Sp` sets the span, but for some reason removing it
         // messus up the error messages.
-        quote_spanned! {span.unwrap().unwrap()=>
+        quote_spanned! {span.unwrap()=>
             <#tys as ::chandeliers_sem::traits::Embed>::Target
         }
     }
 }
 
-/// Unit marker for `AsIdent`.
-struct SanitizedIdent;
-/// Unit marker for `AsIdent`.
-struct RawIdent;
-
-trait IdentGeneration {
-    fn new_ident(name: &str, span: Span) -> Ident;
-}
-
-impl IdentGeneration for SanitizedIdent {
-    fn new_ident(name: &str, span: Span) -> Ident {
-        Ident::new(name, span.unwrap())
-    }
-}
-
-impl IdentGeneration for RawIdent {
-    fn new_ident(name: &str, span: Span) -> Ident {
-        Ident::new_raw(name, span.unwrap())
-    }
-}
-
+/// General mechanism to generate identifiers.
+/// This is parameterized by an `IdentGeneration` implementor that
+/// invoques some identifier wrapper.
+/// This leaves most implementations of `AsIdent` to just need to define
+/// the string representation of the identifier.
 trait AsIdent<T>
 where
     T: IdentGeneration,
 {
+    /// String representation of this identifier.
     fn name(&self) -> String;
+
+    /// This default implementation assumes that a span is provided by a parent.
+    /// You must not call the default implementation directly, only through
+    /// a wrapper that provides a span (typically `Sp`)
     fn respan(&self, span: Option<Span>) -> Span {
-        span.unwrap()
+        // By default, we consider that a span was given by the parent.
+        // Implementors that *provide* a span (`Sp`) will return their own.
+        span.unwrap_or_else(|| {
+            err::abort!(
+                "Invoqued default implementation of `respan` without a wrapper providing a span"
+            )
+        })
     }
+
+    /// Combine `name` and `respan` to produce an `Ident` token.
     fn as_ident(&self, _marker: T, span: Option<Span>) -> TokenStream {
         let span = self.respan(span);
         let ident = T::new_ident(&self.name(), span);
@@ -176,15 +184,51 @@ where
     }
 }
 
+/// Unit marker for [`AsIdent`].
+/// Its only purpose is as an [`IdentGeneration`] implementor to parameterize
+/// the trait.
+struct SanitizedIdent;
+/// Unit marker for [`AsIdent`].
+/// Its only purpose is as an [`IdentGeneration`] implementor to parameterize
+/// the trait.
+struct RawIdent;
+
+/// Types that provide a mechanism to convert from a string to an `Ident` token.
+trait IdentGeneration {
+    /// Wrap the string representation into an identifier.
+    fn new_ident(name: &str, span: Span) -> Ident;
+}
+
+impl IdentGeneration for SanitizedIdent {
+    /// Invoques `Ident::new`.
+    /// Use when the string representation already includes sanitization or
+    /// there is a check that this is not a Rust reserved keyword.
+    fn new_ident(name: &str, span: Span) -> Ident {
+        Ident::new(name, span.unwrap())
+    }
+}
+
+impl IdentGeneration for RawIdent {
+    /// Invoques `Ident::new_raw`.
+    /// Use when an extra layer of sanitization is needed.
+    fn new_ident(name: &str, span: Span) -> Ident {
+        Ident::new_raw(name, span.unwrap())
+    }
+}
+
 impl<T: IdentGeneration, U: AsIdent<T>> AsIdent<T> for Sp<U> {
+    /// Transparent projection to `self.t`.
     fn name(&self) -> String {
         self.t.name()
     }
+
+    /// Provides `self.span`, suitable as a wrapper implementor.
     fn respan(&self, _span: Option<Span>) -> Span {
         self.span
     }
 }
 
+/// Transparent projection.
 impl<T: IdentGeneration, U: AsIdent<T>> AsIdent<T> for &U {
     fn name(&self) -> String {
         (*self).name()
@@ -195,6 +239,7 @@ impl<T: IdentGeneration, U: AsIdent<T>> AsIdent<T> for &U {
 }
 
 impl AsIdent<SanitizedIdent> for decl::NodeName {
+    /// Sanitized with `__lus_<uid>_node`.
     fn name(&self) -> String {
         format!("{}__lus_{}_node", &self.repr.t, self.run_uid)
     }
@@ -207,6 +252,7 @@ impl AsIdent<RawIdent> for decl::NodeName {
 }
 
 impl AsIdent<SanitizedIdent> for var::Global {
+    /// Sanitized with `__lus_<uid>_global`.
     fn name(&self) -> String {
         format!("{}__lus_{}_global", &self.repr.t, self.run_uid)
     }
@@ -249,7 +295,7 @@ impl ToTokens for decl::Const {
         let ext_name = name.as_ident(RawIdent, None);
         let glob = name.as_ident(SanitizedIdent, None);
         let value = value.const_expr_tokens();
-        let rs_ty = ty.as_ref().as_ty(DefinedTy, None);
+        let rs_ty = ty.as_ref().as_ty(DefinedTy);
         let pub_qualifier = options.pub_qualifier(/*trait*/ false);
         let rustc_allow_1 = options.rustc_allow.fetch::<This>().iter();
         let rustc_allow_2 = options.rustc_allow.fetch::<This>().iter();
@@ -309,7 +355,7 @@ impl ToTokens for decl::ExtConst {
     fn to_tokens(&self, toks: &mut TokenStream) {
         let Self { name, ty, options } = self;
         let ext_name = name.as_ident(RawIdent, None);
-        let expected = ty.as_ref().as_ty(DefinedTy, None);
+        let expected = ty.as_ref().as_ty(DefinedTy);
         let glob = name.as_ident(SanitizedIdent, None);
         let real = quote_spanned!(name.span.unwrap()=> real );
         let expected_wrapped = quote_spanned!(ty.span.unwrap()=> Type<#expected> );
@@ -369,9 +415,11 @@ impl ToTokens for decl::Node {
     /// if you find the above example confusing.
     fn to_tokens(&self, toks: &mut TokenStream) {
         let int = self.internal_decl();
+        let imp = self.internal_impl();
         let ext = self.external_decl();
 
         toks.extend(int);
+        toks.extend(imp);
         toks.extend(ext);
         toks.extend(
             self.options
@@ -395,7 +443,7 @@ impl ToTokens for decl::NodeInstance {
         let generics = if generics.is_empty() {
             quote!()
         } else {
-            let generics = generics.iter().map(|t| t.as_ty(DefinedTy, None));
+            let generics = generics.iter().map(|t| t.as_ty(DefinedTy));
             quote! {
                 < #( #generics ),* >
             }
@@ -407,14 +455,10 @@ impl ToTokens for decl::NodeInstance {
 }
 
 impl decl::Node {
-    /// Generate the node declaration and implementation
+    /// Generate the node declaration
     /// with the sanitized name for internal use only.
     /// This is not expected to be used by either other Lustre blocks
     /// or the interfacing Rust code.
-    #[expect(
-        clippy::redundant_closure_for_method_calls,
-        reason = "Required for type inference"
-    )] // FIXME: make it a trait to fix it ?
     fn internal_decl(&self) -> TokenStream {
         let Self {
             name,
@@ -422,8 +466,8 @@ impl decl::Node {
             outputs,
             locals,
             blocks,
-            stmts,
-            deptys,
+            stmts: _,
+            deptys: _,
             options,
             registers,
             flips,
@@ -432,49 +476,24 @@ impl decl::Node {
         let outputs = outputs.as_ref();
         let locals = locals.as_ref();
 
-        let deptys = deptys.iter().map(|v| v.as_ident(SanitizedIdent, None));
-
         let uid_name = name.as_ident(SanitizedIdent, None);
 
         let pos_inputs_decl = inputs.strictly_positive();
         let pos_outputs_decl = outputs.strictly_positive();
         let pos_locals_decl = locals.strictly_positive();
 
-        let pos_inputs_use = inputs.strictly_positive_sanitized_names();
-        let pos_outputs_use = outputs.strictly_positive_sanitized_names();
-        let pos_locals_use = locals.strictly_positive_sanitized_names();
-        let pos_inputs_default = inputs.strictly_positive_sanitized_names();
-        let pos_outputs_default = outputs.strictly_positive_sanitized_names();
-        let pos_locals_default = locals.strictly_positive_sanitized_names();
-        let register_ids = registers.iter().map(|reg| reg.id);
-
-        let expected_input_tys_impl = inputs.as_ty(EmbeddedTy, None);
-        let expected_output_tys_impl = outputs.as_ty(EmbeddedTy, None);
-
-        let inputs_vs_asst = inputs.as_assignment_target();
-
-        let outputs_vs_2 = outputs.as_values();
-
         let pub_qualifier = options.pub_qualifier(/*trait*/ false);
 
-        let (trace_pre, trace_post) = options.traces("      ", name, inputs, locals, outputs);
-        let rustc_allow_1 = options.rustc_allow.fetch::<This>().iter();
-        let rustc_allow_2 = options.rustc_allow.fetch::<This>().iter();
-        let (generics, phantom, bounds) = options.generic_params();
-
-        let cfg_test = if self.options.test.fetch::<This>().is_some() {
-            quote!( #[cfg(test)] )
-        } else {
-            quote!()
-        };
+        let rustc_allow = options.rustc_allow.fetch::<This>().iter();
+        let (generics, phantom, _) = options.generic_params();
 
         let doc_name = format!(" `{name}` ");
-        let declaration = quote_spanned! {name.span.unwrap()=>
+        quote_spanned! {name.span.unwrap()=>
             #[doc(hidden)] // Inner declaration only.
             #[allow(non_camel_case_types)] // Lustre naming conventions.
             #[allow(non_snake_case)] // Lustre naming conventions.
             #[allow(dead_code)] // Trigger only for impl step.
-            #( #rustc_allow_1 )* // User-provided.
+            #( #rustc_allow )* // User-provided.
             #pub_qualifier struct #uid_name #generics {
                 __clock: usize,
                 __phantom: #phantom,
@@ -489,9 +508,60 @@ impl decl::Node {
                 __flips: ( #( #flips , )* ),
                 __regs: ( #( #registers , )* ),
             }
+        }
+    }
+
+    /// Implement `step` for the node, which is where the core logic lies.
+    /// This is not the implementation that other Lustre blocks will see, only
+    /// the one used internally within this macro invocation. Other blocks
+    /// will use the wrapper impl in `external_decl`.
+    fn internal_impl(&self) -> TokenStream {
+        let Self {
+            name,
+            inputs,
+            outputs,
+            locals,
+            blocks: _,
+            stmts,
+            deptys,
+            options,
+            registers,
+            flips: _,
+        } = self;
+        let inputs = inputs.as_ref();
+        let outputs = outputs.as_ref();
+        let locals = locals.as_ref();
+
+        let deptys = deptys.iter().map(|v| v.as_ident(SanitizedIdent, None));
+
+        let uid_name = name.as_ident(SanitizedIdent, None);
+
+        let pos_inputs_use = inputs.strictly_positive_sanitized_names();
+        let pos_outputs_use = outputs.strictly_positive_sanitized_names();
+        let pos_locals_use = locals.strictly_positive_sanitized_names();
+        let pos_inputs_default = inputs.strictly_positive_sanitized_names();
+        let pos_outputs_default = outputs.strictly_positive_sanitized_names();
+        let pos_locals_default = locals.strictly_positive_sanitized_names();
+        let register_ids = registers.iter().map(|reg| reg.id);
+
+        let expected_input_tys_impl = inputs.as_ty(EmbeddedTy);
+        let expected_output_tys_impl = outputs.as_ty(EmbeddedTy);
+
+        let inputs_vs_asst = inputs.as_assignment_target();
+
+        let outputs_vs = outputs.as_values();
+
+        let (trace_pre, trace_post) = options.traces("      ", name, inputs, locals, outputs);
+        let rustc_allow = options.rustc_allow.fetch::<This>().iter();
+        let (generics, _, bounds) = options.generic_params();
+
+        let cfg_test = if self.options.test.fetch::<This>().is_some() {
+            quote!( #[cfg(test)] )
+        } else {
+            quote!()
         };
 
-        let implementation = quote_spanned! {name.span.unwrap()=>
+        quote_spanned! {name.span.unwrap()=>
             #[allow(clippy::derivable_impls)] // This is, in fact, not always derivable.
             impl #generics Default for #uid_name #generics #bounds {
                 fn default() -> Self {
@@ -513,7 +583,7 @@ impl decl::Node {
             #[allow(clippy::no_effect)] // We are inserting "comments" as strings.
             // Completely nonsensical suggestions by Clippy.
             #[allow(clippy::unreadable_literal, clippy::zero_prefixed_literal)]
-            #( #rustc_allow_2 )* // User-provided.
+            #( #rustc_allow )* // User-provided.
             #cfg_test
             impl #generics #uid_name #generics #bounds {
                 fn step(
@@ -540,14 +610,9 @@ impl decl::Node {
                     "Ghost reads to tell the Rustc dead code analysis about dependent types";
                     #( let _ = #deptys; )*
                     "Finish by returning the outputs";
-                    #outputs_vs_2.embed()
+                    #outputs_vs.embed()
                 }
             }
-        };
-
-        quote! {
-            #declaration
-            #implementation
         }
     }
 
@@ -566,15 +631,15 @@ impl decl::Node {
         let ext_name = name.as_ident(RawIdent, None);
         let uid_name = name.as_ident(SanitizedIdent, None);
 
-        let expected_input_tys_decl = inputs.as_ty(EmbeddedTy, None);
-        let expected_output_tys_decl = outputs.as_ty(EmbeddedTy, None);
+        let expected_input_tys_decl = inputs.as_ty(EmbeddedTy);
+        let expected_output_tys_decl = outputs.as_ty(EmbeddedTy);
 
         let docs = options.docs();
 
         let must_impl_trait = *options.impl_trait.fetch::<This>();
         let (impl_trait, trait_input, trait_output) = if must_impl_trait {
-            let inputs = inputs.as_ty(DefinedTy, None);
-            let outputs = outputs.as_ty(DefinedTy, None);
+            let inputs = inputs.as_ty(DefinedTy);
+            let outputs = outputs.as_ty(DefinedTy);
             (
                 quote!( ::chandeliers_sem::stepping::Step for ),
                 quote!( type Input = #inputs ; ),
@@ -656,13 +721,16 @@ impl ToTokens for decl::FlipInstance {
 
 impl ToTokens for decl::RegisterInstance {
     fn to_tokens(&self, toks: &mut TokenStream) {
-        let Self { id: _, typ } = self;
-        let typ = typ.as_ref().unwrap().as_ref().as_ty(DefinedTy, None);
+        let Self { id, typ } = self;
+        let typ = typ.as_ref()
+            .unwrap_or_else(|| err::abort!("Type of register {id} has not been registered, should have been done during typechecking"))
+            .as_ref()
+            .as_ty(DefinedTy);
         toks.extend(quote! {
             ::chandeliers_sem::registers::Register<
                 <#typ as ::chandeliers_sem::traits::Embed>::Target
             >
-        })
+        });
     }
 }
 
@@ -755,8 +823,8 @@ impl ToTokens for decl::ExtNode {
         let ext_name = name.as_ident(RawIdent, None);
         let uid_name = name.as_ident(SanitizedIdent, None);
 
-        let expected_output_tys = outputs.as_ty(EmbeddedTy, None);
-        let expected_input_tys = inputs.as_ty(EmbeddedTy, None);
+        let expected_output_tys = outputs.as_ty(EmbeddedTy);
+        let expected_input_tys = inputs.as_ty(EmbeddedTy);
         let actual_inputs = quote_spanned! {inputs.span.unwrap()=> inputs };
         let rustc_allow_1 = options.rustc_allow.fetch::<This>().iter();
         let rustc_allow_2 = options.rustc_allow.fetch::<This>().iter();
@@ -927,7 +995,7 @@ impl decl::TyVar {
 /// This is the type that it has in function arguments and return values.
 impl ToTokens for ty::Stream {
     fn to_tokens(&self, toks: &mut TokenStream) {
-        let ty = self.ty.t.inner.as_ref().as_ty(LustreTy, None);
+        let ty = self.ty.t.inner.as_ref().as_ty(LustreTy);
         let mut pluses = Vec::new();
         for _ in 0..self.depth.t.dt {
             pluses.push(quote!( + ));
@@ -943,7 +1011,6 @@ impl ToTokens for stmt::Statement {
         match self {
             Self::Let { source, target } => {
                 let pretty = format!("Variable assignment: {target} := {source};");
-                let target = target.as_assignment_target();
                 toks.extend(quote! {
                     #pretty;
                     let #target = #source;
@@ -962,44 +1029,41 @@ impl ToTokens for stmt::Statement {
             }),
             Self::InitRegister { id, val, clk } => {
                 let Some(clk) = clk else {
-                    unreachable!();
+                    err::abort!("Clock of {id} is not known, should have been registered during clockchecking");
                 };
                 toks.extend(quote! {
                     self.__regs.#id.with_clock(#clk);
                 });
                 if let Some(val) = val {
                     toks.extend(quote! {
-                    self.__regs.#id.try_initialize(#val);
-                    })
+                        self.__regs.#id.try_initialize(#val);
+                    });
                 }
             }
         }
     }
 }
 
-crate::sp::transparent_impl!(fn as_assignment_target return TokenStream where stmt::VarTuple);
-#[expect(clippy::multiple_inherent_impl, reason = "This impl is local")]
-impl stmt::VarTuple {
+impl ToTokens for stmt::VarTuple {
     /// An assignment tuple.
     ///
     /// We need a case analysis on the size of the tuple, where
     /// `_` is needed to bind an empty return `()`, and otherwise we need
     /// exactly one or several variable names to bind one scalar per variable.
-    #[expect(
-        clippy::redundant_closure_for_method_calls,
-        reason = "Required for type inference"
-    )] // FIXME: make it a trait
-    fn as_assignment_target(&self, _span: Span) -> TokenStream {
+    fn to_tokens(&self, toks: &mut TokenStream) {
         match self {
-            Self::Single(s) => s.as_ident(SanitizedIdent, None),
+            Self::Single(s) => {
+                let id = s.as_ident(SanitizedIdent, None);
+                toks.extend(quote!(#id));
+            }
             Self::Multiple(m) if m.t.is_empty() => {
-                quote!(_)
+                toks.extend(quote!(_));
             }
             Self::Multiple(m) => {
-                let m = m.t.iter().map(|x| x.as_assignment_target());
-                quote! {
+                let m = m.t.iter();
+                toks.extend(quote! {
                     ( #( #m ),* )
-                }
+                });
             }
         }
     }
@@ -1020,8 +1084,8 @@ impl ToTokens for expr::Expr {
             Self::Reference(refer) => {
                 quote!( #refer )
             }
-            Self::DummyPre(e) => quote!( #e ),
-            Self::DummyParen(e) => quote!( #e ),
+            // Transparent dummy wrappers.
+            Self::DummyPre(e) | Self::DummyParen(e) => quote!( #e ),
             Self::Tuple(t) => {
                 let elems = t.t.iter();
                 quote!( ( #( #elems ),* ).embed() )

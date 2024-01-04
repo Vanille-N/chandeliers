@@ -332,6 +332,7 @@ impl TypeCheckStmt for ast::stmt::Statement {
 /// Most Expr cases are exactly recursing into all Expr fields
 /// and checking that they are identical or in some other way compatible.
 impl TypeCheckExpr for ast::expr::Expr {
+    #[expect(clippy::too_many_lines, reason = "Match on Expr needs many cases")]
     fn typecheck(&self, eaccum: &mut EAccum, span: Span, ctx: &mut TyCtx) -> Option<ty::Tuple> {
         match self {
             // Transparent containers

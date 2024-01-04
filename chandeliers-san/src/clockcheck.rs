@@ -260,6 +260,7 @@ impl Reclock for Clk {
 
 impl ClockCheckExpr for expr::Expr {
     type Ctx<'node> = &'node mut ExprClkCtx;
+    #[expect(clippy::too_many_lines, reason = "Not really a good way around it")]
     fn clockcheck(&self, eaccum: &mut EAccum, span: Span, ctx: Self::Ctx<'_>) -> Option<Clk> {
         match self {
             Self::Lit(l) => Some(l.clockcheck(eaccum, ctx)?.t),
@@ -394,49 +395,6 @@ impl ClockCheckExpr for expr::Expr {
     }
 }
 
-impl Sp<Clk> {
-    fn forge_as_expr(&self) -> Sp<expr::Expr> {
-        match &self.t {
-            Clk::Implicit | Clk::Adaptative => {
-                expr::Expr::Lit(expr::Lit::Bool(true).with_span(self.span)).with_span(self.span)
-            }
-            Clk::OffExplicit(var) => expr::Expr::Un {
-                op: op::Un::Not,
-                inner: expr::Expr::Reference(
-                    var::Reference::Var(
-                        var::Past {
-                            var: var::Local {
-                                repr: var.data.clone(),
-                            }
-                            .with_span(self.span),
-                            depth: past::Depth { dt: 0 }.with_span(self.span),
-                        }
-                        .with_span(self.span),
-                    )
-                    .with_span(self.span),
-                )
-                .with_span(self.span)
-                .boxed(),
-            }
-            .with_span(self.span),
-            Clk::OnExplicit(var) => expr::Expr::Reference(
-                var::Reference::Var(
-                    var::Past {
-                        var: var::Local {
-                            repr: var.data.clone(),
-                        }
-                        .with_span(self.span),
-                        depth: past::Depth { dt: 0 }.with_span(self.span),
-                    }
-                    .with_span(self.span),
-                )
-                .with_span(self.span),
-            )
-            .with_span(self.span),
-        }
-    }
-}
-
 impl Sp<Box<expr::Expr>> {
     /// Convert an expression into a clock.
     /// i.e. Check that it is a local variable (typecheck has already
@@ -551,6 +509,53 @@ impl Sp<Clk> {
             }),
         }
     }
+
+    /// Turn a clock back into an expression.
+    /// This allows `InitRegister` to set the appropriate clock for the register.
+    /// Essentially we forge an expression to map
+    /// - `Implicit` and `Adaptative` to `true`,
+    /// - `OnExplicit(v)` to `v`,
+    /// - `OffExplicit(v)` to `not v`.
+    fn forge_as_expr(&self) -> Sp<expr::Expr> {
+        match &self.t {
+            Clk::Implicit | Clk::Adaptative => {
+                expr::Expr::Lit(expr::Lit::Bool(true).with_span(self.span)).with_span(self.span)
+            }
+            Clk::OffExplicit(var) => expr::Expr::Un {
+                op: op::Un::Not,
+                inner: expr::Expr::Reference(
+                    var::Reference::Var(
+                        var::Past {
+                            var: var::Local {
+                                repr: var.data.clone(),
+                            }
+                            .with_span(self.span),
+                            depth: past::Depth { dt: 0 }.with_span(self.span),
+                        }
+                        .with_span(self.span),
+                    )
+                    .with_span(self.span),
+                )
+                .with_span(self.span)
+                .boxed(),
+            }
+            .with_span(self.span),
+            Clk::OnExplicit(var) => expr::Expr::Reference(
+                var::Reference::Var(
+                    var::Past {
+                        var: var::Local {
+                            repr: var.data.clone(),
+                        }
+                        .with_span(self.span),
+                        depth: past::Depth { dt: 0 }.with_span(self.span),
+                    }
+                    .with_span(self.span),
+                )
+                .with_span(self.span),
+            )
+            .with_span(self.span),
+        }
+    }
 }
 
 impl<T> ClockCheckExpr for Tuple<T>
@@ -647,11 +652,13 @@ impl ClockCheckDecl for decl::Node {
         // The definition of the clock should already come before, so we don't need
         // to add a new dependency at this stage.
         for stmt in &mut self.stmts {
-            match &mut stmt.t {
-                stmt::Statement::InitRegister { id, val: _, clk } => {
-                    *clk = Some(ectx.clock_of_register.get(&id.t).unwrap().clone());
-                }
-                _ => {}
+            if let stmt::Statement::InitRegister { id, val: _, clk } = &mut stmt.t {
+                *clk = Some(
+                    ectx.clock_of_register
+                        .get(&id.t)
+                        .unwrap_or_else(|| err::abort!("Register {id}'s clock was not saved, will not be able to do codegen anyway"))
+                        .clone(),
+                );
             }
         }
         Some(())

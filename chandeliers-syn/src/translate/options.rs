@@ -232,6 +232,7 @@ impl Decl {
     }
 
     /// Update the current options with a new attribute.
+    #[expect(clippy::too_many_lines, reason = "Parsing function, long as expected")]
     pub fn with(mut self, eaccum: &mut EAccum, attr: Sp<crate::ast::Attribute>) -> Option<Self> {
         use syn::Lit;
         let action = attr.t.attr.t.action.t.inner.to_string();
