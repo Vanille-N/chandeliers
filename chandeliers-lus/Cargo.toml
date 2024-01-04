@@ -1,6 +1,6 @@
 [package]
 name = "chandeliers-lus"
-version = "0.6.0"
+version = "0.6.1"
 edition = "2021"
 authors = [ "Neven <vanille@crans.org>" ]
 description = "Procedural macros for the Chandeliers project, implementing a deep embedding of Lustre in Rust"
@@ -15,13 +15,13 @@ proc-macro = true
 syn = "2.0"
 quote = "1.0"
 proc-macro2 = "1.0"
-chandeliers-syn = { path = "../chandeliers-syn", version = "0.6.0" }
-chandeliers-san = { path = "../chandeliers-san", version = "0.6.0" }
-chandeliers-err = { path = "../chandeliers-err", version = "0.6.0" }
+chandeliers-syn = { path = "../chandeliers-syn", version = "0.6.1" }
+chandeliers-san = { path = "../chandeliers-san", version = "0.6.1" }
+chandeliers-err = { path = "../chandeliers-err", version = "0.6.1" }
 
 [dev-dependencies]
 trybuild = "1.0"
 rand = "0.8.5"
-chandeliers-syn = { path = "../chandeliers-syn", version = "0.6.0" }
-chandeliers-std = { path = "../chandeliers-std", version = "0.6.0" }
-chandeliers-sem = { path = "../chandeliers-sem", version = "0.6.0" }
+chandeliers-syn = { path = "../chandeliers-syn", version = "0.6.1" }
+chandeliers-std = { path = "../chandeliers-std", version = "0.6.1" }
+chandeliers-sem = { path = "../chandeliers-sem", version = "0.6.1" }

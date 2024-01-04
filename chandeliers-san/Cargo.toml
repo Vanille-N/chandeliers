@@ -1,6 +1,6 @@
 [package]
 name = "chandeliers-san"
-version = "0.6.0"
+version = "0.6.1"
 edition = "2021"
 authors = [ "Neven <vanille@crans.org>" ]
 description = "AST definition and static analysis procedures of Candle"
@@ -14,5 +14,5 @@ repository = "https://github.com/Vanille-N/chandeliers"
 quote = "1.0"
 syn = "2.0"
 proc-macro2 = "1.0"
-chandeliers-sem = { path = "../chandeliers-sem", version = "0.6.0" }
-chandeliers-err = { path = "../chandeliers-err", version = "0.6.0" }
+chandeliers-sem = { path = "../chandeliers-sem", version = "0.6.1" }
+chandeliers-err = { path = "../chandeliers-err", version = "0.6.1" }
