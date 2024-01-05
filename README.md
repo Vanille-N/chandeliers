@@ -65,7 +65,7 @@ following constructs:
 - limited support for clocked expressions `e when b`, `e whenot b`, and
   `merge b e1 e2`.
 
-See syntax examples and notable limitations in `chandeliers-lus/README.md`.
+See syntax examples and notable limitations in [`chandeliers-lus/README.md`](chandeliers-lus/README.md).
 
 
 ## Compilation options
