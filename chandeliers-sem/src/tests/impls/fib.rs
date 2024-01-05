@@ -1,5 +1,4 @@
 use crate::macros::*;
-// FIXME: should implement Step
 
 #[allow(non_camel_case_types)]
 #[derive(Debug, Clone, Default)]

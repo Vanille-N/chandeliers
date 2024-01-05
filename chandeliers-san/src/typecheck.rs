@@ -1200,6 +1200,7 @@ impl TypeCheckDecl for ast::decl::Node {
                     });
                 }
                 // Don't forget to typecheck the type.
+                // (i.e. if there are clocks in the type, check that they are of type `bool`)
                 scope.compute(|eaccum| v.t.ty.t.ty.t.clk.typecheck(eaccum, &mut ctx).map(|_| ()));
                 ctx.vars.insert(
                     v.t.name.t.clone(),
@@ -1222,14 +1223,16 @@ impl TypeCheckDecl for ast::decl::Node {
             };
             ctx.nodes_in.insert(id.clone(), i.clone());
             ctx.nodes_out.insert(id.clone(), o.clone());
-            ctx.nodes_generics.insert(id, (gen.clone(), None));
+            ctx.nodes_generics
+                .insert(id, (gen.clone(), None /* (1) to be filled in */));
         }
         let mut scope = eaccum.scope();
         for st in &mut self.stmts {
             scope.compute(|eaccum| st.typecheck(eaccum, &mut ctx).map(|_| ()));
         }
         scope.close()?;
-        // Finally instanciate the learned generic parameters
+        // Finally instanciate the learned generic parameters that were
+        // inserted into (1) above.
         for (id, gens) in ctx.nodes_generics {
             at_mut!(self.blocks, id.id.t).generics = gens.1;
         }
@@ -1329,6 +1332,11 @@ impl TypeCheckDecl for ast::decl::ExtNode {
                 if let ty::Base::Other(t) = &i.t.ty.t.ty.t.inner.t {
                     // Outputs and locals don't count towards usage
                     // and only need to be declared.
+                    // What this means concretely is that a generic parameter
+                    // that only appears in the output is not considered used,
+                    // which is justifiable by fact that it is not possible
+                    // for the caller to know with which type to instanciate the
+                    // node.
                     if !declared_generics.contains(&t) {
                         eaccum.error(err::UndeclaredGeneric {
                             undeclared: &i.t.ty.t.ty.t.inner,
@@ -1408,9 +1416,6 @@ impl TypeCheckExpr for ty::Clock {
                 Some(ty::Tuple::Multiple(Tuple::default().with_span(span)))
             }
             Self::Explicit { id, .. } => {
-                // FIXME: we should not be using the same error message
-                // as for normal variables because there are weird interactions.
-                // See test `when-self.rs` for example.
                 let ty = ctx.get_var_during_ty(
                     eaccum,
                     id.as_ref()

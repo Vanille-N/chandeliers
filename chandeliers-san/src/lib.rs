@@ -20,10 +20,13 @@
 //!     but these errors are both less reliable and less
 //!     understandable than the ones triggered in `causality`)
 //!
-//! 3. Depth resolution
+//! 3. Clockchecking
+//!     by `clockcheck::ClockCheckDecl`
+//!
+//! 4. Depth resolution
 //!     by `positivity::MakePositive`
 //!
-//! 4. Codegen
+//! 5. Codegen
 //!     by `quote::ToTokens` in `codegen`
 //!
 //!     (errors remaining at this stage will almost always

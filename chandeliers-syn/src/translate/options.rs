@@ -479,7 +479,7 @@ impl Decl {
             },
             _ => malformed!(
                 msg:("no such attribute")
-                note:("See the available options and their definition at {}#compilation-options", err::repo!()) //FIXME
+                note:("See the available options and their definition at {}#compilation-options", err::repo!())
             ),
         }
         Some(self)
