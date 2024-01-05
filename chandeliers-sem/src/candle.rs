@@ -12,7 +12,7 @@
 //! - (optional) having a `__nodes` field of type a tuple of all the subnodes
 //!   that the node uses,
 //! - (optional) having a `__trace` boolean field that enables
-//!   priting debug information,
+//!   printing debug information,
 //! - having fields of a type provided by the `ty!(_)` macro that converts
 //!   standard types into types with a memory of the past,
 //! - implementing the trait `stepping::Step`, of signature
@@ -89,7 +89,7 @@
 //!     __clock: usize,
 //!     __trace: bool,
 //!     // Here you should put the subnodes that you use, as a tuple.
-//!     // If the node is primive and has no subnodes, this field is optional.
+//!     // If the node is primitive and has no subnodes, this field is optional.
 //!     __nodes: (...),
 //!     ... // add any extra variables that you want to keep in-between
 //!         // executions of `step`.

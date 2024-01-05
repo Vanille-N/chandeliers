@@ -4752,10 +4752,9 @@
   [1](chandeliers-err/src/error.rs)
 - primitive
   [11](chandeliers-san/src/typecheck.rs)
+  [1](chandeliers-sem/src/candle.rs)
 - primitives
   [1](chandeliers-std/src/rand.rs)
-- primive
-  [1](chandeliers-sem/src/candle.rs)
 - print
   [2](chandeliers-sem/src/candle.rs)
   [1](chandeliers-lus/src/lib.rs)
@@ -4766,14 +4765,12 @@
   [1](chandeliers-lus/src/lib.rs)
   [1](chandeliers-san/src/typecheck.rs)
 - printing
-  [1](chandeliers-sem/src/candle.rs)
+  [2](chandeliers-sem/src/candle.rs)
 - println
   [2](chandeliers-sem/src/candle.rs)
 - prior
   [10](chandeliers-san/src/typecheck.rs)
   [4](chandeliers-err/src/error.rs)
-- priting
-  [1](chandeliers-sem/src/candle.rs)
 - private
   [4](chandeliers-sem/src/time_travel.rs)
   [1](chandeliers-err/src/lib.rs)
