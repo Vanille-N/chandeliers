@@ -4,6 +4,12 @@ Project description for maintainers and code review.
 
 ---
 
+## Version
+
+This project was last tested with Rustc 1.77.0-nightly (f688dd684 2024-01-04).
+
+It is expected to build with the latest nightly. If it does not please open an issue.
+
 ## Adding a feature
 
 `./manage.sh` is the canonical way to run tests.
