@@ -24,8 +24,8 @@ The dev cycle is
 ## Where to find this project
 
 - official repository [github.com:vanille-n/chandeliers](https://github.com/vanille-n/chandeliers)
-- packaged crates on [crates.io](https://crates.io/search?q=chandeliers%20lustre)
-- rendered documentation on [docs.rs](https://docs.rs/releases/search?query=chandeliers+lustre&sort=relevance)
+- packaged crates on [crates.io](https://crates.io/search?q=chandeliers)
+- rendered documentation on [docs.rs](https://docs.rs/releases/search?query=chandeliers&sort=relevance)
     - including private items: run `cargo doc --document-private-items --open` in the project root
 
 ## Directory tree
