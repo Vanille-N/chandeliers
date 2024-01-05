@@ -45,6 +45,8 @@ The dev cycle is
         - `./manage.sh bump 1.0.0` update all subcrates to a new version,
         - `./manage.sh bless` run tests and set the current output as the expected output,
         - `./manage.sh lint` run `lint.sh`.
+        - `./manage.sh gloss` build the glossary
+        - `./manage.sh doc` open the documentation
     - `lint.sh` <br>
         - *DO NOT USE DIRECTLY*, use through `manage.sh lint` instead,
         - checks the current attributes `#![warn(...)]` and `#![feature(...)]` of all subcrates.

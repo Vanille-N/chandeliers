@@ -53,6 +53,7 @@ main() {
             ;;
         ("deps") ./tools/deps.sh deps ;;
         ("gloss") ./tools/glossary.sh GLOSSARY ;;
+        ("doc") do-cargo doc --document-private-items --open ;;
         ("help"|*)
             echo "Submodule manager for the Chandeliers project"
             echo "Author: Neven <vanille@crans.org>"
@@ -63,8 +64,9 @@ main() {
             echo "    test, update, publish,...    passed directly to cargo"
             echo "    bless                        blesses the output of 'cargo test'"
             echo "    lint                         compare nightly features"
-            echo "    deps                         generate dependency graph of crates"
+            echo "    deps                         render dependency graph of crates"
             echo "    gloss                        build glossary"
+            echo "    doc                          open documentation"
     esac
 }
 
