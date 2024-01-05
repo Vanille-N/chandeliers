@@ -1,15 +1,15 @@
 error[E0308]: mismatched types
-   --> tests/compile_fail/ui/tc/extern/wrong-in-node.rs:15:32
-    |
-15  |     extern node wrong_step_sig() returns (f: float);
-    |                 -------------- ^ expected `Nillable<i64>`, found `Nillable<()>`
-    |                 |
-    |                 arguments to this method are incorrect
-    |
-    = note: expected enum `Nillable<i64>`
-               found enum `Nillable<()>`
+  --> tests/compile_fail/ui/tc/extern/wrong-in-node.rs:13:32
+   |
+13 |     extern node wrong_step_sig() returns (f: float);
+   |                 -------------- ^ expected `Nillable<i64>`, found `Nillable<()>`
+   |                 |
+   |                 arguments to this method are incorrect
+   |
+   = note: expected enum `Nillable<i64>`
+              found enum `Nillable<()>`
 note: method defined here
-   --> /home/nash/School/Mpri/projects/chandeliers/chandeliers-sem/src/stepping.rs:152:8
-    |
-152 |     fn step(&mut self, input: <Self::Input as Embed>::Target) -> <Self::Output as Embed>::Target;
-    |        ^^^^
+  --> tests/compile_fail/ui/tc/extern/wrong-in-node.rs:8:8
+   |
+8  |     fn step(&mut self, _: ty!(i64)) -> ty!(f64) {
+   |        ^^^^            -----------
