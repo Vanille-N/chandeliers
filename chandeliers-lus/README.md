@@ -37,7 +37,7 @@ chandeliers_lus::decl! {
 chandeliers_lus::decl! {
     node selector(left, right : float; switch : bool) returns (out : float);
     let
-        out = if switch then left else right end;
+        out = if switch then left else right;
     tel;
 }
 ```
@@ -94,9 +94,12 @@ chandeliers_lus::decl! {
 
 ### How to write a `main` function
 
-The `decl` macro never inserts a `main`, instead one should be defined manually
-to interface with the environment.
-This is made possible by tha fact that a `decl` block makes its definitions
+The `decl` macro does not by default insert a `main`, instead one sho.uld be defined manually
+to interface with the environment, or a node can be chosen as main and annotated as such.
+
+#### Manual `main` implementation
+
+This is made possible by the fact that a `decl` block makes its definitions
 publicly available under the same name.
 
 A `main` could look something like this:
@@ -132,6 +135,11 @@ are not `Nil`. The static analysis performed inside `decl` guarantees that a nod
 whose inputs are all non-`Nil` will have non-`Nil` outputs, so only the implementation
 of `extern node`s not produced by a `decl` block needs to be verified.
 
+#### Making `decl` generate a `main`
+
+A node that has signature `() returns ()` is eligible to be executable.
+It can be annotated with `#[main]` to be run as the entry point of the program.
+A specific number of execution cycles can be specified with `#[main(100)]`.
 
 ### Notable limitations and differences with standard Lustre
 
