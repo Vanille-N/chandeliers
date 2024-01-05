@@ -4,9 +4,7 @@ use chandeliers_sem::*;
 #[allow(non_camel_case_types)]
 #[derive(Debug, Default)]
 struct wrong_step_sig {}
-impl chandeliers_sem::traits::Step for wrong_step_sig {
-    type Input = i64;
-    type Output = f64;
+impl wrong_step_sig {
     fn step(&mut self, _: ty!(i64)) -> ty!(f64) {
         unimplemented!()
     }
