@@ -1,28 +1,6 @@
-//! A mostly transparent wrapper around any type to indicate that it carries
-//! a `Span` with it.
-//!
-//! The recommended pattern is that whenever you have some type `T` that
-//! needs a method `foo(&self, span: Span)`, you should implement
-//! `foo(&self)` for `Sp<T>` that gives its associated span to the inner call.
-//! Macros are provided to facilitate this usage.
-//!
-//! Note: yous should generally prefer putting the `Sp` on the outside
-//! in public function arguments, and on the inside on return values.
-//! That is,
-//! - use `Sp<&T>`, `Sp<Box<T>>`, `Sp<Result<T, E>>` in inputs and struct fields,
-//! - use `&Sp<T>`, `Box<Sp<T>>`, `Result<Sp<T>, E>>` in outputs.
-//! The reason is that `Sp` implements the following conversions:
-//! - `&Sp<T> -> Sp<&T>` through `as_ref`,
-//! - `&mut Sp<T> -> Sp<&mut T>` through `as_ref_mut`,
-//! - `Box<Sp<T>> -> Sp<Box<T>>` through `boxed`,
-//! - `Sp<Result<T, E>> -> Result<Sp<T>, E>` through `transpose`.
-//! Thus a function that takes as input a `Sp<&T>` is more general than
-//! a function that takes a `&Sp<T>`.
-//!
-//! The above does not necessarily apply to functions that are strictly for
-//! internal use, since if all callers are known the benefit of the generality
-//! is lessened, and passing `&Sp<T>` may reduce copies of `Span` that come with
-//! each invocation of `as_ref`.
+//! Defines the wrapper [`Transparent`] that trivially implements
+//! equality and hashing on any type by making all instances indistinguishable
+//! and forgeable.
 
 use std::fmt;
 use std::hash::{Hash, Hasher};

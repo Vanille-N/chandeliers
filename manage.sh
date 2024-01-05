@@ -48,9 +48,11 @@ main() {
         ("bless") shift; TRYBUILD=overwrite IN=( ${CRATES[@]} . ) each do-cargo test "$@";;
         ("lint")
             for crate in "${CRATES[@]}"; do
-                ./lint.sh ${crate#*-} $crate
+                ./tools/lint.sh ${crate#*-} $crate
             done
             ;;
+        ("deps") ./tools/deps.sh deps ;;
+        ("gloss") ./tools/glossary.sh GLOSSARY ;;
         ("help"|*)
             echo "Submodule manager for the Chandeliers project"
             echo "Author: Neven <vanille@crans.org>"
@@ -61,6 +63,8 @@ main() {
             echo "    test, update, publish,...    passed directly to cargo"
             echo "    bless                        blesses the output of 'cargo test'"
             echo "    lint                         compare nightly features"
+            echo "    deps                         generate dependency graph of crates"
+            echo "    gloss                        build glossary"
     esac
 }
 

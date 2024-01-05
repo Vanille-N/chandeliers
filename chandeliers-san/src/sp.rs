@@ -6,7 +6,7 @@
 //! `foo(&self)` for `Sp<T>` that gives its associated span to the inner call.
 //! Macros are provided to facilitate this usage.
 //!
-//! Note: yous should generally prefer putting the `Sp` on the outside
+//! Note: you should generally prefer putting the `Sp` on the outside
 //! in public function arguments, and on the inside on return values.
 //! That is,
 //! - use `Sp<&T>`, `Sp<Box<T>>`, `Sp<Result<T, E>>` in inputs and struct fields,

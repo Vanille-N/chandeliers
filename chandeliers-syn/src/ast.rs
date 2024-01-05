@@ -447,7 +447,7 @@ pub mod op {
     pub enum Mul {
         #[expect(
             clippy::enum_variant_names,
-            reason = "Same abbvreviation of different things"
+            reason = "Same abbreviation of different things"
         )]
         #[parse(peek = Token![*])]
         Mul(Token![*]),
