@@ -81,20 +81,6 @@ macro_rules! at {
     }};
 }
 
-/// The identifier of a `Unit`.
-///
-/// To avoid out of bounds accesses it is very important to only ever use
-/// indexes provided by `register_new_unit`.
-#[derive(Debug, Clone, Copy)]
-struct UnitIdx(usize);
-
-/// The identifier of an `Obj`.
-///
-/// To avoid out of bounds accesses it is very important to only ever use
-/// indexes provided by `register_new_obj`.
-#[derive(Debug, Clone, Copy)]
-struct ObjIdx(usize);
-
 /// A scheduler to resolve dependency requirements.
 #[derive(Debug, Clone)]
 pub struct Graph<Obj, Unit> {

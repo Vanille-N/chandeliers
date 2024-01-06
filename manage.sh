@@ -30,7 +30,7 @@ do-cargo() {
 
 main() {
     case "$1" in
-        ("check"|"build"|"test")
+        ("check"|"build"|"test"|"clean")
             STRICT=1 each do-cargo "$@"
             STRICT=1 do-cargo "$@"
             ;;
