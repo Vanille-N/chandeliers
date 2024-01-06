@@ -54,6 +54,10 @@ main() {
         ("deps") ./tools/deps.sh deps ;;
         ("gloss") ./tools/glossary.sh GLOSSARY ;;
         ("doc") do-cargo doc --document-private-items --open ;;
+        ("beamer")
+            zathura beamer/main.pdf &
+            typst watch beamer/main.typ;
+            ;;
         ("help"|*)
             echo "Submodule manager for the Chandeliers project"
             echo "Author: Neven <vanille@crans.org>"

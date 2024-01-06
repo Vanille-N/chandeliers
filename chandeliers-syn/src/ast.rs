@@ -829,7 +829,7 @@ pub mod expr {
     /// ```
     #[derive(syn_derive::Parse)]
     pub struct If {
-        pub _if: Token![if],
+        pub _if_kw: Token![if],
         pub cond: Sp<Expr>,
         pub _then: kw::then,
         pub yes: Sp<Expr>,
@@ -854,7 +854,7 @@ pub mod expr {
     /// ```
     #[derive(syn_derive::Parse)]
     pub struct Merge {
-        pub _merge: kw::merge,
+        pub _merge_kw: kw::merge,
         pub clk: Sp<Box<Atomic>>,
         pub on: Sp<Box<Atomic>>,
         pub off: Sp<Box<Atomic>>,
@@ -985,7 +985,7 @@ span_end_by_match! {
 /// ```
 #[derive(syn_derive::Parse)]
 pub struct Node {
-    _node: kw::node,
+    _node_kw: kw::node,
 
     pub name: Sp<LusIdent>,
 
@@ -1029,7 +1029,7 @@ span_end_on_field!(Node.kwtel);
 /// ```
 #[derive(syn_derive::Parse)]
 pub struct Const {
-    _const: Token![const],
+    _const_kw: Token![const],
     pub name: Sp<LusIdent>,
     _colon: Token![:],
     pub ty: Sp<ty::Base>,
