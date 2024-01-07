@@ -8,9 +8,9 @@
 
 #show raw: text.with(font: "JetBrains Mono")
 #set raw(
-  theme: "Abyss.tmTheme",
+  theme: "assets/Abyss.tmTheme",
   syntaxes: (
-    "RustEnhanced.sublime-syntax",
+    "assets/RustEnhanced.sublime-syntax",
   ),
 )
 
