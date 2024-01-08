@@ -10,18 +10,18 @@ checksum = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd"
 
 [[package]]
 name = "chandeliers-err"
-version = "0.5.0"
+version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5f388d7075a44db1a1e0387c6be935dcc6213d3e85a70fd2e860075b292f08fd"
+checksum = "36fbcae1412fb843d5dc3f53e3bb5f4c3a7533611aed9d17fd740899bef7debb"
 dependencies = [
  "proc-macro2",
 ]
 
 [[package]]
 name = "chandeliers-lus"
-version = "0.5.0"
+version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2e389b6b09805cdafed37d506a4f8920e802662dd2d1886c1bf3e76674cff93a"
+checksum = "d747f004e0d0d770348a18e1340111fc37ce09d508ddf2d28a4800ed72ea5492"
 dependencies = [
  "chandeliers-err",
  "chandeliers-san",
@@ -33,9 +33,9 @@ dependencies = [
 
 [[package]]
 name = "chandeliers-san"
-version = "0.5.0"
+version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "87d298f920eee14c27f294ab3f591baa4e1d2432f9b52c234dca0e25cf58b7bf"
+checksum = "66cf320700365a4fd4a73616d4c857d561d4a21a64da7d811b469d0546f7f6f7"
 dependencies = [
  "chandeliers-err",
  "chandeliers-sem",
@@ -46,18 +46,18 @@ dependencies = [
 
 [[package]]
 name = "chandeliers-sem"
-version = "0.5.0"
+version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c5c31b07436d22aba49acbf65dceb1688c66b450eba87a362bf5b5fb274c9811"
+checksum = "8e975bb2f5bab46ee4705be1759767f3d855803056804e123c55b8d8ed35d88c"
 dependencies = [
  "replace_with",
 ]
 
 [[package]]
 name = "chandeliers-std"
-version = "0.5.0"
+version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b0ccd5ea841c736dfcc74cae42e946c0e978cc2af98d2aeceaae3aa4b4c1390e"
+checksum = "d620beb731ed64c2248cf4f71c9d1c781b5adb1c690b886b581d75eba1bb79b4"
 dependencies = [
  "chandeliers-sem",
  "rand",
@@ -65,9 +65,9 @@ dependencies = [
 
 [[package]]
 name = "chandeliers-syn"
-version = "0.5.0"
+version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6abae48380c7c6d308dab2bddca0ce59a86e9e1a4a619bebf7aeebdf49c9197d"
+checksum = "1467be3b1b446004493f5133a83a6eb846047ff98a4cb7ce33dd7f78c07bb4cb"
 dependencies = [
  "chandeliers-err",
  "chandeliers-san",

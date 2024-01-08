@@ -1,11 +1,8 @@
 [package]
-name = "demo"
+name = "live"
 version = "0.1.0"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-chandeliers-lus = "1.0.0"
-chandeliers-std = "1.0.0"
-chandeliers-sem = "1.0.0"
