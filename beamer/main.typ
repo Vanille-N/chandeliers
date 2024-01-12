@@ -27,16 +27,61 @@
 #title-slide[
   = Chandeliers
 
-  A Lustre-in-Rust compiler
+  A Lustre compiler in Rust
   #v(2em)
 
   Neven Villani
 
-  2024-01-10
+  2024-01-12
 
   #v(2em)
   #link("https://github.com/vanille-n/chandeliers")[`github.com:vanille-n/chandeliers`]
 ]
+
+#slide[
+  #grid(
+    columns: (auto, auto),
+    gutter: 3em,
+    [
+      Typical compilation steps are missing
+      #list(
+        marker: $dash.circle$,
+        [file manipulation],
+        [tokenization],
+        [optimizations],
+        [emitting assembly],
+        [dependency management],
+      )
+    ],
+    [
+      Several nonstandard features
+      #list(
+        marker: $plus.circle$,
+        [IDE integration],
+        [documentation],
+        [target language lints],
+      )
+    ],
+  ) \
+  And also...
+  - target language is very relevant
+  - comes as a _library_, not an executable
+]
+
+#title-slide[
+  = Chandeliers
+
+  A Lustre plugin for Rust
+  #v(2em)
+
+  Neven Villani
+
+  2024-01-12
+
+  #v(2em)
+  #link("https://github.com/vanille-n/chandeliers")[`github.com:vanille-n/chandeliers`]
+]
+
 
 #focus-slide[
   = An introduction to Rust and Proc Macros
@@ -48,6 +93,8 @@
   - *compiled* language
   - strong *type system*
   - extensible via *macros*
+
+  // Include image here
 ]
 
 #slide[
