@@ -60,6 +60,7 @@
         [IDE integration],
         [documentation],
         [target language lints],
+        [interface with libraries],
       )
     ],
   ) \

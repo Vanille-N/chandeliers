@@ -820,7 +820,7 @@ pub mod expr {
     ///
     /// ```lus
     /// if c then y else n
-    /// ^^_if
+    /// ^^_if_kw
     ///    ^cond
     ///      ^^^^_then
     ///           ^yes
@@ -966,7 +966,7 @@ span_end_by_match! {
 ///
 /// ```lus
 /// node foo(i : int) returns (o : int);
-/// ^^^^_node
+/// ^^^^_node_kw
 ///      ^^^name
 ///         ^^^^^^^^^inputs
 ///                   ^^^^^^^_returns
