@@ -2,6 +2,13 @@
 
 A deep embedding of Lustre in Rust.
 
+This project provides a proc macro to compile
+[Lustre](https://en.wikipedia.org/wiki/Lustre_(programming_language)) source code
+into Rust. This approach is inspired by numerous instances of people embedding new
+or existing languages in Rust with proc macros, and has interesting benefits such
+as automatically providing optimizations, access to [crates.io](https://crates.io) and
+IDE integration through rust-analyzer.
+
 ---
 
 ## Structure
